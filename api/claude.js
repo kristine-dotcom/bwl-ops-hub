@@ -2,7 +2,10 @@ export const config = { runtime: 'edge' }
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
+    return new Response(JSON.stringify({ error: { message: 'Method not allowed' } }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -21,12 +24,20 @@ export default async function handler(req) {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'interleaved-thinking-2025-05-14'
       },
       body: JSON.stringify(body)
     })
 
-    const data = await response.json()
+    // Always return JSON even if Anthropic returns an error
+    let data
+    const contentType = response.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      data = await response.json()
+    } else {
+      const text = await response.text()
+      data = { error: { message: text || 'Unknown error from Anthropic' } }
+    }
+
     return new Response(JSON.stringify(data), {
       status: response.status,
       headers: { 'Content-Type': 'application/json' }
