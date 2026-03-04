@@ -2,7 +2,9 @@ import { useState } from "react";
 
 const BWL = {
   bg: "#F5F0E8", black: "#0A0A0A", orange: "#E8390E",
-  white: "#FFFFFF", gray: "#888888", lightGray: "#E0DAD0", darkGray: "#333333",
+  white: "#FFFFFF", gray: "#888888", lightGray: "#C8C2B8", darkGray: "#333333",
+  font: "'Arial Black', 'Arial Bold', Arial, sans-serif",
+  mono: "'Courier New', Courier, monospace",
 };
 
 const DEFAULT_SLACK_IDS = {
@@ -44,8 +46,8 @@ async function callClaude(prompt, maxTokens = 2000) {
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
-const Card = ({ children, style = {} }) => <div style={{ background: BWL.white, border: `1px solid ${BWL.lightGray}`, borderRadius: 12, ...style }}>{children}</div>;
-const CardHeader = ({ label, color = BWL.orange }) => <div style={{ padding: "10px 16px", borderBottom: `1px solid ${BWL.lightGray}`, fontSize: 10, color, fontWeight: 900, letterSpacing: 2 }}>{label}</div>;
+const Card = ({ children, style = {} }) => <div style={{ background: BWL.white, border: `1.5px solid ${BWL.black}`, borderRadius: 0, ...style }}>{children}</div>;
+const CardHeader = ({ label, color = BWL.orange }) => <div style={{ padding: "10px 16px", borderBottom: `1.5px solid ${BWL.black}`, fontSize: 10, color, fontWeight: 900, letterSpacing: 3, fontFamily: BWL.font }}>{label}</div>;
 
 function Textarea({ label, value, onChange, placeholder, minHeight = 120 }) {
   return (
@@ -1048,34 +1050,36 @@ export default function App() {
   const [slackIds, setSlackIds] = useState(() => { const s = storage.get("slack-ids"); return s ? JSON.parse(s.value) : DEFAULT_SLACK_IDS; });
 
   return (
-    <div style={{ fontFamily: "'Arial Black', Arial, sans-serif", background: BWL.bg, minHeight: "100vh", color: BWL.black }}>
-      <div style={{ background: BWL.black, padding: "0 24px", display: "flex", alignItems: "stretch", justifyContent: "space-between", borderBottom: `3px solid ${BWL.orange}` }}>
+    <div style={{ fontFamily: BWL.font, background: BWL.bg, minHeight: "100vh", color: BWL.black,
+      backgroundImage: `linear-gradient(${BWL.black}18 1px, transparent 1px), linear-gradient(90deg, ${BWL.black}18 1px, transparent 1px)`,
+      backgroundSize: "40px 40px" }}>
+      <div style={{ background: BWL.bg, padding: "0 0", display: "flex", alignItems: "stretch", justifyContent: "space-between", borderBottom: `2px solid ${BWL.black}` }}>
         <div style={{ display: "flex", alignItems: "center" }}>
-          <div style={{ padding: "16px 24px 16px 0", borderRight: "1px solid #222" }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: BWL.white, letterSpacing: -1 }}>LEVERAGE<span style={{ color: BWL.orange }}>.</span></div>
+          <div style={{ padding: "18px 28px", borderRight: `2px solid ${BWL.black}` }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: BWL.black, letterSpacing: -1, fontFamily: BWL.font }}>LEVERAGE<span style={{ color: BWL.orange }}>.</span></div>
           </div>
-          <div style={{ padding: "16px 24px" }}>
-            <div style={{ fontSize: 9, letterSpacing: 3, color: BWL.orange, fontWeight: 700 }}>■ OPERATIONS HUB</div>
-            <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CLAUDE-POWERED</div>
+          <div style={{ padding: "18px 28px", borderRight: `2px solid ${BWL.black}` }}>
+            <div style={{ fontSize: 9, letterSpacing: 3, color: BWL.orange, fontWeight: 900, fontFamily: BWL.font }}>■ OPERATIONS HUB</div>
+            <div style={{ fontSize: 10, color: BWL.black, marginTop: 2, fontFamily: BWL.mono }}>CLAUDE-POWERED</div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {[["cos","🗂 CoS Mode"],["team","👥 Team Mode"]].map(([m,l])=>(
-            <button key={m} onClick={()=>setMode(m)} style={{ padding: "8px 20px", borderRadius: 20, fontSize: 12, fontWeight: 900, background: mode===m ? BWL.orange : "#222", color: BWL.white, border: "none", cursor: "pointer" }}>{l}</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+          {[["cos","🗂 CoS MODE"],["team","👥 TEAM MODE"]].map(([m,l])=>(
+            <button key={m} onClick={()=>setMode(m)} style={{ padding: "18px 28px", fontSize: 11, fontWeight: 900, background: mode===m ? BWL.orange : "transparent", color: mode===m ? BWL.white : BWL.black, border: "none", borderLeft: `2px solid ${BWL.black}`, cursor: "pointer", letterSpacing: 2, fontFamily: BWL.font }}>{l}</button>
           ))}
         </div>
       </div>
       {mode === "cos" && (
-        <div style={{ background: BWL.white, borderBottom: `1px solid ${BWL.lightGray}`, padding: "0 24px", display: "flex" }}>
+        <div style={{ background: BWL.bg, borderBottom: `2px solid ${BWL.black}`, display: "flex" }}>
           {COS_TOOLS.map(t => (
-            <button key={t.key} onClick={() => setActive(t.key)} style={{ padding: "14px 22px", background: "transparent", border: "none", borderBottom: active===t.key ? `3px solid ${BWL.orange}` : "3px solid transparent", borderRight: `1px solid ${BWL.lightGray}`, color: active===t.key ? BWL.black : BWL.gray, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1 }}>{t.label}</div>
-              <div style={{ fontSize: 9, color: active===t.key ? BWL.orange : BWL.gray, fontWeight: 700, letterSpacing: 2 }}>{t.sub}</div>
+            <button key={t.key} onClick={() => setActive(t.key)} style={{ padding: "16px 28px", background: active===t.key ? BWL.black : "transparent", border: "none", borderRight: `2px solid ${BWL.black}`, color: active===t.key ? BWL.white : BWL.black, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 2, fontFamily: BWL.font }}>{t.label}</div>
+              <div style={{ fontSize: 9, color: active===t.key ? BWL.orange : BWL.gray, fontWeight: 700, letterSpacing: 2, fontFamily: BWL.mono }}>{t.sub}</div>
             </button>
           ))}
         </div>
       )}
-      <div style={{ padding: "28px 24px", maxWidth: 860, margin: "0 auto" }}>
+      <div style={{ padding: "40px 48px", maxWidth: 1200, margin: "0 auto" }}>
         {mode === "cos" && active === "ops" && <OpsPulse slackIds={slackIds} />}
         {mode === "cos" && active === "rfp" && <RFPEngine />}
         {mode === "cos" && active === "report" && <WeeklyReport />}
