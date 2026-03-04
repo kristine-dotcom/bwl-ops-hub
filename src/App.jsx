@@ -15,7 +15,6 @@ const DEFAULT_SLACK_IDS = {
   "Kristine Mirabueno": "U09QJGY27JP",
 };
 
-// ─── STORAGE (localStorage instead of window.storage) ────────────────────────
 const storage = {
   get: (key) => {
     try { const v = localStorage.getItem(key); return v ? { value: v } : null; } catch { return null; }
@@ -28,7 +27,6 @@ const storage = {
   },
 };
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function weekLabel() {
   const now = new Date(), day = now.getDay(), monday = new Date(now);
   monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
@@ -46,7 +44,6 @@ async function callClaude(prompt, maxTokens = 2000) {
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
-// ─── SHARED UI ────────────────────────────────────────────────────────────────
 const Card = ({ children, style = {} }) => <div style={{ background: BWL.white, border: `1px solid ${BWL.lightGray}`, borderRadius: 12, ...style }}>{children}</div>;
 const CardHeader = ({ label, color = BWL.orange }) => <div style={{ padding: "10px 16px", borderBottom: `1px solid ${BWL.lightGray}`, fontSize: 10, color, fontWeight: 900, letterSpacing: 2 }}>{label}</div>;
 
@@ -96,9 +93,6 @@ function ResultBlock({ label, content, color = BWL.orange, copyable }) {
 
 function Err({ msg }) { return msg ? <div style={{ background: "#fff0ee", border: `1px solid ${BWL.orange}`, borderRadius: 10, padding: 14, color: BWL.orange, fontSize: 13 }}>{msg}</div> : null; }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// OPS PULSE
-// ═══════════════════════════════════════════════════════════════════════════════
 const TEAM_OPS = ["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Caleb Bentil","David Perlov","Cyril Butanas","Darlene Mae Malolos"];
 const INPUT_TYPES = [{ key: "transcript", label: "📋 Meeting Transcript" },{ key: "sod", label: "🌅 SOD Report" },{ key: "email", label: "📧 Emails" },{ key: "slack", label: "💬 Slack" }];
 
@@ -325,9 +319,6 @@ Return ONLY valid JSON:
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// RFP ENGINE
-// ═══════════════════════════════════════════════════════════════════════════════
 const BWL_SERVICES = ["Outbound","Paid Media","Influencer","Email Marketing","Design","Web","SEO","Content"];
 const PROPOSAL_TEMPLATES = {
   Government: "formal, compliance-focused, emphasize track record, certifications, reporting",
@@ -529,9 +520,6 @@ function RFPEngine() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// WEEKLY REPORT
-// ═══════════════════════════════════════════════════════════════════════════════
 function WeeklyReport() {
   const [updates, setUpdates] = useState(""); const [slack, setSlack] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
@@ -557,9 +545,6 @@ function WeeklyReport() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// EXEC COMMS
-// ═══════════════════════════════════════════════════════════════════════════════
 function ExecComms() {
   const TYPES = [{key:"announcement",label:"📢 Announcement"},{key:"followup",label:"🔄 Follow-up"},{key:"recap",label:"📋 Meeting Recap"},{key:"slack",label:"💬 Slack Message"}];
   const [type, setType] = useState("announcement"); const [context, setContext] = useState(""); const [tone, setTone] = useState("professional"); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
@@ -581,9 +566,6 @@ function ExecComms() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEAM MODE TOOLS
-// ═══════════════════════════════════════════════════════════════════════════════
 function DailyBriefing() {
   const [input, setInput] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
@@ -967,9 +949,6 @@ function FeedbackSummary() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════
 function Settings({ slackToken, setSlackToken, slackIds, setSlackIds }) {
   const [token, setToken] = useState(slackToken || "");
   const [ids, setIds] = useState(slackIds || DEFAULT_SLACK_IDS);
@@ -1005,9 +984,6 @@ function Settings({ slackToken, setSlackToken, slackIds, setSlackIds }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEAM MODE
-// ═══════════════════════════════════════════════════════════════════════════════
 const TEAM_CONFIG = [
   { key:"david", name:"David Perlov", role:"CEO", emoji:"👑", tools:[{key:"briefing",label:"📋 Daily Briefing",component:<DailyBriefing/>},{key:"team_perf",label:"📊 Team Performance",component:<TeamPerformance/>},{key:"decision",label:"🧠 Strategic Decision",component:<StrategicDecision/>}]},
   { key:"tin", name:"Kristine Miel (Tin)", role:"Outbound Marketing", emoji:"📡", tools:[{key:"sequence",label:"📨 Sequence Builder",component:<SequenceBuilder/>},{key:"lead",label:"🔍 Lead Research",component:<LeadResearch/>}]},
@@ -1057,9 +1033,6 @@ function TeamMode() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN DASHBOARD
-// ═══════════════════════════════════════════════════════════════════════════════
 const COS_TOOLS = [
   { key: "ops", label: "OPS PULSE", sub: "Task Generator" },
   { key: "rfp", label: "RFP ENGINE", sub: "Business Dev" },
