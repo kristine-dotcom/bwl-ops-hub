@@ -1,23 +1,18 @@
-export const config = { runtime: 'edge' }
+export const config = {
+  maxDuration: 60,
+}
 
-export default async function handler(req) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: { message: 'Method not allowed' } }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(405).json({ error: { message: 'Method not allowed' } })
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: { message: 'Missing ANTHROPIC_API_KEY' } }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(500).json({ error: { message: 'Missing ANTHROPIC_API_KEY' } })
   }
 
   try {
-    const body = await req.json()
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -25,12 +20,11 @@ export default async function handler(req) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(req.body)
     })
 
-    // Always return JSON even if Anthropic returns an error
-    let data
     const contentType = response.headers.get('content-type') || ''
+    let data
     if (contentType.includes('application/json')) {
       data = await response.json()
     } else {
@@ -38,14 +32,8 @@ export default async function handler(req) {
       data = { error: { message: text || 'Unknown error from Anthropic' } }
     }
 
-    return new Response(JSON.stringify(data), {
-      status: response.status,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(response.status).json(data)
   } catch (err) {
-    return new Response(JSON.stringify({ error: { message: err.message } }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(500).json({ error: { message: err.message } })
   }
 }
