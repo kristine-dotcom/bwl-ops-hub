@@ -46,6 +46,59 @@ async function callClaude(prompt, maxTokens = 2000) {
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
+// ─── PDF EXPORT ───────────────────────────────────────────────────────────────
+function exportPDF(title, contentId) {
+  const printWindow = window.open("", "_blank");
+  const content = document.getElementById(contentId)?.innerHTML || "";
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>${title}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Arial Black', Arial, sans-serif; background: #F5F0E8; color: #0A0A0A; padding: 40px; }
+        .pdf-header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 16px; border-bottom: 3px solid #0A0A0A; margin-bottom: 32px; }
+        .pdf-logo { font-size: 22px; font-weight: 900; letter-spacing: -1px; }
+        .pdf-logo span { color: #E8390E; }
+        .pdf-meta { font-size: 10px; letter-spacing: 2px; color: #888; font-family: 'Courier New', monospace; text-align: right; }
+        .pdf-title { font-size: 11px; color: #E8390E; font-weight: 900; letter-spacing: 3px; margin-bottom: 6px; }
+        button { display: none !important; }
+        textarea { display: none !important; }
+        input { display: none !important; }
+        [data-hide-pdf] { display: none !important; }
+        pre, .pre { white-space: pre-wrap; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.7; }
+        .section { margin-bottom: 24px; border: 1.5px solid #0A0A0A; padding: 16px; background: white; }
+        .section-label { font-size: 9px; font-weight: 900; letter-spacing: 3px; margin-bottom: 10px; }
+        .bullet { padding-left: 10px; border-left: 2px solid #E8390E; margin-bottom: 6px; font-size: 12px; line-height: 1.5; font-family: 'Courier New', monospace; }
+        @media print { body { padding: 20px; } }
+      </style>
+    </head>
+    <body>
+      <div class="pdf-header">
+        <div class="pdf-logo">LEVERAGE<span>.</span></div>
+        <div class="pdf-meta">
+          <div>${title.toUpperCase()}</div>
+          <div>${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div>
+        </div>
+      </div>
+      ${content}
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.onload = () => { printWindow.print(); };
+}
+
+function ExportBtn({ title, contentId }) {
+  return (
+    <button onClick={() => exportPDF(title, contentId)}
+      style={{ padding: "9px 18px", background: BWL.black, color: BWL.white, border: "none", fontSize: 11, fontWeight: 900, cursor: "pointer", letterSpacing: 1, display: "flex", alignItems: "center", gap: 6 }}>
+      📄 EXPORT PDF
+    </button>
+  );
+}
+
 const Card = ({ children, style = {} }) => <div style={{ background: BWL.white, border: `1.5px solid ${BWL.black}`, borderRadius: 0, ...style }}>{children}</div>;
 const CardHeader = ({ label, color = BWL.orange }) => <div style={{ padding: "10px 16px", borderBottom: `1.5px solid ${BWL.black}`, fontSize: 10, color, fontWeight: 900, letterSpacing: 3, fontFamily: BWL.font }}>{label}</div>;
 
@@ -237,13 +290,15 @@ Return ONLY valid JSON:
             </div>
             <p style={{ margin: 0, color: BWL.darkGray, fontSize: 13, lineHeight: 1.7 }}>{result.week_summary}</p>
           </Card>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {[["team","👥 Team"],["person","👤 Per-Person"]].map(([v,l]) => (
               <button key={v} onClick={() => { setView(v); if (v==="team") setSelectedMember(null); }}
                 style={{ padding: "7px 16px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: view===v ? BWL.black : BWL.white, color: view===v ? BWL.white : BWL.gray, border: view===v ? "none" : `1px solid ${BWL.lightGray}`, cursor: "pointer" }}>{l}</button>
             ))}
-            <button onClick={sendAll} style={{ marginLeft: "auto", padding: "7px 16px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "#1a1a2e", color: "#a78bfa", border: "1px solid #2a2a4a", cursor: "pointer" }}>📨 Send All to Slack</button>
+            <button onClick={sendAll} style={{ padding: "7px 16px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "#1a1a2e", color: "#a78bfa", border: "1px solid #2a2a4a", cursor: "pointer" }}>📨 Send All to Slack</button>
+            <ExportBtn title={`OPS PULSE — ${weekLabel()}`} contentId="ops-pulse-pdf" />
           </div>
+          <div id="ops-pulse-pdf">
           {view === "team" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {TEAM_OPS.map(member => {
@@ -328,6 +383,7 @@ Return ONLY valid JSON:
               })()}
             </div>
           )}
+        </div>
         </div>
       )}
     </div>
@@ -535,6 +591,122 @@ function RFPEngine() {
   );
 }
 
+function SODParser() {
+  const [raw, setRaw] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const parse = async () => {
+    setLoading(true); setResult(null); setError(null);
+    const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    const prompt = `You are AI Chief of Staff for BuildWithLeverage. Today is ${today}.
+Parse these SOD (Start of Day) Slack messages from the team. Messages may be casual, detailed, or anything in between.
+Team members: ${TEAM_OPS.join(", ")}
+
+For each person found in the messages:
+- Extract what they worked on / plan to work on
+- Identify any blockers or questions they raised
+- Note their general mood/energy (positive/neutral/concerned)
+- Flag anything that needs David or Kristine's attention
+
+RAW SLACK MESSAGES:
+${raw}
+
+Return ONLY valid JSON:
+{
+  "parsed_date": "${today}",
+  "summary": "2-3 sentence overall team SOD summary",
+  "members": [
+    {
+      "name": "exact name from team list",
+      "clocked_in": true,
+      "updates": ["update 1", "update 2"],
+      "blockers": ["blocker or question"],
+      "mood": "positive|neutral|concerned",
+      "needs_attention": true or false,
+      "attention_reason": "why if needs_attention is true"
+    }
+  ],
+  "missing_members": ["names of team members with no SOD"],
+  "flags_for_leadership": ["anything David or Kristine needs to act on"]
+}`;
+    try {
+      const res = await fetch("/api/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const text = data.content?.find(b => b.type === "text")?.text || "";
+      setResult(JSON.parse(text.replace(/```json|```/g, "").trim()));
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  };
+
+  const moodColor = m => ({ positive: "#10b981", neutral: "#f59e0b", concerned: "#ef4444" }[m] || BWL.gray);
+  const moodIcon = m => ({ positive: "🟢", neutral: "🟡", concerned: "🔴" }[m] || "⚪");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Textarea label="💬 PASTE SOD SLACK MESSAGES" value={raw} onChange={setRaw} placeholder="Paste all SOD messages here — any format, any order. Claude will figure it out." minHeight={160} />
+      <Btn onClick={parse} disabled={!raw.trim()} loading={loading} label="⚡ PARSE SOD REPORT" />
+      <Err msg={error} />
+      {result && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ background: BWL.black, borderRadius: 0, border: `1.5px solid ${BWL.black}`, padding: 20 }}>
+            <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 8 }}>📋 SOD SUMMARY — {result.parsed_date}</div>
+            <p style={{ margin: 0, color: BWL.white, fontSize: 13, lineHeight: 1.7, fontFamily: BWL.mono }}>{result.summary}</p>
+          </div>
+
+          {result.missing_members?.length > 0 && (
+            <div style={{ background: "#fff8f0", border: `1.5px solid ${BWL.orange}`, padding: "12px 16px" }}>
+              <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 2, marginBottom: 6 }}>⚠️ NO SOD YET</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {result.missing_members.map((m, i) => <span key={i} style={{ background: BWL.orange + "18", color: BWL.orange, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>{m}</span>)}
+              </div>
+            </div>
+          )}
+
+          {result.flags_for_leadership?.length > 0 && (
+            <Card style={{ padding: 16 }}>
+              <div style={{ fontSize: 10, color: "#ef4444", fontWeight: 900, letterSpacing: 2, marginBottom: 8 }}>🚨 FLAGS FOR LEADERSHIP</div>
+              {result.flags_for_leadership.map((f, i) => (
+                <div key={i} style={{ fontSize: 12, color: BWL.black, marginBottom: 6, paddingLeft: 10, borderLeft: `2px solid #ef4444`, lineHeight: 1.5, fontFamily: BWL.mono }}>{f}</div>
+              ))}
+            </Card>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {result.members?.map((m, i) => (
+              <Card key={i} style={{ padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 14 }}>{moodIcon(m.mood)}</span>
+                    <div style={{ fontWeight: 900, fontSize: 14 }}>{m.name}</div>
+                    {m.needs_attention && <span style={{ background: "#fff0ee", color: BWL.orange, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>⚠️ NEEDS ATTENTION</span>}
+                  </div>
+                  <span style={{ fontSize: 10, color: moodColor(m.mood), fontWeight: 700, letterSpacing: 1 }}>{m.mood?.toUpperCase()}</span>
+                </div>
+                {m.attention_reason && <div style={{ background: "#fff0ee", border: `1px solid ${BWL.orange}33`, padding: "8px 12px", marginBottom: 10, fontSize: 12, color: BWL.orange, fontFamily: BWL.mono }}>{m.attention_reason}</div>}
+                {m.updates?.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, color: "#10b981", fontWeight: 900, letterSpacing: 2, marginBottom: 5 }}>✅ UPDATES</div>
+                    {m.updates.map((u, j) => <div key={j} style={{ fontSize: 12, color: BWL.darkGray, marginBottom: 4, paddingLeft: 10, borderLeft: `2px solid #10b981`, lineHeight: 1.5, fontFamily: BWL.mono }}>{u}</div>)}
+                  </div>
+                )}
+                {m.blockers?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 9, color: "#ef4444", fontWeight: 900, letterSpacing: 2, marginBottom: 5 }}>🚧 BLOCKERS / QUESTIONS</div>
+                    {m.blockers.map((b, j) => <div key={j} style={{ fontSize: 12, color: BWL.darkGray, marginBottom: 4, paddingLeft: 10, borderLeft: `2px solid #ef4444`, lineHeight: 1.5, fontFamily: BWL.mono }}>{b}</div>)}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WeeklyReport() {
   const [updates, setUpdates] = useState(""); const [slack, setSlack] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
@@ -549,13 +721,16 @@ function WeeklyReport() {
       <Textarea label="💬 SLACK / NOTES (OPTIONAL)" value={slack} onChange={setSlack} placeholder="Paste relevant Slack messages..." minHeight={80} />
       <Btn onClick={gen} disabled={!updates.trim()} loading={loading} label={`⚡ GENERATE WEEKLY REPORT — ${weekLabel()}`} />
       <Err msg={error} />
-      {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8}}>TL;DR FOR DAVID</div><p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7}}>{result.executive_summary}</p></div>
+      {result && <div id="weekly-report-pdf">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{background:BWL.black,borderRadius:0,padding:18,flex:1,marginRight:10}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8}}>TL;DR FOR DAVID</div><p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7}}>{result.executive_summary}</p></div>
+          <ExportBtn title={`Weekly Report — ${weekLabel()}`} contentId="weekly-report-pdf" />
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="✅ WINS" items={result.wins} color="#10b981" /><Bullets label="🚧 BLOCKERS" items={result.blockers?.length?result.blockers:["None 🎉"]} color="#ef4444" /></div>
         <Bullets label="📅 NEXT WEEK" items={result.next_week} color="#6c63ff" />
         <Bullets label="👀 DAVID NEEDS TO KNOW" items={result.david_needs_to_know?.length?result.david_needs_to_know:["Nothing urgent 👍"]} color={BWL.orange} />
         <ResultBlock label="📄 FULL REPORT" content={result.full_report} copyable />
-      </>}
+      </div>}
     </div>
   );
 }
@@ -869,11 +1044,47 @@ function CampaignBrief() {
 
 function InfluencerTracker() {
   const [influencers, setInfluencers] = useState(() => { const s=storage.get("influencer-tracker"); return s?JSON.parse(s.value):[]; });
-  const [form, setForm] = useState({ name:"", handle:"", platform:"Instagram", niche:"", followers:"", status:"under_nego", rate:"", notes:"" });
+  const [form, setForm] = useState({ name:"", handle:"", platform:"Instagram", niche:"", followers:"", status:"under_nego", rate:"", notes:"", email:"", contact:"" });
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const [filter, setFilter] = useState("all");
+
+  const handleCSV = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    setImporting(true); setImportResult(null);
+    const text = await file.text();
+    const lines = text.split("\n").filter(l => l.trim());
+    const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g,""));
+    const rows = lines.slice(1).map(line => {
+      const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g,""));
+      return headers.reduce((obj, h, i) => ({ ...obj, [h]: vals[i] || "" }), {});
+    });
+    const fieldMap = { name:["name","fullname"], handle:["handle","username","ig","tiktok","account"], platform:["platform","channel"], niche:["niche","category","genre"], followers:["followers","followercount","subs"], rate:["rate","fee","price","cost"], status:["status"], notes:["notes","remarks","comment"], email:["email","emailaddress"], contact:["contact","phone","mobile","number"] };
+    const findField = (row, keys) => { for (const k of keys) { const match = Object.keys(row).find(h => h.includes(k)); if (match && row[match]) return row[match]; } return ""; };
+    const imported = rows.filter(r => findField(r, fieldMap.name)).map(r => ({
+      id: Date.now() + Math.random(),
+      name: findField(r, fieldMap.name),
+      handle: findField(r, fieldMap.handle),
+      platform: findField(r, fieldMap.platform) || "Instagram",
+      niche: findField(r, fieldMap.niche),
+      followers: findField(r, fieldMap.followers),
+      rate: findField(r, fieldMap.rate),
+      status: findField(r, fieldMap.status) || "under_nego",
+      notes: findField(r, fieldMap.notes),
+      email: findField(r, fieldMap.email),
+      contact: findField(r, fieldMap.contact),
+      created_at: new Date().toISOString()
+    }));
+    const merged = [...imported, ...influencers];
+    save(merged);
+    setImportResult({ count: imported.length, skipped: rows.length - imported.length });
+    setImporting(false); setShowImport(false);
+    e.target.value = "";
+  };
   const save = (list) => { setInfluencers(list); storage.set("influencer-tracker", JSON.stringify(list)); };
-  const add = () => { save([{...form,id:Date.now(),created_at:new Date().toISOString()},...influencers]); setForm({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:""}); setShowForm(false); };
+  const add = () => { save([{...form,id:Date.now(),created_at:new Date().toISOString()},...influencers]); setForm({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:"",email:"",contact:""}); setShowForm(false); };
   const del = (id) => save(influencers.filter(i=>i.id!==id));
   const updateStatus = (id,status) => save(influencers.map(i=>i.id===id?{...i,status}:i));
   const statuses = {active:{label:"🟢 Active",color:"#10b981"},paid:{label:"💰 Paid",color:"#6c63ff"},under_nego:{label:"🟡 Under Nego",color:"#f59e0b"},completed:{label:"✅ Completed",color:BWL.gray},declined:{label:"❌ Declined",color:"#ef4444"}};
@@ -885,11 +1096,26 @@ function InfluencerTracker() {
         {[["all","All",BWL.black],...Object.entries(statuses).map(([k,v])=>[k,v.label,v.color])].map(([k,l,c])=>(
           <button key={k} onClick={()=>setFilter(k)} style={{padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:700,background:filter===k?c:BWL.white,color:filter===k?BWL.white:BWL.gray,border:filter===k?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer"}}>{l} <span style={{fontSize:10,opacity:0.8}}>({k==="all"?influencers.length:counts[k]})</span></button>
         ))}
-        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"6px 16px",borderRadius:20,fontSize:11,fontWeight:700,background:BWL.orange,color:BWL.white,border:"none",cursor:"pointer"}}>+ Add Influencer</button>
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          <label style={{padding:"6px 16px",borderRadius:20,fontSize:11,fontWeight:700,background:"#6c63ff",color:BWL.white,cursor:"pointer",border:"none"}}>
+            {importing ? "⏳ Importing..." : "📥 Import CSV"}
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleCSV} style={{display:"none"}} disabled={importing} />
+          </label>
+          <button onClick={()=>setShowForm(!showForm)} style={{padding:"6px 16px",borderRadius:20,fontSize:11,fontWeight:700,background:BWL.orange,color:BWL.white,border:"none",cursor:"pointer"}}>+ Add Influencer</button>
+        </div>
       </div>
-      {showForm&&<Card style={{padding:18}}><CardHeader label="➕ ADD INFLUENCER" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["name","Name *"],["handle","Handle"],["niche","Niche"],["followers","Followers"],["rate","Rate"]].map(([k,l])=><div key={k}><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>{l.toUpperCase()}</div><input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div>)}<div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook","LinkedIn"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Notes..." style={{width:"100%",minHeight:60,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} /></div><div style={{padding:"0 16px 16px",display:"flex",gap:8}}><button onClick={add} disabled={!form.name.trim()} style={{flex:1,padding:11,borderRadius:10,background:form.name.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:form.name.trim()?"pointer":"not-allowed"}}>✅ Add</button><button onClick={()=>setShowForm(false)} style={{padding:"11px 20px",borderRadius:10,background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,fontSize:13,cursor:"pointer"}}>Cancel</button></div></Card>}
-      {filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:40,marginBottom:12}}>🌟</div><div style={{fontSize:14,fontWeight:700}}>No influencers yet</div></div>:
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(inf=><Card key={inf.id} style={{padding:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:14}}>{inf.name}</div><div style={{fontSize:12,color:BWL.gray,marginTop:2}}>@{inf.handle} • {inf.platform}{inf.followers&&` • ${inf.followers}`}</div>{inf.niche&&<div style={{fontSize:11,color:BWL.gray,marginTop:2}}>Niche: {inf.niche}</div>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{background:statuses[inf.status]?.color+"22",color:statuses[inf.status]?.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{statuses[inf.status]?.label}</span>{inf.rate&&<span style={{fontSize:11,color:BWL.gray}}>💰 {inf.rate}</span>}</div></div>{inf.notes&&<div style={{fontSize:12,color:BWL.darkGray,background:BWL.bg,borderRadius:8,padding:"8px 12px",marginBottom:8}}>{inf.notes}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==inf.status).map(([k,v])=><button key={k} onClick={()=>updateStatus(inf.id,k)} style={{background:BWL.bg,color:v.color,border:`1px solid ${v.color}33`,borderRadius:8,padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer"}}>→ {v.label}</button>)}<button onClick={()=>del(inf.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,borderRadius:8,padding:"4px 10px",fontSize:10,cursor:"pointer"}}>🗑</button></div></Card>)}</div>}
+
+      {importResult && (
+        <div style={{background:"#f0faf0",border:"1px solid #10b98133",borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:13,color:"#10b981",fontWeight:700}}>✅ Imported {importResult.count} influencers successfully!{importResult.skipped > 0 && ` (${importResult.skipped} skipped — no name)`}</div>
+          <button onClick={()=>setImportResult(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#10b981"}}>✕</button>
+        </div>
+      )}
+
+      {showForm&&<Card style={{padding:18}}><CardHeader label="➕ ADD INFLUENCER" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["name","Name *"],["handle","Handle"],["niche","Niche"],["followers","Followers"],["rate","Rate"],["email","Email"],["contact","Contact #"]].map(([k,l])=><div key={k}><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>{l.toUpperCase()}</div><input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div>)}<div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook","LinkedIn"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Notes..." style={{width:"100%",minHeight:60,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} /></div><div style={{padding:"0 16px 16px",display:"flex",gap:8}}><button onClick={add} disabled={!form.name.trim()} style={{flex:1,padding:11,borderRadius:10,background:form.name.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:form.name.trim()?"pointer":"not-allowed"}}>✅ Add</button><button onClick={()=>setShowForm(false)} style={{padding:"11px 20px",borderRadius:10,background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,fontSize:13,cursor:"pointer"}}>Cancel</button></div></Card>}
+
+      {filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:40,marginBottom:12}}>🌟</div><div style={{fontSize:14,fontWeight:700}}>No influencers yet — import CSV or add manually</div></div>:
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(inf=><Card key={inf.id} style={{padding:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:14}}>{inf.name}</div><div style={{fontSize:12,color:BWL.gray,marginTop:2}}>@{inf.handle} • {inf.platform}{inf.followers&&` • ${inf.followers}`}</div>{inf.niche&&<div style={{fontSize:11,color:BWL.gray,marginTop:2}}>Niche: {inf.niche}</div>}{(inf.email||inf.contact)&&<div style={{fontSize:11,color:BWL.gray,marginTop:2}}>{inf.email&&`✉️ ${inf.email}`}{inf.email&&inf.contact&&" · "}{inf.contact&&`📱 ${inf.contact}`}</div>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{background:statuses[inf.status]?.color+"22",color:statuses[inf.status]?.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{statuses[inf.status]?.label}</span>{inf.rate&&<span style={{fontSize:11,color:BWL.gray}}>💰 {inf.rate}</span>}</div></div>{inf.notes&&<div style={{fontSize:12,color:BWL.darkGray,background:BWL.bg,borderRadius:8,padding:"8px 12px",marginBottom:8}}>{inf.notes}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==inf.status).map(([k,v])=><button key={k} onClick={()=>updateStatus(inf.id,k)} style={{background:BWL.bg,color:v.color,border:`1px solid ${v.color}33`,borderRadius:8,padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer"}}>→ {v.label}</button>)}<button onClick={()=>del(inf.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,borderRadius:8,padding:"4px 10px",fontSize:10,cursor:"pointer"}}>🗑</button></div></Card>)}</div>}
     </div>
   );
 }
@@ -1050,6 +1276,7 @@ function TeamMode() {
 
 const COS_TOOLS = [
   { key: "ops", label: "OPS PULSE", sub: "Task Generator" },
+  { key: "sod", label: "SOD PARSER", sub: "Auto-Parse" },
   { key: "rfp", label: "RFP ENGINE", sub: "Business Dev" },
   { key: "report", label: "WEEKLY REPORT", sub: "Status Builder" },
   { key: "comms", label: "EXEC COMMS", sub: "Comms Drafter" },
@@ -1094,6 +1321,7 @@ export default function App() {
       )}
       <div style={{ padding: "40px 48px", maxWidth: 1200, margin: "0 auto" }}>
         {mode === "cos" && active === "ops" && <OpsPulse slackIds={slackIds} />}
+        {mode === "cos" && active === "sod" && <SODParser />}
         {mode === "cos" && active === "rfp" && <RFPEngine />}
         {mode === "cos" && active === "report" && <WeeklyReport />}
         {mode === "cos" && active === "comms" && <ExecComms />}
