@@ -115,14 +115,27 @@ function OpsPulse({ slackIds }) {
     storage.delete("ops-pulse-current"); storage.delete("ops-pulse-checked");
   };
 
-  const sendDM = (member) => {
+  const sendDM = async (member) => {
     const userId = slackIds?.[member];
+    if (!userId) { setSlackStatus(p => ({ ...p, [member]: "❌ No ID" })); return; }
+    const token = storage.get("slack-token")?.value;
+    if (!token) { setSlackStatus(p => ({ ...p, [member]: "❌ No Token" })); return; }
     const tasks = result?.team_tasks?.[member]?.tasks || [];
     const taskLines = tasks.map((t, i) => `${i+1}. ${t.priority === "high" ? "🔴" : t.priority === "medium" ? "🟡" : "🟢"} ${t.task}${t.due ? ` (${t.due})` : ""}`).join("\n");
-    const text = `📋 *Your Tasks — ${weekLabel()}*\nHi ${member.split(" ")[0]}! Here are your tasks:\n\n${taskLines}\n\n_Sent from BWL Operations Hub_`;
-    navigator.clipboard.writeText(text);
-    if (userId) window.open(`https://app.slack.com/client/T08CHPTF74Z/${userId}`, "_blank");
-    setSlackStatus(p => ({ ...p, [member]: "📋 Copied!" }));
+    const text = `📋 *Your Tasks — ${weekLabel()}*\nHi ${member.split(" ")[0]}! Here are your tasks for this week:\n\n${taskLines}\n\n_Sent from BWL Operations Hub_`;
+    setSlackStatus(p => ({ ...p, [member]: "⏳ Sending..." }));
+    try {
+      const res = await fetch("/api/slack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, channel: userId, text })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setSlackStatus(p => ({ ...p, [member]: "✅ Sent!" }));
+    } catch (e) {
+      setSlackStatus(p => ({ ...p, [member]: "❌ Failed" }));
+    }
     setTimeout(() => setSlackStatus(p => ({ ...p, [member]: null })), 3000);
   };
 
