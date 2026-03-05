@@ -968,6 +968,7 @@ function RFPEngine() {
   const [expandedScore,setExpandedScore] = useState(null);
   const [editNote,setEditNote] = useState({});
   const [editRev,setEditRev] = useState({});
+  const [viewingProposal,setViewingProposal] = useState(null);
   const [hideExpired,setHideExpired] = useState(true);
   const [sortByDeadline,setSortByDeadline] = useState(true);
   const [editingProposal,setEditingProposal] = useState(false);
@@ -1189,6 +1190,19 @@ Plain text only. No JSON. No markdown.`;
 
       {view==="tracker"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* Proposal viewer modal */}
+          {viewingProposal&&(
+            <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.7)",zIndex:500,overflowY:"auto",padding:"40px 20px"}}>
+              <div style={{maxWidth:860,margin:"0 auto"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#fff",fontFamily:T.font}}>{viewingProposal.title}</div>
+                  <button onClick={()=>setViewingProposal(null)} style={{background:T.orange,color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>✕ CLOSE</button>
+                </div>
+                <BrandedProposal proposal={{full_proposal_text:viewingProposal.proposal,subject_line:viewingProposal.title,requirements_checklist:[]}} rfp={{organization:viewingProposal.organization}} />
+              </div>
+            </div>
+          )}
+
           <Card style={{background:T.black,padding:20}}>
             <CardLabel color={T.orange}>Win Rate Dashboard</CardLabel>
             <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginTop:14}}>
@@ -1244,10 +1258,11 @@ Plain text only. No JSON. No markdown.`;
                       )}
                     </div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:T.bg,color:T.yellow,border:`1px solid ${T.yellow}44`,borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>SUBMITTED</button>}
-                      {t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:T.bg,color:T.green,border:`1px solid ${T.green}44`,borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>WON</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:T.bg,color:T.red,border:`1px solid ${T.red}44`,borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>LOST</button></>}
-                      <button onClick={()=>navigator.clipboard.writeText(t.proposal)} style={{background:T.bg,color:T.orange,border:`1px solid ${T.border}`,borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>COPY</button>
-                      <button onClick={()=>del(t.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`1px solid ${T.border}`,borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",fontFamily:T.font}}>DELETE</button>
+                      <button onClick={()=>setViewingProposal(t)} style={{background:T.black,color:"#fff",border:"none",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>👁 VIEW</button>
+                      {t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:T.bg,color:T.yellow,border:"1px solid "+T.yellow+"44",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>SUBMITTED</button>}
+                      {t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:T.bg,color:T.green,border:"1px solid "+T.green+"44",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>WON</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:T.bg,color:T.red,border:"1px solid "+T.red+"44",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>LOST</button></>}
+                      <button onClick={()=>navigator.clipboard.writeText(t.proposal)} style={{background:T.bg,color:T.orange,border:"1px solid "+T.border,borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>COPY</button>
+                      <button onClick={()=>del(t.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:"1px solid "+T.border,borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",fontFamily:T.font}}>DELETE</button>
                     </div>
                   </Card>
                 );
