@@ -796,9 +796,36 @@ const urgencyTag = (deadline) => {
   return { label: `${diff}d left`, color: T.green };
 };
 
+const BWL_CONTEXT = `BuildWithLeverage (BWL) is a performance-based growth agency founded by David Perlov.
+
+KEY FACTS:
+- David Perlov personally generated over $125 million in revenue for brands
+- Worked with 20+ companies across nonprofits, government, lead gen, e-commerce
+- 11X ROAS (Return on Ad Spend) track record
+- Services: Outbound Sales Infrastructure, Paid Media, Influencer Marketing, Email Marketing, Web Design, Graphic Design
+- Performance-based model — results-driven, not just effort
+- Pricing is competitive and HIGH — reflect the scope and quality of work, never undersell
+- Contact: David Perlov | david@buildwithleverage.com | (201) 290-1536 | buildwithleverage.com
+
+PROPOSAL FORMAT & STYLE (follow this exactly):
+- Header: "LEVERAGE." logo + "CLIENT PROPOSAL // [CLIENT NAME]" + "PREPARED [MONTH YEAR]"
+- Bold headline: A punchy, benefit-driven headline (e.g. "A NEW REVENUE CHANNEL FOR [CLIENT]")
+- Opening paragraph: Personal, direct address to the decision maker. Reference their specific situation.
+- Sections numbered: 01 // THE OPPORTUNITY, 02 // WHAT WE BUILD, 03 // THE PILOT/PLAN, 04 // THE MATH, 05 // INVESTMENT, 06 // NEXT STEPS
+- Each section has a bold ALL-CAPS subtitle
+- Use real numbers, projections tables where relevant (conservative / moderate / aggressive scenarios)
+- Investment section: itemized table with ITEM | COST | NOTES columns
+- Performance fee: always include 20% profit share on closed deals
+- Close with: "David Perlov | FOUNDER | LEVERAGE. | david@buildwithleverage.com | (201) 290-1536 | buildwithleverage.com"
+- Tone: confident, direct, no fluff. Speaks to the client's specific pain points and goals.
+- Key insight callouts: use "// KEY INSIGHT" for standout points
+- Never sound generic — always tie back to the specific RFP organization and their goals`;
+
 function RFPEngine() {
   const [keywords, setKeywords] = useState(""); const [rfps, setRfps] = useState([]); const [selected, setSelected] = useState(null); const [proposal, setProposal] = useState(null); const [loading, setLoading] = useState({ search: false, proposal: false }); const [error, setError] = useState(null); const [view, setView] = useState("search");
   const [tracker, setTracker] = useState([]); const [expandedScore, setExpandedScore] = useState(null); const [editNote, setEditNote] = useState({}); const [editRev, setEditRev] = useState({});
+  const [hideExpired, setHideExpired] = useState(true); const [sortByDeadline, setSortByDeadline] = useState(true);
+  const [editingProposal, setEditingProposal] = useState(false); const [editedProposalText, setEditedProposalText] = useState("");
 
   useEffect(() => { storage.get("rfp-tracker").then(s => { if (s) setTracker(JSON.parse(s.value)); }); }, []);
 
@@ -811,7 +838,7 @@ function RFPEngine() {
 
   const search = async () => {
     setLoad("search", true); setError(null); setRfps([]); setSelected(null); setProposal(null);
-    const prompt = `RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1","s2"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound","Paid Media"],"source":"..."}]}`;
+    const prompt = `RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string if unknown","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1","s2"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound","Paid Media"],"source_url":"direct URL to the RFP page or empty string","source":"organization or platform name"}]}`;
     try {
       const res = await fetch("/api/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, tools: [{ type: "web_search_20250305", name: "web_search" }], messages: [{ role: "user", content: prompt }] }) });
       const data = await res.json(); if (data.error) throw new Error(data.error.message);
@@ -821,13 +848,43 @@ function RFPEngine() {
     setLoad("search", false);
   };
 
-  const genProposal = async rfp => {
-    setSelected(rfp); setProposal(null); setLoad("proposal", true);
+  const genProposal = async (rfp, customText) => {
+    setSelected(rfp); setProposal(null); setLoad("proposal", true); setEditingProposal(false);
     const tpl = PROPOSAL_TEMPLATES[rfp.type] || PROPOSAL_TEMPLATES.Other;
-    const prompt = `Proposal writer for BuildWithLeverage. RFP type: ${rfp.type}. Template style: ${tpl}. RFP: ${rfp.title} by ${rfp.organization}. Description: ${rfp.description}. Budget: ${rfp.budget}. Services matched: ${(rfp.services_needed || []).join(", ")}. BWL: performance-based growth agency, 11x ROAS, $2M+ revenue. Return ONLY valid JSON: {"subject_line":"...","why_bwl":["w1"],"relevant_results":["r1"],"investment":"...","timeline":"...","full_proposal_text":"complete formatted proposal"}`;
-    try { const r = await callClaude(prompt, 3000); setProposal(r); } catch (e) { setError(e.message); }
+    const prompt = `You are a senior proposal writer for BuildWithLeverage. 
+${BWL_CONTEXT}
+RFP Details:
+- Title: ${rfp.title}
+- Organization: ${rfp.organization}
+- Type: ${rfp.type} — use style: ${tpl}
+- Description: ${rfp.description}
+- Budget: ${rfp.budget}
+- Services needed: ${(rfp.services_needed || []).join(", ")}
+${customText ? `Additional context: ${customText}` : ""}
+
+IMPORTANT: 
+- Use REAL BWL stats (125M revenue generated, 11X ROAS, 20+ companies served)
+- Price competitively HIGH — these are government/corporate budgets, do not undersell
+- Generate a checklist of what the RFP specifically requires, then confirm each is addressed in the proposal
+
+Return ONLY valid JSON: {
+  "subject_line":"...",
+  "why_bwl":["specific reason using real BWL stats"],
+  "relevant_results":["real result with actual numbers"],
+  "investment":"competitive price range",
+  "timeline":"...",
+  "requirements_checklist":[{"requirement":"what RFP asks for","addressed":true,"how":"how proposal addresses it"}],
+  "full_proposal_text":"complete formatted proposal — minimum 500 words, professional, branded"
+}`;
+    try { 
+      const r = await callClaude(prompt, 4000); 
+      setProposal(r); 
+      setEditedProposalText(r.full_proposal_text);
+    } catch (e) { setError(e.message); }
     setLoad("proposal", false);
   };
+
+  const rerunProposal = () => genProposal(selected, editedProposalText);
 
   const sc = s => s >= 80 ? T.green : s >= 60 ? T.yellow : T.red;
   const ss = s => ({ draft: { color: T.gray, label: "DRAFT" }, submitted: { color: T.yellow, label: "SUBMITTED" }, won: { color: T.green, label: "WON" }, lost: { color: T.red, label: "LOST" } }[s] || { color: T.gray, label: s });
@@ -849,75 +906,159 @@ function RFPEngine() {
           <Card>
             <SectionHeader label="Search RFPs" />
             <div style={{ padding: 16, display: "flex", gap: 10 }}>
-              <Input value={keywords} onChange={setKeywords} placeholder="e.g. marketing services, digital advertising…" style={{ flex: 1 }} />
+              <Input value={keywords} onChange={setKeywords} placeholder="e.g. marketing services, digital advertising…" style={{ flex: 1 }}
+                onKeyDown={e => e.key === "Enter" && keywords.trim() && search()} />
               <button onClick={search} disabled={!keywords.trim() || loading.search}
                 style={{ background: keywords.trim() ? T.black : T.border, color: keywords.trim() ? "#fff" : T.gray, border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: keywords.trim() ? "pointer" : "not-allowed", whiteSpace: "nowrap", fontFamily: T.font }}>
                 {loading.search ? "SEARCHING…" : "SEARCH"}
               </button>
             </div>
+            {rfps.length > 0 && !proposal && (
+              <div style={{ padding: "0 16px 14px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, color: T.gray, fontWeight: 600 }}>FILTER:</span>
+                <Pill label={hideExpired ? "✓ Hiding Expired" : "Show Expired"} active={hideExpired} color={T.red} onClick={() => setHideExpired(!hideExpired)} />
+                <Pill label={sortByDeadline ? "✓ Nearest First" : "Sort by Deadline"} active={sortByDeadline} color={T.orange} onClick={() => setSortByDeadline(!sortByDeadline)} />
+                <span style={{ fontSize: 11, color: T.grayLight, marginLeft: "auto" }}>
+                  {(() => { let f = rfps; if (hideExpired) f = f.filter(r => { const d = urgencyTag(r.deadline); return !d || d.label !== "EXPIRED"; }); return f.length; })()} of {rfps.length} RFPs shown
+                </span>
+              </div>
+            )}
           </Card>
           <Err msg={error} />
           {rfps.length > 0 && !proposal && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {rfps.map((rfp, i) => {
-                const urg = urgencyTag(rfp.deadline), isExp = expandedScore === rfp.id;
-                return (
-                  <Card key={i} style={{ padding: 18, border: `1px solid ${selected?.id === rfp.id ? T.orange : T.border}` }} hover>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{rfp.title}</div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                          <span style={{ fontSize: 12, color: T.gray }}>{rfp.organization}</span>
-                          <Badge label={rfp.type} color={T.gray} bg={T.bg} />
-                          {urg && <Badge label={urg.label} color={urg.color} />}
+              {(() => {
+                let filtered = [...rfps];
+                if (hideExpired) filtered = filtered.filter(r => { const d = urgencyTag(r.deadline); return !d || d.label !== "EXPIRED"; });
+                if (sortByDeadline) filtered.sort((a, b) => {
+                  if (!a.deadline) return 1; if (!b.deadline) return -1;
+                  return new Date(a.deadline) - new Date(b.deadline);
+                });
+                return filtered.map((rfp, i) => {
+                  const urg = urgencyTag(rfp.deadline), isExp = expandedScore === rfp.id;
+                  return (
+                    <Card key={i} style={{ padding: 18, border: `1px solid ${selected?.id === rfp.id ? T.orange : T.border}` }} hover>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{rfp.title}</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                            <span style={{ fontSize: 12, color: T.gray }}>{rfp.organization}</span>
+                            <Badge label={rfp.type} color={T.gray} bg={T.bg} />
+                            {urg && <Badge label={urg.label} color={urg.color} />}
+                            {rfp.budget && <Badge label={rfp.budget} color={T.green} />}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "center", marginLeft: 14 }}>
+                          <div style={{ fontSize: 28, fontWeight: 900, color: sc(rfp.relevance_score), fontFamily: T.font, lineHeight: 1 }}>{rfp.relevance_score}</div>
+                          <button onClick={() => setExpandedScore(isExp ? null : rfp.id)} style={{ fontSize: 10, color: T.orange, fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: T.font }}>{isExp ? "HIDE" : "WHY?"}</button>
                         </div>
                       </div>
-                      <div style={{ textAlign: "center", marginLeft: 14 }}>
-                        <div style={{ fontSize: 28, fontWeight: 900, color: sc(rfp.relevance_score), fontFamily: T.font, lineHeight: 1 }}>{rfp.relevance_score}</div>
-                        <button onClick={() => setExpandedScore(isExp ? null : rfp.id)} style={{ fontSize: 10, color: T.orange, fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: T.font }}>{isExp ? "HIDE" : "WHY?"}</button>
-                      </div>
-                    </div>
-                    {isExp && rfp.score_breakdown && (
-                      <div style={{ background: T.bg, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-                        <CardLabel>Score Breakdown</CardLabel>
-                        <div style={{ fontSize: 12, color: T.darkGray, margin: "8px 0" }}>{rfp.score_breakdown.overall}</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          <div><div style={{ fontSize: 10, color: T.green, fontWeight: 700, marginBottom: 4 }}>STRENGTHS</div>{rfp.score_breakdown.strengths?.map((s, j) => <div key={j} style={{ fontSize: 11, marginBottom: 2, color: T.darkGray }}>+ {s}</div>)}</div>
-                          <div><div style={{ fontSize: 10, color: T.red, fontWeight: 700, marginBottom: 4 }}>GAPS</div>{rfp.score_breakdown.gaps?.map((g, j) => <div key={j} style={{ fontSize: 11, marginBottom: 2, color: T.darkGray }}>− {g}</div>)}</div>
+                      {isExp && rfp.score_breakdown && (
+                        <div style={{ background: T.bg, borderRadius: 8, padding: 14, marginBottom: 10 }}>
+                          <CardLabel>Score Breakdown</CardLabel>
+                          <div style={{ fontSize: 12, color: T.darkGray, margin: "8px 0" }}>{rfp.score_breakdown.overall}</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <div><div style={{ fontSize: 10, color: T.green, fontWeight: 700, marginBottom: 4 }}>STRENGTHS</div>{rfp.score_breakdown.strengths?.map((s, j) => <div key={j} style={{ fontSize: 11, marginBottom: 2, color: T.darkGray }}>+ {s}</div>)}</div>
+                            <div><div style={{ fontSize: 10, color: T.red, fontWeight: 700, marginBottom: 4 }}>GAPS</div>{rfp.score_breakdown.gaps?.map((g, j) => <div key={j} style={{ fontSize: 11, marginBottom: 2, color: T.darkGray }}>− {g}</div>)}</div>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    <p style={{ margin: "0 0 10px", fontSize: 13, color: T.darkGray, lineHeight: 1.6 }}>{rfp.description}</p>
-                    {rfp.services_needed?.length > 0 && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>{rfp.services_needed.map((s, j) => <Badge key={j} label={s} color={T.orange} />)}</div>}
-                    <div style={{ fontSize: 12, color: T.green, marginBottom: 12 }}>✓ {rfp.why_bwl_can_win}</div>
-                    <button onClick={() => genProposal(rfp)}
-                      style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: loading.proposal && selected?.id === rfp.id ? T.border : T.black, color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>
-                      {loading.proposal && selected?.id === rfp.id ? "GENERATING…" : "GENERATE PROPOSAL"}
-                    </button>
-                  </Card>
-                );
-              })}
+                      )}
+                      <p style={{ margin: "0 0 10px", fontSize: 13, color: T.darkGray, lineHeight: 1.6 }}>{rfp.description}</p>
+                      {rfp.services_needed?.length > 0 && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>{rfp.services_needed.map((s, j) => <Badge key={j} label={s} color={T.orange} />)}</div>}
+                      <div style={{ fontSize: 12, color: T.green, marginBottom: 10 }}>✓ {rfp.why_bwl_can_win}</div>
+                      {rfp.source_url && (
+                        <a href={rfp.source_url} target="_blank" rel="noreferrer"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: T.orange, marginBottom: 12, fontWeight: 600 }}>
+                          🔗 View Original RFP — {rfp.source} ↗
+                        </a>
+                      )}
+                      <button onClick={() => genProposal(rfp)}
+                        style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: loading.proposal && selected?.id === rfp.id ? T.border : T.black, color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>
+                        {loading.proposal && selected?.id === rfp.id ? "GENERATING…" : "GENERATE PROPOSAL"}
+                      </button>
+                    </Card>
+                  );
+                });
+              })()}
             </div>
           )}
           {proposal && selected && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Header */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div><CardLabel>Proposal</CardLabel><div style={{ fontSize: 11, color: T.grayLight, marginTop: 2 }}>Template: <strong>{selected.type}</strong></div></div>
-                <Pill label="← BACK" onClick={() => { setProposal(null); setSelected(null); }} />
+                <div>
+                  <CardLabel>Proposal</CardLabel>
+                  <div style={{ fontSize: 11, color: T.grayLight, marginTop: 2 }}>Template: <strong>{selected.type}</strong></div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {selected.source_url && (
+                    <a href={selected.source_url} target="_blank" rel="noreferrer"
+                      style={{ padding: "6px 14px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: T.orangeSoft, color: T.orange, border: `1px solid ${T.orange}33`, textDecoration: "none" }}>
+                      VIEW RFP ↗
+                    </a>
+                  )}
+                  <Pill label="← BACK" onClick={() => { setProposal(null); setSelected(null); setEditingProposal(false); }} />
+                </div>
               </div>
+
+              {/* Subject */}
               <Card style={{ background: T.black, padding: 18 }}>
                 <CardLabel color={T.orange}>Subject Line</CardLabel>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginTop: 6 }}>{proposal.subject_line}</div>
               </Card>
-              <ResultBlock label="Full Proposal" content={proposal.full_proposal_text} copyable />
+
+              {/* Requirements Checklist */}
+              {proposal.requirements_checklist?.length > 0 && (
+                <Card style={{ padding: 18 }}>
+                  <CardLabel color={T.purple}>RFP Requirements Checklist</CardLabel>
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {proposal.requirements_checklist.map((item, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, padding: "10px 12px", background: item.addressed ? "#F0FDF4" : "#FFF7F5", borderRadius: 8, border: `1px solid ${item.addressed ? T.green + "33" : T.red + "33"}` }}>
+                        <span style={{ fontSize: 16, flexShrink: 0 }}>{item.addressed ? "✅" : "❌"}</span>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: T.darkGray }}>{item.requirement}</div>
+                          {item.how && <div style={{ fontSize: 11, color: T.grayLight, marginTop: 2 }}>{item.how}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Editable Proposal */}
+              <Card style={{ padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <CardLabel color={T.orange}>Full Proposal</CardLabel>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <CopyBtn text={editedProposalText} />
+                    <button onClick={() => setEditingProposal(!editingProposal)}
+                      style={{ background: editingProposal ? T.orange : T.bg, color: editingProposal ? "#fff" : T.gray, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>
+                      {editingProposal ? "DONE EDITING" : "✏️ EDIT"}
+                    </button>
+                  </div>
+                </div>
+                {editingProposal ? (
+                  <textarea value={editedProposalText} onChange={e => setEditedProposalText(e.target.value)}
+                    style={{ width: "100%", minHeight: 400, background: T.bg, border: `1.5px solid ${T.orange}`, borderRadius: 8, color: T.black, fontSize: 13, padding: 14, outline: "none", fontFamily: T.body, lineHeight: 1.8, resize: "vertical" }} />
+                ) : (
+                  <div style={{ fontSize: 13, color: T.darkGray, lineHeight: 1.8, whiteSpace: "pre-wrap", background: T.bg, borderRadius: 8, padding: 14 }}>{editedProposalText}</div>
+                )}
+              </Card>
+
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <Bullets label="Why BWL Wins" items={proposal.why_bwl} color={T.green} />
                 <Bullets label="Relevant Results" items={proposal.relevant_results} color={T.purple} />
               </div>
+
+              {/* Actions */}
               <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => navigator.clipboard.writeText(proposal.full_proposal_text)}
+                <button onClick={rerunProposal} disabled={loading.proposal}
+                  style={{ flex: 1, padding: 12, borderRadius: 8, background: loading.proposal ? T.border : T.darkGray, color: "#fff", border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>
+                  {loading.proposal ? "REGENERATING…" : "🔄 REGENERATE"}
+                </button>
+                <button onClick={() => navigator.clipboard.writeText(editedProposalText)}
                   style={{ flex: 1, padding: 12, borderRadius: 8, background: T.black, color: "#fff", border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>COPY</button>
-                <button onClick={() => { saveToTracker(selected, proposal.full_proposal_text); setView("tracker"); setProposal(null); setSelected(null); }}
+                <button onClick={() => { saveToTracker(selected, editedProposalText); setView("tracker"); setProposal(null); setSelected(null); }}
                   style={{ flex: 1, padding: 12, borderRadius: 8, background: T.green, color: "#fff", border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: T.font }}>SAVE TO PIPELINE</button>
               </div>
             </div>
