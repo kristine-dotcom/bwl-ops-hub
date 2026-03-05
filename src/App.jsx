@@ -46,6 +46,17 @@ async function callClaude(prompt, maxTokens = 2000) {
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
+// ─── RESPONSIVE ───────────────────────────────────────────────────────────────
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 480);
+  useState(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 480);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  });
+  return isMobile;
+};
+
 // ─── PDF EXPORT ───────────────────────────────────────────────────────────────
 function exportPDF(title, contentId) {
   const printWindow = window.open("", "_blank");
