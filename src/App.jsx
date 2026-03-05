@@ -43,16 +43,30 @@ const GlobalStyle = () => (
 const storage = {
   get: async (key) => {
     try {
-      const r = await window.storage?.get(key);
-      if (!r) return null;
-      return { value: typeof r.value === "string" ? r.value : JSON.stringify(r.value) };
+      const r = await fetch("/api/kv", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", key }),
+      });
+      const data = await r.json();
+      if (data.value === null || data.value === undefined) return null;
+      return { value: typeof data.value === "string" ? data.value : JSON.stringify(data.value) };
     } catch { return null; }
   },
   set: async (key, value) => {
-    try { await window.storage?.set(key, value); } catch {}
+    try {
+      await fetch("/api/kv", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", key, value }),
+      });
+    } catch {}
   },
   delete: async (key) => {
-    try { await window.storage?.delete(key); } catch {}
+    try {
+      await fetch("/api/kv", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", key }),
+      });
+    } catch {}
   },
 };
 
