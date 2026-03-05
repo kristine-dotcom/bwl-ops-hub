@@ -160,7 +160,7 @@ function ResultBlock({ label, content, color = BWL.orange, copyable }) {
 function Err({ msg }) { return msg ? <div style={{ background: "#fff0ee", border: `1px solid ${BWL.orange}`, borderRadius: 10, padding: 14, color: BWL.orange, fontSize: 13 }}>{msg}</div> : null; }
 
 const TEAM_OPS = ["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Caleb Bentil","David Perlov","Cyril Butanas","Darlene Mae Malolos"];
-const INPUT_TYPES = [{ key: "transcript", label: "📋 Meeting Transcript" },{ key: "sod", label: "🌅 SOD Report" },{ key: "email", label: "📧 Emails" },{ key: "slack", label: "💬 Slack" }];
+const INPUT_TYPES = [{ key: "transcript", label: "Meeting Transcript" },{ key: "sod", label: "SOD Report" },{ key: "email", label: "Emails" },{ key: "slack", label: "Slack" }];
 
 function OpsPulse({ slackIds }) {
   const [inputs, setInputs] = useState({ transcript: "", sod: "", email: "", slack: "" });
@@ -1121,12 +1121,12 @@ function Settings({ slackToken, setSlackToken, slackIds, setSlackIds }) {
 }
 
 const TEAM_CONFIG = [
-  { key:"david", name:"David Perlov", role:"CEO", emoji:"👑", tools:[{key:"briefing",label:"📋 Daily Briefing",component:<DailyBriefing/>},{key:"team_perf",label:"📊 Team Performance",component:<TeamPerformance/>},{key:"decision",label:"🧠 Strategic Decision",component:<StrategicDecision/>}]},
-  { key:"tin", name:"Kristine Miel (Tin)", role:"Outbound Marketing", emoji:"📡", tools:[{key:"sequence",label:"📨 Sequence Builder",component:<SequenceBuilder/>},{key:"lead",label:"🔍 Lead Research",component:<LeadResearch/>}]},
-  { key:"suki", name:"Suki Santos", role:"Outbound Marketing", emoji:"📡", tools:[{key:"sequence",label:"📨 Sequence Builder",component:<SequenceBuilder/>},{key:"lead",label:"🔍 Lead Research",component:<LeadResearch/>}]},
-  { key:"caleb", name:"Caleb Bentil", role:"SDR / Sales", emoji:"🎯", tools:[{key:"cold",label:"❄️ Cold Email",component:<ColdEmailWriter/>},{key:"script",label:"📞 Call Script",component:<CallScript/>},{key:"aftercall",label:"⚡ After-Call",component:<AfterCallAutomation/>}]},
-  { key:"cyril", name:"Cyril Butanas", role:"Influencer Outreach", emoji:"🌟", tools:[{key:"outreach",label:"🌟 Outreach",component:<InfluencerOutreach/>},{key:"brief",label:"📁 Campaign Brief",component:<CampaignBrief/>},{key:"tracker",label:"📋 Influencer Tracker",component:<InfluencerTracker/>},{key:"content",label:"📸 Content Tracker",component:<ContentTracker/>}]},
-  { key:"darlene", name:"Darlene Mae Malolos", role:"Graphic Designer", emoji:"🎨", tools:[{key:"brief",label:"🎨 Design Brief",component:<DesignBrief/>},{key:"feedback",label:"💬 Feedback Summary",component:<FeedbackSummary/>}]},
+  { key:"david", name:"David Perlov", role:"CEO", emoji:"", tools:[{key:"briefing",label:"Daily Briefing",component:<DailyBriefing/>},{key:"team_perf",label:"Team Performance",component:<TeamPerformance/>},{key:"decision",label:"Strategic Decision",component:<StrategicDecision/>}]},
+  { key:"tin", name:"Kristine Miel (Tin)", role:"Outbound Marketing", emoji:"", tools:[{key:"sequence",label:"Sequence Builder",component:<SequenceBuilder/>},{key:"lead",label:"Lead Research",component:<LeadResearch/>}]},
+  { key:"suki", name:"Suki Santos", role:"Outbound Marketing", emoji:"", tools:[{key:"sequence",label:"Sequence Builder",component:<SequenceBuilder/>},{key:"lead",label:"Lead Research",component:<LeadResearch/>}]},
+  { key:"caleb", name:"Caleb Bentil", role:"SDR / Sales", emoji:"", tools:[{key:"cold",label:"Cold Email",component:<ColdEmailWriter/>},{key:"script",label:"Call Script",component:<CallScript/>},{key:"aftercall",label:"After-Call",component:<AfterCallAutomation/>}]},
+  { key:"cyril", name:"Cyril Butanas", role:"Influencer Outreach", emoji:"", tools:[{key:"outreach",label:"Outreach",component:<InfluencerOutreach/>},{key:"brief",label:"Campaign Brief",component:<CampaignBrief/>},{key:"tracker",label:"Influencer Tracker",component:<InfluencerTracker/>},{key:"content",label:"Content Tracker",component:<ContentTracker/>}]},
+  { key:"darlene", name:"Darlene Mae Malolos", role:"Graphic Designer", emoji:"", tools:[{key:"brief",label:"Design Brief",component:<DesignBrief/>},{key:"feedback",label:"Feedback Summary",component:<FeedbackSummary/>}]},
 ];
 
 function TeamMode() {
@@ -1174,7 +1174,7 @@ const COS_TOOLS = [
   { key: "rfp", label: "RFP ENGINE", sub: "Business Dev" },
   { key: "report", label: "WEEKLY REPORT", sub: "Status Builder" },
   { key: "comms", label: "EXEC COMMS", sub: "Comms Drafter" },
-  { key: "settings", label: "⚙️ SETTINGS", sub: "Slack Config" },
+  { key: "settings", label: "SETTINGS", sub: "Slack Config" },
 ];
 
 export default function App() {
