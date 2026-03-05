@@ -7,6 +7,8 @@ const BWL = {
   mono: "'Courier New', Courier, monospace",
 };
 
+const PASSWORD = "bwl2026";
+
 const DEFAULT_SLACK_IDS = {
   "David Perlov": "U08BQH5JJDD",
   "Cyril Butanas": "U09HHPVSSUQ",
@@ -18,15 +20,9 @@ const DEFAULT_SLACK_IDS = {
 };
 
 const storage = {
-  get: (key) => {
-    try { const v = localStorage.getItem(key); return v ? { value: v } : null; } catch { return null; }
-  },
-  set: (key, value) => {
-    try { localStorage.setItem(key, value); } catch {}
-  },
-  delete: (key) => {
-    try { localStorage.removeItem(key); } catch {}
-  },
+  get: (key) => { try { const v = localStorage.getItem(key); return v ? { value: v } : null; } catch { return null; } },
+  set: (key, value) => { try { localStorage.setItem(key, value); } catch {} },
+  delete: (key) => { try { localStorage.removeItem(key); } catch {} },
 };
 
 function weekLabel() {
@@ -46,70 +42,7 @@ async function callClaude(prompt, maxTokens = 2000) {
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
-// ─── RESPONSIVE ───────────────────────────────────────────────────────────────
-const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 480);
-  useState(() => {
-    const handler = () => setIsMobile(window.innerWidth <= 480);
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  });
-  return isMobile;
-};
-
-// ─── PDF EXPORT ───────────────────────────────────────────────────────────────
-function exportPDF(title, contentId) {
-  const printWindow = window.open("", "_blank");
-  const content = document.getElementById(contentId)?.innerHTML || "";
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>${title}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Arial Black', Arial, sans-serif; background: #F5F0E8; color: #0A0A0A; padding: 40px; }
-        .pdf-header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 16px; border-bottom: 3px solid #0A0A0A; margin-bottom: 32px; }
-        .pdf-logo { font-size: 22px; font-weight: 900; letter-spacing: -1px; }
-        .pdf-logo span { color: #E8390E; }
-        .pdf-meta { font-size: 10px; letter-spacing: 2px; color: #888; font-family: 'Courier New', monospace; text-align: right; }
-        .pdf-title { font-size: 11px; color: #E8390E; font-weight: 900; letter-spacing: 3px; margin-bottom: 6px; }
-        button { display: none !important; }
-        textarea { display: none !important; }
-        input { display: none !important; }
-        [data-hide-pdf] { display: none !important; }
-        pre, .pre { white-space: pre-wrap; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.7; }
-        .section { margin-bottom: 24px; border: 1.5px solid #0A0A0A; padding: 16px; background: white; }
-        .section-label { font-size: 9px; font-weight: 900; letter-spacing: 3px; margin-bottom: 10px; }
-        .bullet { padding-left: 10px; border-left: 2px solid #E8390E; margin-bottom: 6px; font-size: 12px; line-height: 1.5; font-family: 'Courier New', monospace; }
-        @media print { body { padding: 20px; } }
-      </style>
-    </head>
-    <body>
-      <div class="pdf-header">
-        <div class="pdf-logo">LEVERAGE<span>.</span></div>
-        <div class="pdf-meta">
-          <div>${title.toUpperCase()}</div>
-          <div>${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div>
-        </div>
-      </div>
-      ${content}
-    </body>
-    </html>
-  `);
-  printWindow.document.close();
-  printWindow.onload = () => { printWindow.print(); };
-}
-
-function ExportBtn({ title, contentId }) {
-  return (
-    <button onClick={() => exportPDF(title, contentId)}
-      style={{ padding: "9px 18px", background: BWL.black, color: BWL.white, border: "none", fontSize: 11, fontWeight: 900, cursor: "pointer", letterSpacing: 1, display: "flex", alignItems: "center", gap: 6 }}>
-      📄 EXPORT PDF
-    </button>
-  );
-}
-
+// ─── SHARED UI ────────────────────────────────────────────────────────────────
 const Card = ({ children, style = {} }) => <div style={{ background: BWL.white, border: `1.5px solid ${BWL.black}`, borderRadius: 0, ...style }}>{children}</div>;
 const CardHeader = ({ label, color = BWL.orange }) => <div style={{ padding: "10px 16px", borderBottom: `1.5px solid ${BWL.black}`, fontSize: 10, color, fontWeight: 900, letterSpacing: 3, fontFamily: BWL.font }}>{label}</div>;
 
@@ -127,8 +60,8 @@ function Btn({ onClick, disabled, loading, label, color }) {
   const bg = disabled ? "#ccc" : (color || BWL.black);
   return (
     <button onClick={onClick} disabled={disabled || loading}
-      style={{ width: "100%", padding: 13, borderRadius: 10, background: bg, color: BWL.white, border: "none", fontSize: 14, fontWeight: 900, cursor: disabled ? "not-allowed" : "pointer", letterSpacing: 1 }}>
-      {loading ? "⏳ Generating..." : label}
+      style={{ width: "100%", padding: 13, borderRadius: 0, background: bg, color: BWL.white, border: "none", fontSize: 13, fontWeight: 900, cursor: disabled ? "not-allowed" : "pointer", letterSpacing: 2, fontFamily: BWL.font }}>
+      {loading ? "GENERATING..." : label}
     </button>
   );
 }
@@ -137,8 +70,8 @@ function Bullets({ label, items, color }) {
   if (!items?.length) return null;
   return (
     <Card style={{ padding: 16 }}>
-      <div style={{ fontSize: 10, color, fontWeight: 900, letterSpacing: 2, marginBottom: 10 }}>{label}</div>
-      {items.map((w, i) => <div key={i} style={{ fontSize: 12, color: BWL.black, marginBottom: 8, paddingLeft: 10, borderLeft: `2px solid ${color}`, lineHeight: 1.5 }}>{w}</div>)}
+      <div style={{ fontSize: 10, color, fontWeight: 900, letterSpacing: 3, marginBottom: 10, fontFamily: BWL.font }}>{label}</div>
+      {items.map((w, i) => <div key={i} style={{ fontSize: 12, color: BWL.black, marginBottom: 8, paddingLeft: 10, borderLeft: `2px solid ${color}`, lineHeight: 1.5, fontFamily: BWL.mono }}>{w}</div>)}
     </Card>
   );
 }
@@ -148,18 +81,254 @@ function ResultBlock({ label, content, color = BWL.orange, copyable }) {
   return (
     <Card style={{ padding: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontSize: 10, color, fontWeight: 900, letterSpacing: 2 }}>{label}</div>
+        <div style={{ fontSize: 10, color, fontWeight: 900, letterSpacing: 3, fontFamily: BWL.font }}>{label}</div>
         {copyable && <button onClick={() => { navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-          style={{ background: copied ? "#10b981" : BWL.black, color: BWL.white, border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{copied ? "✅ Copied!" : "📋 Copy"}</button>}
+          style={{ background: copied ? "#10b981" : BWL.black, color: BWL.white, border: "none", borderRadius: 0, padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{copied ? "COPIED!" : "COPY"}</button>}
       </div>
-      <div style={{ fontSize: 13, color: BWL.black, lineHeight: 1.8, whiteSpace: "pre-wrap", background: BWL.bg, borderRadius: 8, padding: 14 }}>{content}</div>
+      <div style={{ fontSize: 13, color: BWL.black, lineHeight: 1.8, whiteSpace: "pre-wrap", background: BWL.bg, padding: 14, fontFamily: BWL.mono }}>{content}</div>
     </Card>
   );
 }
 
-function Err({ msg }) { return msg ? <div style={{ background: "#fff0ee", border: `1px solid ${BWL.orange}`, borderRadius: 10, padding: 14, color: BWL.orange, fontSize: 13 }}>{msg}</div> : null; }
+function Err({ msg }) { return msg ? <div style={{ background: "#fff0ee", border: `1.5px solid ${BWL.orange}`, padding: 14, color: BWL.orange, fontSize: 13, fontFamily: BWL.mono }}>{msg}</div> : null; }
 
+// ─── RESPONSIVE ───────────────────────────────────────────────────────────────
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 480);
+  useState(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 480);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  });
+  return isMobile;
+};
+
+// ─── PDF EXPORT ───────────────────────────────────────────────────────────────
+function exportPDF(title, contentId) {
+  const printWindow = window.open("", "_blank");
+  const content = document.getElementById(contentId)?.innerHTML || "";
+  printWindow.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Arial Black',Arial,sans-serif;background:#F5F0E8;color:#0A0A0A;padding:40px;}.pdf-header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:16px;border-bottom:3px solid #0A0A0A;margin-bottom:32px;}.pdf-logo{font-size:22px;font-weight:900;letter-spacing:-1px;}.pdf-logo span{color:#E8390E;}.pdf-meta{font-size:10px;letter-spacing:2px;color:#888;font-family:'Courier New',monospace;text-align:right;}button{display:none!important;}textarea{display:none!important;}input{display:none!important;}</style></head><body><div class="pdf-header"><div class="pdf-logo">LEVERAGE<span>.</span></div><div class="pdf-meta"><div>${title.toUpperCase()}</div><div>${new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</div></div></div>${content}</body></html>`);
+  printWindow.document.close();
+  printWindow.onload = () => { printWindow.print(); };
+}
+
+function ExportBtn({ title, contentId }) {
+  return (
+    <button onClick={() => exportPDF(title, contentId)}
+      style={{ padding: "9px 18px", background: BWL.black, color: BWL.white, border: "none", fontSize: 11, fontWeight: 900, cursor: "pointer", letterSpacing: 1 }}>
+      EXPORT PDF
+    </button>
+  );
+}
+
+// ─── GLOBAL SEARCH ────────────────────────────────────────────────────────────
+function GlobalSearch({ onClose }) {
+  const [query, setQuery] = useState("");
+  const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
+  const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
+  const influencers = (() => { const s = storage.get("influencer-tracker"); return s ? JSON.parse(s.value) : []; })();
+  const rfps = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
+  const q = query.toLowerCase().trim();
+  const taskResults = !q ? [] : TEAM_OPS.flatMap(member => {
+    const memberTasks = tasks?.team_tasks?.[member]?.tasks || [];
+    return memberTasks.filter(t => t.task.toLowerCase().includes(q)).map((t, i) => ({ type: "task", member, task: t.task, priority: t.priority, due: t.due, done: checked[`${member}-${i}`] }));
+  });
+  const influencerResults = !q ? [] : influencers.filter(i => i.name?.toLowerCase().includes(q) || i.handle?.toLowerCase().includes(q) || i.niche?.toLowerCase().includes(q) || i.platform?.toLowerCase().includes(q));
+  const rfpResults = !q ? [] : rfps.filter(r => r.title?.toLowerCase().includes(q) || r.organization?.toLowerCase().includes(q));
+  const total = taskResults.length + influencerResults.length + rfpResults.length;
+  const pColor = p => ({ high: "#ef4444", medium: "#f59e0b", low: "#10b981" }[p] || BWL.gray);
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#0A0A0Aee", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 60 }} onClick={onClose}>
+      <div style={{ width: "100%", maxWidth: 680, background: BWL.bg, border: `2px solid ${BWL.black}` }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${BWL.black}` }}>
+          <div style={{ fontSize: 11, color: BWL.gray, fontWeight: 900, padding: "0 16px", letterSpacing: 2, fontFamily: BWL.mono }}>SEARCH</div>
+          <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search tasks, influencers, RFPs..."
+            style={{ flex: 1, padding: "16px", background: "transparent", border: "none", fontSize: 15, fontWeight: 700, outline: "none", fontFamily: BWL.font, color: BWL.black }} />
+          <button onClick={onClose} style={{ padding: "16px 20px", background: "none", border: "none", fontSize: 16, cursor: "pointer", color: BWL.gray, borderLeft: `2px solid ${BWL.black}` }}>X</button>
+        </div>
+        {q && (
+          <div style={{ maxHeight: 480, overflowY: "auto" }}>
+            {total === 0 ? <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: BWL.gray, fontFamily: BWL.mono }}>No results for "{query}"</div> : <>
+              {taskResults.length > 0 && <div>
+                <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: BWL.orange, borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>TASKS ({taskResults.length})</div>
+                {taskResults.map((r, i) => <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: r.done ? "#f9f9f9" : BWL.white }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: r.done ? BWL.gray : BWL.black, textDecoration: r.done ? "line-through" : "none", marginBottom: 4 }}>{r.task}</div>
+                  <div style={{ display: "flex", gap: 10, fontSize: 10, fontFamily: BWL.mono }}><span style={{ color: BWL.gray }}>{r.member}</span><span style={{ color: pColor(r.priority), fontWeight: 700 }}>{r.priority}</span>{r.due && <span style={{ color: BWL.gray }}>{r.due}</span>}</div>
+                </div>)}
+              </div>}
+              {influencerResults.length > 0 && <div>
+                <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: "#6c63ff", borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>INFLUENCERS ({influencerResults.length})</div>
+                {influencerResults.map((inf, i) => <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: BWL.white }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{inf.name}</div>
+                  <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono }}>@{inf.handle} · {inf.platform}{inf.niche && ` · ${inf.niche}`}</div>
+                </div>)}
+              </div>}
+              {rfpResults.length > 0 && <div>
+                <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: "#10b981", borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>RFP PIPELINE ({rfpResults.length})</div>
+                {rfpResults.map((r, i) => <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: BWL.white }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{r.title}</div>
+                  <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono }}>{r.organization} · {r.status?.toUpperCase()}</div>
+                </div>)}
+              </div>}
+            </>}
+          </div>
+        )}
+        {!q && <div style={{ padding: 20, fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, textAlign: "center" }}>Type to search across tasks, influencers, and RFP pipeline</div>}
+      </div>
+    </div>
+  );
+}
+
+// ─── PASSWORD SCREEN ──────────────────────────────────────────────────────────
+function PasswordScreen({ onUnlock }) {
+  const [input, setInput] = useState("");
+  const [error, setError] = useState(false);
+  const attempt = () => {
+    if (input === PASSWORD) { onUnlock(); }
+    else { setError(true); setInput(""); setTimeout(() => setError(false), 2000); }
+  };
+  return (
+    <div style={{ fontFamily: BWL.font, background: BWL.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      backgroundImage: `linear-gradient(${BWL.black}18 1px, transparent 1px), linear-gradient(90deg, ${BWL.black}18 1px, transparent 1px)`, backgroundSize: "40px 40px" }}>
+      <div style={{ width: "100%", maxWidth: 400, border: `2px solid ${BWL.black}`, background: BWL.white }}>
+        <div style={{ background: BWL.black, padding: "24px 28px" }}>
+          <div style={{ fontSize: 22, fontWeight: 900, color: BWL.white, letterSpacing: -1 }}>LEVERAGE<span style={{ color: BWL.orange }}>.</span></div>
+          <div style={{ fontSize: 9, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginTop: 6 }}>■ OPERATIONS HUB</div>
+        </div>
+        <div style={{ padding: 28 }}>
+          <div style={{ fontSize: 10, color: BWL.gray, fontWeight: 900, letterSpacing: 3, marginBottom: 16, fontFamily: BWL.mono }}>ENTER PASSWORD</div>
+          <input type="password" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && attempt()}
+            placeholder="Password" autoFocus
+            style={{ width: "100%", padding: "12px 14px", border: `1.5px solid ${error ? BWL.orange : BWL.black}`, background: error ? "#fff0ee" : BWL.bg, fontSize: 14, fontFamily: BWL.mono, outline: "none", boxSizing: "border-box", color: BWL.black, marginBottom: 12 }} />
+          {error && <div style={{ fontSize: 11, color: BWL.orange, fontFamily: BWL.mono, marginBottom: 12 }}>Incorrect password. Try again.</div>}
+          <button onClick={attempt} style={{ width: "100%", padding: 13, background: BWL.black, color: BWL.white, border: "none", fontSize: 13, fontWeight: 900, cursor: "pointer", letterSpacing: 2 }}>UNLOCK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
 const TEAM_OPS = ["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Caleb Bentil","David Perlov","Cyril Butanas","Darlene Mae Malolos"];
+
+function Dashboard() {
+  const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
+  const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
+  const rfpTracker = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
+  const influencers = (() => { const s = storage.get("influencer-tracker"); return s ? JSON.parse(s.value) : []; })();
+
+  const getProgress = member => {
+    const t = tasks?.team_tasks?.[member]?.tasks || [];
+    if (!t.length) return null;
+    return Math.round((t.filter((_, i) => checked[`${member}-${i}`]).length / t.length) * 100);
+  };
+
+  const teamProgress = () => {
+    if (!tasks) return null;
+    let total = 0, done = 0;
+    TEAM_OPS.forEach(m => { const t = tasks.team_tasks?.[m]?.tasks || []; total += t.length; done += t.filter((_, i) => checked[`${m}-${i}`]).length; });
+    return total ? { pct: Math.round((done / total) * 100), total, done } : null;
+  };
+
+  const tp = teamProgress();
+  const won = rfpTracker.filter(t => t.status === "won");
+  const submitted = rfpTracker.filter(t => ["submitted","won","lost"].includes(t.status));
+  const winRate = submitted.length ? Math.round((won.length / submitted.length) * 100) : 0;
+  const totalRev = won.filter(t => t.revenue).reduce((a, t) => a + parseFloat(t.revenue.replace(/[^0-9.]/g,"")) || 0, 0);
+  const activeInf = influencers.filter(i => i.status === "active").length;
+  const negoInf = influencers.filter(i => i.status === "under_nego").length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ borderBottom: `2px solid ${BWL.black}`, paddingBottom: 20 }}>
+        <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 6, fontFamily: BWL.mono }}>■ DASHBOARD</div>
+        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1 }}>{weekLabel()}</div>
+        <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginTop: 4 }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+        {[
+          ["TEAM PROGRESS", tp ? `${tp.pct}%` : "—", tp ? `${tp.done}/${tp.total} tasks done` : "No tasks yet", tp?.pct === 100 ? "#10b981" : BWL.orange],
+          ["RFP WIN RATE", `${winRate}%`, `${won.length} won · ${rfpTracker.filter(t=>t.status==="submitted").length} pending`, winRate >= 50 ? "#10b981" : "#f59e0b"],
+          ["INFLUENCERS", `${influencers.length}`, `${activeInf} active · ${negoInf} under nego`, "#6c63ff"],
+        ].map(([label, value, sub, color]) => (
+          <div key={label} style={{ background: BWL.white, border: `1.5px solid ${BWL.black}`, padding: 20 }}>
+            <div style={{ fontSize: 9, color: BWL.gray, fontWeight: 900, letterSpacing: 3, marginBottom: 12, fontFamily: BWL.mono }}>{label}</div>
+            <div style={{ fontSize: 36, fontWeight: 900, color, marginBottom: 6 }}>{value}</div>
+            <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+      {tasks ? (
+        <Card>
+          <CardHeader label="TEAM TASK PROGRESS" />
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {TEAM_OPS.map(member => {
+              const p = getProgress(member);
+              if (p === null) return null;
+              const memberTasks = tasks?.team_tasks?.[member]?.tasks || [];
+              const overdue = memberTasks.filter((t, i) => !checked[`${member}-${i}`] && (() => {
+                if (!t.due_day) return false;
+                const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+                return days.indexOf(t.due_day) < new Date().getDay();
+              })()).length;
+              return (
+                <div key={member} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 140, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{member.split(" ")[0]}</div>
+                  <div style={{ flex: 1, background: BWL.lightGray, height: 6, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${p}%`, background: p === 100 ? "#10b981" : BWL.orange, transition: "width 0.3s" }} />
+                  </div>
+                  <div style={{ width: 36, fontSize: 12, fontWeight: 900, color: p === 100 ? "#10b981" : BWL.orange, textAlign: "right" }}>{p}%</div>
+                  {overdue > 0 && <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 700, whiteSpace: "nowrap" }}>{overdue} overdue</div>}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ) : (
+        <Card style={{ padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginBottom: 12 }}>NO TASKS GENERATED YET</div>
+          <div style={{ fontSize: 13, color: BWL.black }}>Go to OPS PULSE to generate this week's tasks.</div>
+        </Card>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+        <Card>
+          <CardHeader label="RFP PIPELINE" />
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {rfpTracker.length === 0 ? <div style={{ fontSize: 12, color: BWL.gray, fontFamily: BWL.mono }}>No proposals saved yet.</div> :
+            [["Total", rfpTracker.length, BWL.black], ["Submitted", rfpTracker.filter(t=>t.status==="submitted").length, "#f59e0b"], ["Won", won.length, "#10b981"], ["Lost", rfpTracker.filter(t=>t.status==="lost").length, "#ef4444"]].map(([l, v, c]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${BWL.lightGray}` }}>
+                <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{l}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: c }}>{v}</div>
+              </div>
+            ))}
+            {totalRev > 0 && <div style={{ marginTop: 8, background: "#10b98111", padding: "10px 12px" }}>
+              <div style={{ fontSize: 9, color: "#10b981", fontWeight: 900, letterSpacing: 2, marginBottom: 4, fontFamily: BWL.mono }}>REVENUE WON</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#10b981" }}>${totalRev.toLocaleString()}</div>
+            </div>}
+          </div>
+        </Card>
+        <Card>
+          <CardHeader label="INFLUENCER TRACKER" />
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {influencers.length === 0 ? <div style={{ fontSize: 12, color: BWL.gray, fontFamily: BWL.mono }}>No influencers tracked yet.</div> :
+            [["Total", influencers.length, BWL.black], ["Active", activeInf, "#10b981"], ["Under Nego", negoInf, "#f59e0b"], ["Paid", influencers.filter(i=>i.status==="paid").length, "#6c63ff"], ["Completed", influencers.filter(i=>i.status==="completed").length, BWL.gray]].map(([l, v, c]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${BWL.lightGray}` }}>
+                <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{l}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: c }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPS PULSE
+// ═══════════════════════════════════════════════════════════════════════════════
 const INPUT_TYPES = [{ key: "transcript", label: "Meeting Transcript" },{ key: "sod", label: "SOD Report" },{ key: "email", label: "Emails" },{ key: "slack", label: "Slack" }];
 
 function OpsPulse({ slackIds }) {
@@ -174,32 +343,23 @@ function OpsPulse({ slackIds }) {
   const [slackStatus, setSlackStatus] = useState({});
   const [showInput, setShowInput] = useState(false);
 
-  const clearTasks = () => {
-    setResult(null); setChecked({});
-    storage.delete("ops-pulse-current"); storage.delete("ops-pulse-checked");
-  };
+  const clearTasks = () => { setResult(null); setChecked({}); storage.delete("ops-pulse-current"); storage.delete("ops-pulse-checked"); };
 
   const sendDM = async (member) => {
     const userId = slackIds?.[member];
-    if (!userId) { setSlackStatus(p => ({ ...p, [member]: "❌ No ID" })); return; }
+    if (!userId) { setSlackStatus(p => ({ ...p, [member]: "NO ID" })); return; }
     const token = storage.get("slack-token")?.value;
-    if (!token) { setSlackStatus(p => ({ ...p, [member]: "❌ No Token" })); return; }
+    if (!token) { setSlackStatus(p => ({ ...p, [member]: "NO TOKEN" })); return; }
     const tasks = result?.team_tasks?.[member]?.tasks || [];
-    const taskLines = tasks.map((t, i) => `${i+1}. ${t.priority === "high" ? "🔴" : t.priority === "medium" ? "🟡" : "🟢"} ${t.task}${t.due ? ` (${t.due})` : ""}`).join("\n");
-    const text = `📋 *Your Tasks — ${weekLabel()}*\nHi ${member.split(" ")[0]}! Here are your tasks for this week:\n\n${taskLines}\n\n_Sent from BWL Operations Hub_`;
-    setSlackStatus(p => ({ ...p, [member]: "⏳ Sending..." }));
+    const taskLines = tasks.map((t, i) => `${i+1}. ${t.priority === "high" ? "[HIGH]" : t.priority === "medium" ? "[MED]" : "[LOW]"} ${t.task}${t.due ? ` (${t.due})` : ""}`).join("\n");
+    const text = `*Your Tasks — ${weekLabel()}*\nHi ${member.split(" ")[0]}! Here are your tasks for this week:\n\n${taskLines}\n\n_Sent from BWL Operations Hub_`;
+    setSlackStatus(p => ({ ...p, [member]: "SENDING..." }));
     try {
-      const res = await fetch("/api/slack", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, channel: userId, text })
-      });
+      const res = await fetch("/api/slack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, channel: userId, text }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setSlackStatus(p => ({ ...p, [member]: "✅ Sent!" }));
-    } catch (e) {
-      setSlackStatus(p => ({ ...p, [member]: "❌ Failed" }));
-    }
+      setSlackStatus(p => ({ ...p, [member]: "SENT!" }));
+    } catch (e) { setSlackStatus(p => ({ ...p, [member]: "FAILED" })); }
     setTimeout(() => setSlackStatus(p => ({ ...p, [member]: null })), 3000);
   };
 
@@ -243,7 +403,7 @@ Return ONLY valid JSON:
   };
 
   const pColor = p => ({ high: "#ef4444", medium: "#f59e0b", low: "#10b981" }[p] || BWL.gray);
-  const tIcon = t => ({ action: "⚡", "follow-up": "🔄", proactive: "🚀" }[t] || "📌");
+  const tIcon = t => ({ action: ">>", "follow-up": "->", proactive: "+" }[t] || "-");
 
   const getProgress = member => {
     const tasks = result?.team_tasks?.[member]?.tasks || [];
@@ -263,12 +423,12 @@ Return ONLY valid JSON:
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 900, color: BWL.black }}>{weekLabel()}</div>
-          {result && <div style={{ fontSize: 11, color: BWL.gray, marginTop: 2 }}>Tasks loaded — {teamProgress()}% complete</div>}
+          {result && <div style={{ fontSize: 11, color: BWL.gray, marginTop: 2, fontFamily: BWL.mono }}>Tasks loaded — {teamProgress()}% complete</div>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {result && <button onClick={clearTasks} style={{ padding: "7px 14px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: BWL.white, color: "#ef4444", border: "1px solid #ef444433", cursor: "pointer" }}>🗑 Clear</button>}
-          <button onClick={() => setShowInput(!showInput)} style={{ padding: "7px 16px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: showInput ? BWL.black : BWL.orange, color: BWL.white, border: "none", cursor: "pointer" }}>
-            {showInput ? "✕ Close" : result ? "⚡ New Week" : "⚡ Generate Tasks"}
+          {result && <button onClick={clearTasks} style={{ padding: "7px 14px", fontSize: 11, fontWeight: 700, background: BWL.white, color: "#ef4444", border: "1px solid #ef444433", cursor: "pointer" }}>CLEAR</button>}
+          <button onClick={() => setShowInput(!showInput)} style={{ padding: "7px 16px", fontSize: 11, fontWeight: 700, background: showInput ? BWL.black : BWL.orange, color: BWL.white, border: "none", cursor: "pointer" }}>
+            {showInput ? "CLOSE" : result ? "NEW WEEK" : "GENERATE TASKS"}
           </button>
         </div>
       </div>
@@ -278,14 +438,14 @@ Return ONLY valid JSON:
             <div style={{ display: "flex", borderBottom: `1px solid ${BWL.lightGray}` }}>
               {INPUT_TYPES.map(t => (
                 <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ flex: 1, padding: "10px 6px", fontSize: 11, fontWeight: 600, background: activeTab === t.key ? BWL.bg : "transparent", color: activeTab === t.key ? BWL.black : BWL.gray, border: "none", borderBottom: activeTab === t.key ? `2px solid ${BWL.orange}` : "2px solid transparent", cursor: "pointer" }}>
-                  {t.label}{inputs[t.key].trim() && <span style={{ marginLeft: 3, color: "#10b981" }}>●</span>}
+                  {t.label}{inputs[t.key].trim() && <span style={{ marginLeft: 3, color: "#10b981" }}>*</span>}
                 </button>
               ))}
             </div>
-            <textarea value={inputs[activeTab]} onChange={e => setInputs(p => ({ ...p, [activeTab]: e.target.value }))} placeholder={`Paste ${INPUT_TYPES.find(t => t.key === activeTab)?.label.split(" ").slice(1).join(" ")} here...`}
+            <textarea value={inputs[activeTab]} onChange={e => setInputs(p => ({ ...p, [activeTab]: e.target.value }))} placeholder={`Paste ${INPUT_TYPES.find(t => t.key === activeTab)?.label} here...`}
               style={{ width: "100%", minHeight: 140, background: "transparent", border: "none", color: BWL.black, fontSize: 13, padding: 16, resize: "vertical", outline: "none", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }} />
           </Card>
-          <Btn onClick={generate} disabled={!hasInput} loading={loading} label={`⚡ GENERATE OPS PULSE — ${weekLabel()}`} />
+          <Btn onClick={generate} disabled={!hasInput} loading={loading} label={`GENERATE OPS PULSE — ${weekLabel()}`} />
           <Err msg={error} />
         </div>
       )}
@@ -293,115 +453,116 @@ Return ONLY valid JSON:
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <Card style={{ padding: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 2 }}>{weekLabel().toUpperCase()}</div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 18, fontWeight: 800, color: BWL.orange }}>{teamProgress()}%</div><div style={{ fontSize: 9, color: BWL.gray }}>TEAM DONE</div></div>
+              <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 2, fontFamily: BWL.mono }}>{weekLabel().toUpperCase()}</div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 18, fontWeight: 800, color: BWL.orange }}>{teamProgress()}%</div><div style={{ fontSize: 9, color: BWL.gray, fontFamily: BWL.mono }}>TEAM DONE</div></div>
             </div>
-            <div style={{ background: BWL.lightGray, borderRadius: 20, height: 8, marginBottom: 12, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${teamProgress()}%`, background: BWL.orange, borderRadius: 20, transition: "width 0.3s" }} />
+            <div style={{ background: BWL.lightGray, height: 8, marginBottom: 12, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${teamProgress()}%`, background: BWL.orange, transition: "width 0.3s" }} />
             </div>
-            <p style={{ margin: 0, color: BWL.darkGray, fontSize: 13, lineHeight: 1.7 }}>{result.week_summary}</p>
+            <p style={{ margin: 0, color: BWL.darkGray, fontSize: 13, lineHeight: 1.7, fontFamily: BWL.mono }}>{result.week_summary}</p>
           </Card>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {[["team","👥 Team"],["person","👤 Per-Person"]].map(([v,l]) => (
+            {[["team","TEAM VIEW"],["person","PER PERSON"]].map(([v,l]) => (
               <button key={v} onClick={() => { setView(v); if (v==="team") setSelectedMember(null); }}
-                style={{ padding: "7px 16px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: view===v ? BWL.black : BWL.white, color: view===v ? BWL.white : BWL.gray, border: view===v ? "none" : `1px solid ${BWL.lightGray}`, cursor: "pointer" }}>{l}</button>
+                style={{ padding: "7px 16px", fontSize: 11, fontWeight: 700, background: view===v ? BWL.black : BWL.white, color: view===v ? BWL.white : BWL.gray, border: `1px solid ${BWL.lightGray}`, cursor: "pointer" }}>{l}</button>
             ))}
-            <button onClick={sendAll} style={{ padding: "7px 16px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: "#1a1a2e", color: "#a78bfa", border: "1px solid #2a2a4a", cursor: "pointer" }}>📨 Send All to Slack</button>
+            <button onClick={sendAll} style={{ padding: "7px 16px", fontSize: 11, fontWeight: 700, background: "#1a1a2e", color: "#a78bfa", border: "none", cursor: "pointer" }}>SEND ALL TO SLACK</button>
             <ExportBtn title={`OPS PULSE — ${weekLabel()}`} contentId="ops-pulse-pdf" />
           </div>
           <div id="ops-pulse-pdf">
-          {view === "team" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {TEAM_OPS.map(member => {
-                const d = result.team_tasks?.[member]; if (!d) return null;
-                const tasks = d.tasks || [], p = getProgress(member);
-                const overdueCount = tasks.filter((t, i) => !checked[`${member}-${i}`] && isOverdue(t.due_day)).length;
-                return (
-                  <Card key={member} style={{ overflow: "hidden" }}>
-                    <div onClick={() => { setSelectedMember(member); setView("person"); }} style={{ padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{member}</div>
-                          {overdueCount > 0 && <span style={{ background: "#fff0ee", color: BWL.orange, borderRadius: 20, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>⚠️ {overdueCount} overdue</span>}
+            {view === "team" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {TEAM_OPS.map(member => {
+                  const d = result.team_tasks?.[member]; if (!d) return null;
+                  const tasks = d.tasks || [], p = getProgress(member);
+                  const overdueCount = tasks.filter((t, i) => !checked[`${member}-${i}`] && isOverdue(t.due_day)).length;
+                  return (
+                    <Card key={member} style={{ overflow: "hidden" }}>
+                      <div onClick={() => { setSelectedMember(member); setView("person"); }} style={{ padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13 }}>{member}</div>
+                            {overdueCount > 0 && <span style={{ background: "#fff0ee", color: BWL.orange, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>OVERDUE: {overdueCount}</span>}
+                          </div>
+                          <div style={{ background: BWL.lightGray, height: 4, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${p}%`, background: p===100 ? "#10b981" : BWL.orange, transition: "width 0.3s" }} />
+                          </div>
                         </div>
-                        <div style={{ background: BWL.lightGray, borderRadius: 20, height: 4, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${p}%`, background: p===100 ? "#10b981" : BWL.orange, borderRadius: 20, transition: "width 0.3s" }} />
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 14 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: p===100 ? "#10b981" : BWL.orange }}>{p}%</span>
+                          <button onClick={e => { e.stopPropagation(); sendDM(member); }}
+                            style={{ background: slackStatus[member] === "SENT!" ? "#10b981" : BWL.black, color: BWL.white, border: "none", padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                            {slackStatus[member] || "DM"}
+                          </button>
                         </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 14 }}>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: p===100 ? "#10b981" : BWL.orange }}>{p}%</span>
-                        <button onClick={e => { e.stopPropagation(); sendDM(member); }}
-                          style={{ background: slackStatus[member] ? "#10b981" : BWL.black, color: BWL.white, border: "none", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                          {slackStatus[member] || "📨 DM"}
-                        </button>
-                        <span style={{ fontSize: 11, color: BWL.gray }}>→</span>
+                    </Card>
+                  );
+                })}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <Bullets label="FOLLOW-UPS" items={result.follow_ups_needed} color="#10b981" />
+                  <Bullets label="RISKS" items={result.risks} color="#ef4444" />
+                </div>
+              </div>
+            )}
+            {view === "person" && (
+              <div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+                  {TEAM_OPS.map(m => (
+                    <button key={m} onClick={() => setSelectedMember(m)}
+                      style={{ padding: "7px 14px", fontSize: 11, fontWeight: 700, background: selectedMember===m ? BWL.black : BWL.white, color: selectedMember===m ? BWL.white : BWL.gray, border: `1px solid ${BWL.lightGray}`, cursor: "pointer" }}>
+                      {m.split(" ")[0]} {getProgress(m)}%
+                    </button>
+                  ))}
+                </div>
+                {selectedMember && (() => {
+                  const d = result.team_tasks?.[selectedMember]; if (!d) return null;
+                  const tasks = d.tasks || [], done = tasks.filter((_,i) => checked[`${selectedMember}-${i}`]).length, p = tasks.length ? Math.round((done/tasks.length)*100) : 0;
+                  return (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+                        <div><div style={{ fontWeight: 700, fontSize: 16 }}>{selectedMember}</div><div style={{ fontSize: 12, color: BWL.gray, fontFamily: BWL.mono }}>{d.role}</div></div>
+                        <div style={{ textAlign: "right" }}><div style={{ fontSize: 20, fontWeight: 800, color: BWL.orange }}>{p}%</div><div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono }}>{done}/{tasks.length} DONE</div></div>
                       </div>
-                    </div>
-                  </Card>
-                );
-              })}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Bullets label="🔄 FOLLOW-UPS" items={result.follow_ups_needed} color="#10b981" />
-                <Bullets label="🚨 RISKS" items={result.risks} color="#ef4444" />
-              </div>
-            </div>
-          )}
-          {view === "person" && (
-            <div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-                {TEAM_OPS.map(m => (
-                  <button key={m} onClick={() => setSelectedMember(m)}
-                    style={{ padding: "7px 14px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: selectedMember===m ? BWL.black : BWL.white, color: selectedMember===m ? BWL.white : BWL.gray, border: selectedMember===m ? "none" : `1px solid ${BWL.lightGray}`, cursor: "pointer" }}>
-                    {m.split(" ")[0]} <span style={{ fontSize: 10 }}>{getProgress(m)}%</span>
-                  </button>
-                ))}
-              </div>
-              {selectedMember && (() => {
-                const d = result.team_tasks?.[selectedMember]; if (!d) return null;
-                const tasks = d.tasks || [], done = tasks.filter((_,i) => checked[`${selectedMember}-${i}`]).length, p = tasks.length ? Math.round((done/tasks.length)*100) : 0;
-                return (
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-                      <div><div style={{ fontWeight: 700, fontSize: 16 }}>{selectedMember}</div><div style={{ fontSize: 12, color: BWL.gray }}>{d.role}</div></div>
-                      <div style={{ textAlign: "right" }}><div style={{ fontSize: 20, fontWeight: 800, color: BWL.orange }}>{p}%</div><div style={{ fontSize: 10, color: BWL.gray }}>{done}/{tasks.length} DONE</div></div>
-                    </div>
-                    <div style={{ background: BWL.lightGray, borderRadius: 20, height: 6, marginBottom: 16, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${p}%`, background: p===100?"#10b981":BWL.orange, borderRadius: 20 }} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {tasks.map((t, i) => {
-                        const key = `${selectedMember}-${i}`, isDone = checked[key], overdue = !isDone && isOverdue(t.due_day);
-                        return (
-                          <div key={i} onClick={() => toggleCheck(selectedMember, i)}
-                            style={{ display: "flex", gap: 10, background: isDone?"#f0faf0":overdue?"#fff0ee":BWL.bg, borderRadius: 10, padding: "12px 14px", cursor: "pointer", border: `1px solid ${isDone?"#10b98133":overdue?`${BWL.orange}33`:BWL.lightGray}` }}>
-                            <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${isDone?"#10b981":overdue?BWL.orange:"#ccc"}`, background: isDone?"#10b981":"transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                              {isDone && <span style={{ color: "#fff", fontSize: 11, fontWeight: 800 }}>✓</span>}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 13, color: isDone?"#999":BWL.black, textDecoration: isDone?"line-through":"none", lineHeight: 1.5 }}>{tIcon(t.type)} {t.task}</div>
-                              <div style={{ display: "flex", gap: 8, marginTop: 5 }}>
-                                <span style={{ fontSize: 10, color: pColor(t.priority), fontWeight: 700 }}>{t.priority}</span>
-                                {t.due && <span style={{ fontSize: 10, color: overdue?BWL.orange:"#999" }}>• {overdue?"⚠️ OVERDUE — ":""}{t.due}</span>}
+                      <div style={{ background: BWL.lightGray, height: 6, marginBottom: 16, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${p}%`, background: p===100?"#10b981":BWL.orange }} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {tasks.map((t, i) => {
+                          const key = `${selectedMember}-${i}`, isDone = checked[key], overdue = !isDone && isOverdue(t.due_day);
+                          return (
+                            <div key={i} onClick={() => toggleCheck(selectedMember, i)}
+                              style={{ display: "flex", gap: 10, background: isDone?"#f0faf0":overdue?"#fff0ee":BWL.bg, padding: "12px 14px", cursor: "pointer", border: `1px solid ${isDone?"#10b98133":overdue?`${BWL.orange}33`:BWL.lightGray}` }}>
+                              <div style={{ width: 18, height: 18, border: `2px solid ${isDone?"#10b981":overdue?BWL.orange:"#ccc"}`, background: isDone?"#10b981":"transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                                {isDone && <span style={{ color: "#fff", fontSize: 11, fontWeight: 800 }}>✓</span>}
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 13, color: isDone?"#999":BWL.black, textDecoration: isDone?"line-through":"none", lineHeight: 1.5 }}>{tIcon(t.type)} {t.task}</div>
+                                <div style={{ display: "flex", gap: 8, marginTop: 5 }}>
+                                  <span style={{ fontSize: 10, color: pColor(t.priority), fontWeight: 700, fontFamily: BWL.mono }}>{t.priority}</span>
+                                  {t.due && <span style={{ fontSize: 10, color: overdue?BWL.orange:"#999", fontFamily: BWL.mono }}>· {overdue?"OVERDUE — ":""}{t.due}</span>}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
+                      {d.blockers?.length > 0 && <div style={{ background: "#fff8f0", border: `1px solid ${BWL.orange}33`, padding: "12px 14px", marginTop: 12 }}><div style={{ fontSize: 10, color: BWL.orange, fontWeight: 700, marginBottom: 6, fontFamily: BWL.mono }}>BLOCKERS</div>{d.blockers.map((b,i)=><div key={i} style={{fontSize:12,color:BWL.darkGray,fontFamily:BWL.mono}}>{b}</div>)}</div>}
                     </div>
-                    {d.blockers?.length > 0 && <div style={{ background: "#fff8f0", border: `1px solid ${BWL.orange}33`, borderRadius: 10, padding: "12px 14px", marginTop: 12 }}><div style={{ fontSize: 10, color: BWL.orange, fontWeight: 700, marginBottom: 6 }}>⚠️ BLOCKERS</div>{d.blockers.map((b,i)=><div key={i} style={{fontSize:12,color:BWL.darkGray}}>{b}</div>)}</div>}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-const BWL_SERVICES = ["Outbound","Paid Media","Influencer","Email Marketing","Design","Web","SEO","Content"];
+// ═══════════════════════════════════════════════════════════════════════════════
+// RFP ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
 const PROPOSAL_TEMPLATES = {
   Government: "formal, compliance-focused, emphasize track record, certifications, reporting",
   Corporate: "ROI-driven, scalable, data-backed, executive-friendly",
@@ -413,10 +574,10 @@ function urgencyTag(deadline) {
   if (!deadline) return null;
   const d = new Date(deadline), now = new Date(), diff = Math.ceil((d - now) / 86400000);
   if (isNaN(diff)) return null;
-  if (diff < 0) return { label:"⛔ Expired", color:"#aaa" };
-  if (diff <= 7) return { label:`🔴 ${diff}d left`, color:"#ef4444" };
-  if (diff <= 21) return { label:`🟡 ${diff}d left`, color:"#f59e0b" };
-  return { label:`🟢 ${diff}d left`, color:"#10b981" };
+  if (diff < 0) return { label:"EXPIRED", color:"#aaa" };
+  if (diff <= 7) return { label:`${diff}d left`, color:"#ef4444" };
+  if (diff <= 21) return { label:`${diff}d left`, color:"#f59e0b" };
+  return { label:`${diff}d left`, color:"#10b981" };
 }
 
 function RFPEngine() {
@@ -426,12 +587,8 @@ function RFPEngine() {
   const [editNote, setEditNote] = useState({});
   const [editRev, setEditRev] = useState({});
   const setLoad = (k,v) => setLoading(p=>({...p,[k]:v}));
-
   const persist = (list) => { setTracker(list); storage.set("rfp-tracker", JSON.stringify(list)); };
-  const saveToTracker = (rfp, pt) => {
-    const e={id:Date.now(),title:rfp.title,organization:rfp.organization,type:rfp.type||"Other",budget:rfp.budget,deadline:rfp.deadline||"",services:rfp.services_needed||[],score:rfp.relevance_score,proposal:pt,status:"draft",revenue:"",notes:"",created_at:new Date().toISOString()};
-    persist([e,...tracker]);
-  };
+  const saveToTracker = (rfp, pt) => { const e={id:Date.now(),title:rfp.title,organization:rfp.organization,type:rfp.type||"Other",budget:rfp.budget,deadline:rfp.deadline||"",services:rfp.services_needed||[],score:rfp.relevance_score,proposal:pt,status:"draft",revenue:"",notes:"",created_at:new Date().toISOString()}; persist([e,...tracker]); };
   const updateStatus = (id,status) => persist(tracker.map(t=>t.id===id?{...t,status}:t));
   const updateField = (id,field,val) => persist(tracker.map(t=>t.id===id?{...t,[field]:val}:t));
   const del = (id) => persist(tracker.filter(t=>t.id!==id));
@@ -457,7 +614,7 @@ function RFPEngine() {
   };
 
   const sc = s => s>=80?"#10b981":s>=60?"#f59e0b":"#ef4444";
-  const ss = s => ({draft:{color:BWL.gray,label:"📝 Draft"},submitted:{color:"#f59e0b",label:"⏳ Submitted"},won:{color:"#10b981",label:"✅ Won"},lost:{color:"#ef4444",label:"❌ Lost"}}[s]||{color:BWL.gray,label:s});
+  const ss = s => ({draft:{color:BWL.gray,label:"DRAFT"},submitted:{color:"#f59e0b",label:"SUBMITTED"},won:{color:"#10b981",label:"WON"},lost:{color:"#ef4444",label:"LOST"}}[s]||{color:BWL.gray,label:s});
   const won = tracker.filter(t=>t.status==="won");
   const submitted = tracker.filter(t=>["submitted","won","lost"].includes(t.status));
   const winRate = submitted.length ? Math.round((won.length/submitted.length)*100) : 0;
@@ -467,16 +624,16 @@ function RFPEngine() {
   return (
     <div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>
-        {[["search","🔍 Find RFPs"],["tracker",`📊 Pipeline (${tracker.length})`]].map(([v,l])=>(
-          <button key={v} onClick={()=>setView(v)} style={{padding:"8px 18px",borderRadius:20,fontSize:12,fontWeight:700,background:view===v?BWL.black:BWL.white,color:view===v?BWL.white:BWL.gray,border:view===v?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer"}}>{l}</button>
+        {[["search","FIND RFPs"],["tracker",`PIPELINE (${tracker.length})`]].map(([v,l])=>(
+          <button key={v} onClick={()=>setView(v)} style={{padding:"8px 18px",fontSize:12,fontWeight:700,background:view===v?BWL.black:BWL.white,color:view===v?BWL.white:BWL.gray,border:`1px solid ${BWL.lightGray}`,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
       {view==="search" && <div>
         <Card style={{overflow:"hidden",marginBottom:14}}>
-          <CardHeader label="🔍 SEARCH RFPs" />
+          <CardHeader label="SEARCH RFPs" />
           <div style={{padding:16,display:"flex",gap:10}}>
-            <input value={keywords} onChange={e=>setKeywords(e.target.value)} onKeyDown={e=>e.key==="Enter"&&keywords.trim()&&search()} placeholder="e.g. marketing services, digital advertising..." style={{flex:1,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:"inherit"}} />
-            <button onClick={search} disabled={!keywords.trim()||loading.search} style={{background:keywords.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:keywords.trim()?"pointer":"not-allowed"}}>{loading.search?"⏳...":"🔍 Search"}</button>
+            <input value={keywords} onChange={e=>setKeywords(e.target.value)} onKeyDown={e=>e.key==="Enter"&&keywords.trim()&&search()} placeholder="e.g. marketing services, digital advertising..." style={{flex:1,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:"inherit"}} />
+            <button onClick={search} disabled={!keywords.trim()||loading.search} style={{background:keywords.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",padding:"10px 20px",fontSize:13,fontWeight:700,cursor:keywords.trim()?"pointer":"not-allowed"}}>{loading.search?"SEARCHING...":"SEARCH"}</button>
           </div>
         </Card>
         <Err msg={error} />
@@ -484,36 +641,36 @@ function RFPEngine() {
           {rfps.map((rfp,i)=>{
             const urg=urgencyTag(rfp.deadline), isExp=expandedScore===rfp.id;
             return (
-              <Card key={i} style={{padding:18,border:`1px solid ${selected?.id===rfp.id?BWL.orange:BWL.lightGray}`}}>
+              <Card key={i} style={{padding:18,border:`1.5px solid ${selected?.id===rfp.id?BWL.orange:BWL.black}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{rfp.title}</div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                      <span style={{fontSize:11,color:BWL.gray}}>{rfp.organization}</span>
-                      <span style={{background:"#f0f0f0",color:BWL.darkGray,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{rfp.type}</span>
-                      {urg&&<span style={{background:urg.color+"18",color:urg.color,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{urg.label}</span>}
+                      <span style={{fontSize:11,color:BWL.gray,fontFamily:BWL.mono}}>{rfp.organization}</span>
+                      <span style={{background:"#f0f0f0",color:BWL.darkGray,padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:BWL.mono}}>{rfp.type}</span>
+                      {urg&&<span style={{background:urg.color+"18",color:urg.color,padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:BWL.mono}}>{urg.label}</span>}
                     </div>
                   </div>
                   <div style={{textAlign:"center",marginLeft:12}}>
                     <div style={{fontSize:26,fontWeight:800,color:sc(rfp.relevance_score)}}>{rfp.relevance_score}</div>
-                    <button onClick={()=>setExpandedScore(isExp?null:rfp.id)} style={{fontSize:9,color:BWL.orange,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0}}>{isExp?"▲ HIDE":"▼ WHY"}</button>
+                    <button onClick={()=>setExpandedScore(isExp?null:rfp.id)} style={{fontSize:9,color:BWL.orange,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:BWL.mono}}>{isExp?"HIDE":"WHY"}</button>
                   </div>
                 </div>
                 {isExp&&rfp.score_breakdown&&(
-                  <div style={{background:BWL.bg,borderRadius:8,padding:12,marginBottom:10}}>
-                    <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6}}>SCORE BREAKDOWN</div>
-                    <div style={{fontSize:12,color:BWL.darkGray,marginBottom:6}}>{rfp.score_breakdown.overall}</div>
+                  <div style={{background:BWL.bg,padding:12,marginBottom:10}}>
+                    <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6,fontFamily:BWL.mono}}>SCORE BREAKDOWN</div>
+                    <div style={{fontSize:12,color:BWL.darkGray,marginBottom:6,fontFamily:BWL.mono}}>{rfp.score_breakdown.overall}</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                      <div><div style={{fontSize:9,color:"#10b981",fontWeight:900,marginBottom:3}}>✅ STRENGTHS</div>{rfp.score_breakdown.strengths?.map((s,j)=><div key={j} style={{fontSize:11,marginBottom:2}}>• {s}</div>)}</div>
-                      <div><div style={{fontSize:9,color:"#ef4444",fontWeight:900,marginBottom:3}}>⚠️ GAPS</div>{rfp.score_breakdown.gaps?.map((g,j)=><div key={j} style={{fontSize:11,marginBottom:2}}>• {g}</div>)}</div>
+                      <div><div style={{fontSize:9,color:"#10b981",fontWeight:900,marginBottom:3,fontFamily:BWL.mono}}>STRENGTHS</div>{rfp.score_breakdown.strengths?.map((s,j)=><div key={j} style={{fontSize:11,marginBottom:2,fontFamily:BWL.mono}}>+ {s}</div>)}</div>
+                      <div><div style={{fontSize:9,color:"#ef4444",fontWeight:900,marginBottom:3,fontFamily:BWL.mono}}>GAPS</div>{rfp.score_breakdown.gaps?.map((g,j)=><div key={j} style={{fontSize:11,marginBottom:2,fontFamily:BWL.mono}}>- {g}</div>)}</div>
                     </div>
                   </div>
                 )}
-                <p style={{margin:"0 0 8px",fontSize:12,color:BWL.darkGray,lineHeight:1.6}}>{rfp.description}</p>
-                {rfp.services_needed?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>{rfp.services_needed.map((s,j)=><span key={j} style={{background:BWL.orange+"18",color:BWL.orange,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>🔧 {s}</span>)}</div>}
-                <div style={{fontSize:12,color:"#10b981",marginBottom:10}}>✅ {rfp.why_bwl_can_win}</div>
-                <button onClick={()=>genProposal(rfp)} style={{width:"100%",padding:"9px 0",borderRadius:8,background:loading.proposal&&selected?.id===rfp.id?"#ccc":BWL.black,color:BWL.white,border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  {loading.proposal&&selected?.id===rfp.id?"⏳ Generating...":"⚡ Generate Proposal →"}
+                <p style={{margin:"0 0 8px",fontSize:12,color:BWL.darkGray,lineHeight:1.6,fontFamily:BWL.mono}}>{rfp.description}</p>
+                {rfp.services_needed?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>{rfp.services_needed.map((s,j)=><span key={j} style={{background:BWL.orange+"18",color:BWL.orange,padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:BWL.mono}}>{s}</span>)}</div>}
+                <div style={{fontSize:12,color:"#10b981",marginBottom:10,fontFamily:BWL.mono}}>{rfp.why_bwl_can_win}</div>
+                <button onClick={()=>genProposal(rfp)} style={{width:"100%",padding:"9px 0",background:loading.proposal&&selected?.id===rfp.id?"#ccc":BWL.black,color:BWL.white,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
+                  {loading.proposal&&selected?.id===rfp.id?"GENERATING...":"GENERATE PROPOSAL"}
                 </button>
               </Card>
             );
@@ -521,38 +678,38 @@ function RFPEngine() {
         </div>}
         {proposal&&selected&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2}}>📄 PROPOSAL</div><div style={{fontSize:11,color:BWL.gray,marginTop:2}}>Template: <strong>{selected.type}</strong></div></div>
-            <button onClick={()=>{setProposal(null);setSelected(null);}} style={{background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,borderRadius:20,padding:"6px 14px",fontSize:11,cursor:"pointer"}}>← Back</button>
+            <div><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,fontFamily:BWL.mono}}>PROPOSAL</div><div style={{fontSize:11,color:BWL.gray,marginTop:2,fontFamily:BWL.mono}}>Template: {selected.type}</div></div>
+            <button onClick={()=>{setProposal(null);setSelected(null);}} style={{background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,padding:"6px 14px",fontSize:11,cursor:"pointer"}}>BACK</button>
           </div>
-          <div style={{background:BWL.black,borderRadius:12,padding:16}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white}}>{proposal.subject_line}</div></div>
-          <ResultBlock label="📄 FULL PROPOSAL" content={proposal.full_proposal_text} copyable />
+          <div style={{background:BWL.black,padding:16}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4,fontFamily:BWL.mono}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white}}>{proposal.subject_line}</div></div>
+          <ResultBlock label="FULL PROPOSAL" content={proposal.full_proposal_text} copyable />
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <Bullets label="💪 WHY BWL WINS" items={proposal.why_bwl} color="#10b981" />
-            <Bullets label="📊 RESULTS" items={proposal.relevant_results} color="#6c63ff" />
+            <Bullets label="WHY BWL WINS" items={proposal.why_bwl} color="#10b981" />
+            <Bullets label="RESULTS" items={proposal.relevant_results} color="#6c63ff" />
           </div>
           <div style={{display:"flex",gap:10}}>
-            <button onClick={()=>navigator.clipboard.writeText(proposal.full_proposal_text)} style={{flex:1,padding:12,borderRadius:10,background:BWL.black,color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Copy</button>
-            <button onClick={()=>{saveToTracker(selected,proposal.full_proposal_text);setView("tracker");setProposal(null);setSelected(null);}} style={{flex:1,padding:12,borderRadius:10,background:"#10b981",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Save to Pipeline</button>
+            <button onClick={()=>navigator.clipboard.writeText(proposal.full_proposal_text)} style={{flex:1,padding:12,background:BWL.black,color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>COPY</button>
+            <button onClick={()=>{saveToTracker(selected,proposal.full_proposal_text);setView("tracker");setProposal(null);setSelected(null);}} style={{flex:1,padding:12,background:"#10b981",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>SAVE TO PIPELINE</button>
           </div>
         </div>}
       </div>}
       {view==="tracker"&&<div>
-        <div style={{background:BWL.black,borderRadius:12,padding:18,marginBottom:16}}>
-          <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:12}}>📈 WIN RATE DASHBOARD</div>
+        <div style={{background:BWL.black,padding:18,marginBottom:16}}>
+          <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:12,fontFamily:BWL.mono}}>WIN RATE DASHBOARD</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
-            {[["Total",tracker.length,BWL.orange],["Pending",tracker.filter(t=>t.status==="submitted").length,"#f59e0b"],["Won",won.length,"#10b981"],["Lost",tracker.filter(t=>t.status==="lost").length,"#ef4444"],["Win Rate",`${winRate}%`,winRate>=50?"#10b981":winRate>=30?"#f59e0b":"#ef4444"]].map(([l,v,c])=>(
-              <div key={l} style={{textAlign:"center",background:"#ffffff0d",borderRadius:10,padding:"12px 6px"}}>
+            {[["TOTAL",tracker.length,BWL.orange],["PENDING",tracker.filter(t=>t.status==="submitted").length,"#f59e0b"],["WON",won.length,"#10b981"],["LOST",tracker.filter(t=>t.status==="lost").length,"#ef4444"],["WIN RATE",`${winRate}%`,winRate>=50?"#10b981":winRate>=30?"#f59e0b":"#ef4444"]].map(([l,v,c])=>(
+              <div key={l} style={{textAlign:"center",background:"#ffffff0d",padding:"12px 6px"}}>
                 <div style={{fontSize:20,fontWeight:800,color:c}}>{v}</div>
-                <div style={{fontSize:9,color:"#aaa",fontWeight:700,marginTop:2}}>{l.toUpperCase()}</div>
+                <div style={{fontSize:9,color:"#aaa",fontWeight:700,marginTop:2,fontFamily:BWL.mono}}>{l}</div>
               </div>
             ))}
           </div>
           {(totalRev>0||pipelineRev>0)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
-            {totalRev>0&&<div style={{background:"#10b98118",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:9,color:"#10b981",fontWeight:900}}>💰 REVENUE WON</div><div style={{fontSize:18,fontWeight:800,color:"#10b981"}}>${totalRev.toLocaleString()}</div></div>}
-            {pipelineRev>0&&<div style={{background:"#f59e0b18",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:9,color:"#f59e0b",fontWeight:900}}>⏳ PIPELINE VALUE</div><div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>${pipelineRev.toLocaleString()}</div></div>}
+            {totalRev>0&&<div style={{background:"#10b98118",padding:"10px 14px"}}><div style={{fontSize:9,color:"#10b981",fontWeight:900,fontFamily:BWL.mono}}>REVENUE WON</div><div style={{fontSize:18,fontWeight:800,color:"#10b981"}}>${totalRev.toLocaleString()}</div></div>}
+            {pipelineRev>0&&<div style={{background:"#f59e0b18",padding:"10px 14px"}}><div style={{fontSize:9,color:"#f59e0b",fontWeight:900,fontFamily:BWL.mono}}>PIPELINE VALUE</div><div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>${pipelineRev.toLocaleString()}</div></div>}
           </div>}
         </div>
-        {tracker.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:40,marginBottom:12}}>📊</div><div style={{fontSize:14,fontWeight:700}}>No proposals saved yet</div></div>:
+        {tracker.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:14,fontWeight:700}}>No proposals saved yet</div></div>:
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {tracker.map(t=>{
             const urg=urgencyTag(t.deadline);
@@ -562,36 +719,36 @@ function RFPEngine() {
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,fontSize:14}}>{t.title}</div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:4}}>
-                      <span style={{fontSize:11,color:BWL.gray}}>{t.organization}</span>
-                      {t.type&&<span style={{background:"#f0f0f0",color:BWL.darkGray,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{t.type}</span>}
-                      {urg&&<span style={{background:urg.color+"18",color:urg.color,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{urg.label}</span>}
-                      {t.score&&<span style={{background:sc(t.score)+"18",color:sc(t.score),borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>Score: {t.score}</span>}
+                      <span style={{fontSize:11,color:BWL.gray,fontFamily:BWL.mono}}>{t.organization}</span>
+                      {t.type&&<span style={{background:"#f0f0f0",color:BWL.darkGray,padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:BWL.mono}}>{t.type}</span>}
+                      {urg&&<span style={{background:urg.color+"18",color:urg.color,padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:BWL.mono}}>{urg.label}</span>}
+                      {t.score&&<span style={{background:sc(t.score)+"18",color:sc(t.score),padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:BWL.mono}}>Score: {t.score}</span>}
                     </div>
-                    {t.services?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>{t.services.map((s,j)=><span key={j} style={{background:BWL.orange+"18",color:BWL.orange,borderRadius:20,padding:"2px 7px",fontSize:9,fontWeight:700}}>{s}</span>)}</div>}
+                    {t.services?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>{t.services.map((s,j)=><span key={j} style={{background:BWL.orange+"18",color:BWL.orange,padding:"2px 7px",fontSize:9,fontWeight:700,fontFamily:BWL.mono}}>{s}</span>)}</div>}
                   </div>
-                  <span style={{fontSize:12,fontWeight:700,color:ss(t.status).color,whiteSpace:"nowrap",marginLeft:10}}>{ss(t.status).label}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:ss(t.status).color,whiteSpace:"nowrap",marginLeft:10,fontFamily:BWL.mono}}>{ss(t.status).label}</span>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,background:BWL.bg,borderRadius:8,padding:"8px 12px"}}>
-                  <span style={{fontSize:11,color:BWL.gray,fontWeight:700,whiteSpace:"nowrap"}}>💰 Est. Revenue:</span>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,background:BWL.bg,padding:"8px 12px"}}>
+                  <span style={{fontSize:11,color:BWL.gray,fontWeight:700,whiteSpace:"nowrap",fontFamily:BWL.mono}}>Est. Revenue:</span>
                   {editRev[t.id]?(
-                    <input autoFocus value={t.revenue||""} onChange={e=>updateField(t.id,"revenue",e.target.value)} onBlur={()=>setEditRev(p=>({...p,[t.id]:false}))} placeholder="e.g. $5,000" style={{flex:1,background:BWL.white,border:`1px solid ${BWL.lightGray}`,borderRadius:6,color:BWL.black,fontSize:12,padding:"4px 8px",outline:"none",fontFamily:"inherit"}} />
+                    <input autoFocus value={t.revenue||""} onChange={e=>updateField(t.id,"revenue",e.target.value)} onBlur={()=>setEditRev(p=>({...p,[t.id]:false}))} placeholder="e.g. $5,000" style={{flex:1,background:BWL.white,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:12,padding:"4px 8px",outline:"none",fontFamily:BWL.mono}} />
                   ):(
-                    <span onClick={()=>setEditRev(p=>({...p,[t.id]:true}))} style={{flex:1,fontSize:12,color:t.revenue?BWL.black:BWL.gray,cursor:"pointer"}}>{t.revenue||"Click to add..."}</span>
+                    <span onClick={()=>setEditRev(p=>({...p,[t.id]:true}))} style={{flex:1,fontSize:12,color:t.revenue?BWL.black:BWL.gray,cursor:"pointer",fontFamily:BWL.mono}}>{t.revenue||"Click to add..."}</span>
                   )}
                 </div>
                 <div style={{marginBottom:10}}>
-                  <div style={{fontSize:9,color:BWL.gray,fontWeight:700,marginBottom:4}}>📎 NOTES</div>
+                  <div style={{fontSize:9,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>NOTES</div>
                   {editNote[t.id]?(
-                    <textarea autoFocus value={t.notes||""} onChange={e=>updateField(t.id,"notes",e.target.value)} onBlur={()=>setEditNote(p=>({...p,[t.id]:false}))} style={{width:"100%",minHeight:60,background:BWL.bg,border:`1px solid ${BWL.orange}`,borderRadius:8,color:BWL.black,fontSize:12,padding:"8px 10px",outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} />
+                    <textarea autoFocus value={t.notes||""} onChange={e=>updateField(t.id,"notes",e.target.value)} onBlur={()=>setEditNote(p=>({...p,[t.id]:false}))} style={{width:"100%",minHeight:60,background:BWL.bg,border:`1px solid ${BWL.orange}`,color:BWL.black,fontSize:12,padding:"8px 10px",outline:"none",fontFamily:BWL.mono,resize:"vertical",boxSizing:"border-box"}} />
                   ):(
-                    <div onClick={()=>setEditNote(p=>({...p,[t.id]:true}))} style={{background:BWL.bg,borderRadius:8,padding:"8px 10px",fontSize:12,color:t.notes?BWL.black:BWL.gray,cursor:"pointer",minHeight:32,lineHeight:1.5}}>{t.notes||"Click to add notes..."}</div>
+                    <div onClick={()=>setEditNote(p=>({...p,[t.id]:true}))} style={{background:BWL.bg,padding:"8px 10px",fontSize:12,color:t.notes?BWL.black:BWL.gray,cursor:"pointer",minHeight:32,lineHeight:1.5,fontFamily:BWL.mono}}>{t.notes||"Click to add notes..."}</div>
                   )}
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:BWL.bg,color:"#f59e0b",border:"1px solid #f59e0b33",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>📤 Submitted</button>}
-                  {t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:BWL.bg,color:"#10b981",border:"1px solid #10b98133",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>✅ Won</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:BWL.bg,color:"#ef4444",border:"1px solid #ef444433",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>❌ Lost</button></>}
-                  <button onClick={()=>navigator.clipboard.writeText(t.proposal)} style={{background:BWL.bg,color:BWL.orange,border:`1px solid ${BWL.lightGray}`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>📋 Copy</button>
-                  <button onClick={()=>del(t.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>🗑</button>
+                  {t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:BWL.bg,color:"#f59e0b",border:"1px solid #f59e0b33",padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>SUBMITTED</button>}
+                  {t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:BWL.bg,color:"#10b981",border:"1px solid #10b98133",padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>WON</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:BWL.bg,color:"#ef4444",border:"1px solid #ef444433",padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>LOST</button></>}
+                  <button onClick={()=>navigator.clipboard.writeText(t.proposal)} style={{background:BWL.bg,color:BWL.orange,border:`1px solid ${BWL.lightGray}`,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>COPY</button>
+                  <button onClick={()=>del(t.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>DELETE</button>
                 </div>
               </Card>
             );
@@ -602,221 +759,9 @@ function RFPEngine() {
   );
 }
 
-function GlobalSearch({ onClose }) {
-  const [query, setQuery] = useState("");
-  const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
-  const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
-  const influencers = (() => { const s = storage.get("influencer-tracker"); return s ? JSON.parse(s.value) : []; })();
-  const rfps = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
-
-  const q = query.toLowerCase().trim();
-
-  const taskResults = !q ? [] : TEAM_OPS.flatMap(member => {
-    const memberTasks = tasks?.team_tasks?.[member]?.tasks || [];
-    return memberTasks.filter(t => t.task.toLowerCase().includes(q)).map((t, i) => ({ type: "task", member, task: t.task, priority: t.priority, due: t.due, done: checked[`${member}-${i}`] }));
-  });
-
-  const influencerResults = !q ? [] : influencers.filter(i =>
-    i.name?.toLowerCase().includes(q) || i.handle?.toLowerCase().includes(q) || i.niche?.toLowerCase().includes(q) || i.platform?.toLowerCase().includes(q)
-  );
-
-  const rfpResults = !q ? [] : rfps.filter(r =>
-    r.title?.toLowerCase().includes(q) || r.organization?.toLowerCase().includes(q)
-  );
-
-  const total = taskResults.length + influencerResults.length + rfpResults.length;
-  const pColor = p => ({ high: "#ef4444", medium: "#f59e0b", low: "#10b981" }[p] || BWL.gray);
-
-  return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#0A0A0Aee", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 60 }} onClick={onClose}>
-      <div style={{ width: "100%", maxWidth: 680, background: BWL.bg, border: `2px solid ${BWL.black}` }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${BWL.black}` }}>
-          <div style={{ fontSize: 11, color: BWL.gray, fontWeight: 900, padding: "0 16px", letterSpacing: 2, fontFamily: BWL.mono }}>SEARCH</div>
-          <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Search tasks, influencers, RFPs..."
-            style={{ flex: 1, padding: "16px", background: "transparent", border: "none", fontSize: 15, fontWeight: 700, outline: "none", fontFamily: BWL.font, color: BWL.black }} />
-          <button onClick={onClose} style={{ padding: "16px 20px", background: "none", border: "none", fontSize: 16, cursor: "pointer", color: BWL.gray, borderLeft: `2px solid ${BWL.black}` }}>✕</button>
-        </div>
-
-        {q && (
-          <div style={{ maxHeight: 480, overflowY: "auto" }}>
-            {total === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: BWL.gray, fontFamily: BWL.mono }}>No results for "{query}"</div>
-            ) : (
-              <>
-                {taskResults.length > 0 && (
-                  <div>
-                    <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: BWL.orange, borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>TASKS ({taskResults.length})</div>
-                    {taskResults.map((r, i) => (
-                      <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: r.done ? "#f9f9f9" : BWL.white }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: r.done ? BWL.gray : BWL.black, textDecoration: r.done ? "line-through" : "none", marginBottom: 4 }}>{r.task}</div>
-                        <div style={{ display: "flex", gap: 10, fontSize: 10, fontFamily: BWL.mono }}>
-                          <span style={{ color: BWL.gray }}>{r.member}</span>
-                          <span style={{ color: pColor(r.priority), fontWeight: 700 }}>{r.priority}</span>
-                          {r.due && <span style={{ color: BWL.gray }}>{r.due}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {influencerResults.length > 0 && (
-                  <div>
-                    <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: "#6c63ff", borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>INFLUENCERS ({influencerResults.length})</div>
-                    {influencerResults.map((inf, i) => (
-                      <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: BWL.white }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{inf.name}</div>
-                        <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono }}>@{inf.handle} · {inf.platform}{inf.niche && ` · ${inf.niche}`}{inf.followers && ` · ${inf.followers}`}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {rfpResults.length > 0 && (
-                  <div>
-                    <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: "#10b981", borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>RFP PIPELINE ({rfpResults.length})</div>
-                    {rfpResults.map((r, i) => (
-                      <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: BWL.white }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{r.title}</div>
-                        <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono }}>{r.organization} · {r.status?.toUpperCase()}{r.revenue && ` · ${r.revenue}`}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {!q && (
-          <div style={{ padding: 20, fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, textAlign: "center" }}>
-            Type to search across tasks, influencers, and RFP pipeline
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-  const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
-  const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
-  const rfpTracker = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
-  const influencers = (() => { const s = storage.get("influencer-tracker"); return s ? JSON.parse(s.value) : []; })();
-
-  const getProgress = member => {
-    const t = tasks?.team_tasks?.[member]?.tasks || [];
-    if (!t.length) return null;
-    return Math.round((t.filter((_, i) => checked[`${member}-${i}`]).length / t.length) * 100);
-  };
-
-  const teamProgress = () => {
-    if (!tasks) return null;
-    let total = 0, done = 0;
-    TEAM_OPS.forEach(m => { const t = tasks.team_tasks?.[m]?.tasks || []; total += t.length; done += t.filter((_, i) => checked[`${m}-${i}`]).length; });
-    return total ? { pct: Math.round((done / total) * 100), total, done } : null;
-  };
-
-  const tp = teamProgress();
-  const won = rfpTracker.filter(t => t.status === "won");
-  const submitted = rfpTracker.filter(t => ["submitted","won","lost"].includes(t.status));
-  const winRate = submitted.length ? Math.round((won.length / submitted.length) * 100) : 0;
-  const totalRev = won.filter(t => t.revenue).reduce((a, t) => a + parseFloat(t.revenue.replace(/[^0-9.]/g,"")) || 0, 0);
-  const activeInf = influencers.filter(i => i.status === "active").length;
-  const negoInf = influencers.filter(i => i.status === "under_nego").length;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* HEADER */}
-      <div style={{ borderBottom: `2px solid ${BWL.black}`, paddingBottom: 20 }}>
-        <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 6 }}>■ DASHBOARD</div>
-        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1 }}>{weekLabel()}</div>
-        <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginTop: 4 }}>
-          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
-        </div>
-      </div>
-
-      {/* TOP STATS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
-        {[
-          ["TEAM PROGRESS", tp ? `${tp.pct}%` : "—", tp ? `${tp.done}/${tp.total} tasks done` : "No tasks generated yet", tp?.pct === 100 ? "#10b981" : BWL.orange],
-          ["RFP WIN RATE", `${winRate}%`, `${won.length} won · ${rfpTracker.filter(t=>t.status==="submitted").length} pending`, winRate >= 50 ? "#10b981" : "#f59e0b"],
-          ["INFLUENCERS", `${influencers.length}`, `${activeInf} active · ${negoInf} under nego`, "#6c63ff"],
-        ].map(([label, value, sub, color]) => (
-          <div key={label} style={{ background: BWL.white, border: `1.5px solid ${BWL.black}`, padding: 20 }}>
-            <div style={{ fontSize: 9, color: BWL.gray, fontWeight: 900, letterSpacing: 3, marginBottom: 12, fontFamily: BWL.mono }}>{label}</div>
-            <div style={{ fontSize: 36, fontWeight: 900, color, marginBottom: 6 }}>{value}</div>
-            <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* TEAM PROGRESS */}
-      {tasks ? (
-        <Card>
-          <CardHeader label="TEAM TASK PROGRESS" />
-          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-            {TEAM_OPS.map(member => {
-              const p = getProgress(member);
-              if (p === null) return null;
-              const memberTasks = tasks?.team_tasks?.[member]?.tasks || [];
-              const overdue = memberTasks.filter((t, i) => !checked[`${member}-${i}`] && (() => {
-                if (!t.due_day) return false;
-                const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-                return days.indexOf(t.due_day) < new Date().getDay();
-              })()).length;
-              return (
-                <div key={member} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 140, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{member.split(" ")[0]}</div>
-                  <div style={{ flex: 1, background: BWL.lightGray, height: 6, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${p}%`, background: p === 100 ? "#10b981" : BWL.orange, transition: "width 0.3s" }} />
-                  </div>
-                  <div style={{ width: 36, fontSize: 12, fontWeight: 900, color: p === 100 ? "#10b981" : BWL.orange, textAlign: "right" }}>{p}%</div>
-                  {overdue > 0 && <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 700, whiteSpace: "nowrap" }}>{overdue} overdue</div>}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      ) : (
-        <Card style={{ padding: 24, textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginBottom: 12 }}>NO TASKS GENERATED YET</div>
-          <div style={{ fontSize: 13, color: BWL.black }}>Go to OPS PULSE to generate this week's tasks.</div>
-        </Card>
-      )}
-
-      {/* RFP + INFLUENCER SUMMARY */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-        <Card>
-          <CardHeader label="RFP PIPELINE" />
-          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-            {rfpTracker.length === 0 ? <div style={{ fontSize: 12, color: BWL.gray, fontFamily: BWL.mono }}>No proposals saved yet.</div> :
-            [["Total", rfpTracker.length, BWL.black], ["Submitted", rfpTracker.filter(t=>t.status==="submitted").length, "#f59e0b"], ["Won", won.length, "#10b981"], ["Lost", rfpTracker.filter(t=>t.status==="lost").length, "#ef4444"]].map(([l, v, c]) => (
-              <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${BWL.lightGray}` }}>
-                <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{l}</div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: c }}>{v}</div>
-              </div>
-            ))}
-            {totalRev > 0 && <div style={{ marginTop: 8, background: "#10b98111", padding: "10px 12px" }}>
-              <div style={{ fontSize: 9, color: "#10b981", fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>REVENUE WON</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#10b981" }}>${totalRev.toLocaleString()}</div>
-            </div>}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader label="INFLUENCER TRACKER" />
-          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-            {influencers.length === 0 ? <div style={{ fontSize: 12, color: BWL.gray, fontFamily: BWL.mono }}>No influencers tracked yet.</div> :
-            [["Total", influencers.length, BWL.black], ["Active", activeInf, "#10b981"], ["Under Nego", negoInf, "#f59e0b"], ["Paid", influencers.filter(i=>i.status==="paid").length, "#6c63ff"], ["Completed", influencers.filter(i=>i.status==="completed").length, BWL.gray]].map(([l, v, c]) => (
-              <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${BWL.lightGray}` }}>
-                <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{l}</div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: c }}>{v}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
+// ═══════════════════════════════════════════════════════════════════════════════
+// WEEKLY REPORT
+// ═══════════════════════════════════════════════════════════════════════════════
 function WeeklyReport() {
   const [updates, setUpdates] = useState(""); const [slack, setSlack] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
@@ -827,26 +772,29 @@ function WeeklyReport() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="📝 YOUR UPDATES THIS WEEK" value={updates} onChange={setUpdates} placeholder={`Type your updates for ${weekLabel()}...`} />
-      <Textarea label="💬 SLACK / NOTES (OPTIONAL)" value={slack} onChange={setSlack} placeholder="Paste relevant Slack messages..." minHeight={80} />
-      <Btn onClick={gen} disabled={!updates.trim()} loading={loading} label={`⚡ GENERATE WEEKLY REPORT — ${weekLabel()}`} />
+      <Textarea label="YOUR UPDATES THIS WEEK" value={updates} onChange={setUpdates} placeholder={`Type your updates for ${weekLabel()}...`} />
+      <Textarea label="SLACK / NOTES (OPTIONAL)" value={slack} onChange={setSlack} placeholder="Paste relevant Slack messages..." minHeight={80} />
+      <Btn onClick={gen} disabled={!updates.trim()} loading={loading} label={`GENERATE WEEKLY REPORT — ${weekLabel()}`} />
       <Err msg={error} />
       {result && <div id="weekly-report-pdf">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{background:BWL.black,borderRadius:0,padding:18,flex:1,marginRight:10}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8}}>TL;DR FOR DAVID</div><p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7}}>{result.executive_summary}</p></div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10}}>
+          <div style={{background:BWL.black,padding:18,flex:1}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8,fontFamily:BWL.mono}}>TL;DR FOR DAVID</div><p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7,fontFamily:BWL.mono}}>{result.executive_summary}</p></div>
           <ExportBtn title={`Weekly Report — ${weekLabel()}`} contentId="weekly-report-pdf" />
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="✅ WINS" items={result.wins} color="#10b981" /><Bullets label="🚧 BLOCKERS" items={result.blockers?.length?result.blockers:["None 🎉"]} color="#ef4444" /></div>
-        <Bullets label="📅 NEXT WEEK" items={result.next_week} color="#6c63ff" />
-        <Bullets label="👀 DAVID NEEDS TO KNOW" items={result.david_needs_to_know?.length?result.david_needs_to_know:["Nothing urgent 👍"]} color={BWL.orange} />
-        <ResultBlock label="📄 FULL REPORT" content={result.full_report} copyable />
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="WINS" items={result.wins} color="#10b981" /><Bullets label="BLOCKERS" items={result.blockers?.length?result.blockers:["None"]} color="#ef4444" /></div>
+        <Bullets label="NEXT WEEK" items={result.next_week} color="#6c63ff" />
+        <Bullets label="DAVID NEEDS TO KNOW" items={result.david_needs_to_know?.length?result.david_needs_to_know:["Nothing urgent"]} color={BWL.orange} />
+        <ResultBlock label="FULL REPORT" content={result.full_report} copyable />
       </div>}
     </div>
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXEC COMMS
+// ═══════════════════════════════════════════════════════════════════════════════
 function ExecComms() {
-  const TYPES = [{key:"announcement",label:"📢 Announcement"},{key:"followup",label:"🔄 Follow-up"},{key:"recap",label:"📋 Meeting Recap"},{key:"slack",label:"💬 Slack Message"}];
+  const TYPES = [{key:"announcement",label:"Announcement"},{key:"followup",label:"Follow-up"},{key:"recap",label:"Meeting Recap"},{key:"slack",label:"Slack Message"}];
   const [type, setType] = useState("announcement"); const [context, setContext] = useState(""); const [tone, setTone] = useState("professional"); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
     setLoading(true); setResult(null); setError(null);
@@ -856,16 +804,19 @@ function ExecComms() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{TYPES.map(t=><button key={t.key} onClick={()=>{setType(t.key);setResult(null);}} style={{padding:"11px 14px",borderRadius:10,fontSize:12,fontWeight:700,background:type===t.key?BWL.black:BWL.white,color:type===t.key?BWL.white:BWL.gray,border:type===t.key?`2px solid ${BWL.black}`:`1px solid ${BWL.lightGray}`,cursor:"pointer",textAlign:"left"}}>{t.label}</button>)}</div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}><span style={{fontSize:11,color:BWL.gray,fontWeight:700}}>TONE:</span>{["professional","friendly","direct","urgent"].map(t=><button key={t} onClick={()=>setTone(t)} style={{padding:"5px 14px",borderRadius:20,fontSize:11,fontWeight:700,background:tone===t?BWL.orange:BWL.white,color:tone===t?BWL.white:BWL.gray,border:tone===t?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer",textTransform:"capitalize"}}>{t}</button>)}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{TYPES.map(t=><button key={t.key} onClick={()=>{setType(t.key);setResult(null);}} style={{padding:"11px 14px",fontSize:12,fontWeight:700,background:type===t.key?BWL.black:BWL.white,color:type===t.key?BWL.white:BWL.gray,border:`1.5px solid ${type===t.key?BWL.black:BWL.lightGray}`,cursor:"pointer",textAlign:"left"}}>{t.label}</button>)}</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}><span style={{fontSize:11,color:BWL.gray,fontWeight:700,fontFamily:BWL.mono}}>TONE:</span>{["professional","friendly","direct","urgent"].map(t=><button key={t} onClick={()=>setTone(t)} style={{padding:"5px 14px",fontSize:11,fontWeight:700,background:tone===t?BWL.orange:BWL.white,color:tone===t?BWL.white:BWL.gray,border:tone===t?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer",textTransform:"uppercase",letterSpacing:1,fontFamily:BWL.mono}}>{t}</button>)}</div>
       <Textarea label="CONTEXT" value={context} onChange={setContext} placeholder="What do you need to communicate? Who is the audience?" />
-      <Btn onClick={gen} disabled={!context.trim()} loading={loading} label="✉️ DRAFT COMMS" />
+      <Btn onClick={gen} disabled={!context.trim()} loading={loading} label="DRAFT COMMS" />
       <Err msg={error} />
-      {result && <>{result.subject&&<div style={{background:BWL.black,borderRadius:12,padding:"14px 18px"}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white}}>{result.subject}</div></div>}<ResultBlock label="✅ MAIN DRAFT" content={result.draft} copyable /><ResultBlock label="🔀 ALTERNATIVE" content={result.alt_version} color={BWL.gray} copyable /><Bullets label="💡 TIPS" items={result.tips} color={BWL.orange} /></>}
+      {result && <>{result.subject&&<div style={{background:BWL.black,padding:"14px 18px"}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4,fontFamily:BWL.mono}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white}}>{result.subject}</div></div>}<ResultBlock label="MAIN DRAFT" content={result.draft} copyable /><ResultBlock label="ALTERNATIVE" content={result.alt_version} color={BWL.gray} copyable /><Bullets label="TIPS" items={result.tips} color={BWL.orange} /></>}
     </div>
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// TEAM MODE TOOLS
+// ═══════════════════════════════════════════════════════════════════════════════
 function DailyBriefing() {
   const [input, setInput] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
@@ -876,17 +827,17 @@ function DailyBriefing() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="📋 PASTE UPDATES, REPORTS, SLACK MESSAGES" value={input} onChange={setInput} placeholder="Paste anything David needs to be briefed on today..." />
-      <Btn onClick={gen} disabled={!input.trim()} loading={loading} label="⚡ GENERATE DAILY BRIEFING" />
+      <Textarea label="PASTE UPDATES, REPORTS, SLACK MESSAGES" value={input} onChange={setInput} placeholder="Paste anything David needs to be briefed on today..." />
+      <Btn onClick={gen} disabled={!input.trim()} loading={loading} label="GENERATE DAILY BRIEFING" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8}}>TL;DR</div><p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7}}>{result.summary}</p></div>
+        <div style={{background:BWL.black,padding:18}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8,fontFamily:BWL.mono}}>TL;DR</div><p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7,fontFamily:BWL.mono}}>{result.summary}</p></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <Bullets label="🚨 URGENT" items={result.urgent_items} color="#ef4444" />
-          <Bullets label="🧠 DECISIONS NEEDED" items={result.decisions_needed} color="#6c63ff" />
-          <Bullets label="📌 FYI" items={result.fyi_items} color="#f59e0b" />
+          <Bullets label="URGENT" items={result.urgent_items} color="#ef4444" />
+          <Bullets label="DECISIONS NEEDED" items={result.decisions_needed} color="#6c63ff" />
+          <Bullets label="FYI" items={result.fyi_items} color="#f59e0b" />
         </div>
-        <ResultBlock label="📄 FULL BRIEFING" content={result.full_briefing} copyable />
+        <ResultBlock label="FULL BRIEFING" content={result.full_briefing} copyable />
       </>}
     </div>
   );
@@ -903,26 +854,26 @@ function TeamPerformance() {
   const hColor = h => ({green:"#10b981",yellow:"#f59e0b",red:"#ef4444"}[h]||BWL.gray);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="📊 PASTE TEAM UPDATES, REPORTS, OR NOTES" value={input} onChange={setInput} placeholder="Paste any team updates, SOD reports, task completions..." />
-      <Btn onClick={gen} disabled={!input.trim()} loading={loading} label="📊 ANALYZE TEAM PERFORMANCE" />
+      <Textarea label="PASTE TEAM UPDATES, REPORTS, OR NOTES" value={input} onChange={setInput} placeholder="Paste any team updates, SOD reports, task completions..." />
+      <Btn onClick={gen} disabled={!input.trim()} loading={loading} label="ANALYZE TEAM PERFORMANCE" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18}}>
+        <div style={{background:BWL.black,padding:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2}}>TEAM HEALTH</div>
-            <span style={{background:hColor(result.overall_health)+"22",color:hColor(result.overall_health),borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:900,textTransform:"uppercase"}}>{result.overall_health==="green"?"✅ Healthy":result.overall_health==="yellow"?"⚠️ Watch":"🚨 Critical"}</span>
+            <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,fontFamily:BWL.mono}}>TEAM HEALTH</div>
+            <span style={{background:hColor(result.overall_health)+"22",color:hColor(result.overall_health),padding:"4px 14px",fontSize:12,fontWeight:900,textTransform:"uppercase",fontFamily:BWL.mono}}>{result.overall_health==="green"?"HEALTHY":result.overall_health==="yellow"?"WATCH":"CRITICAL"}</span>
           </div>
-          <p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7}}>{result.summary}</p>
+          <p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7,fontFamily:BWL.mono}}>{result.summary}</p>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <Bullets label="🏆 TOP PERFORMERS" items={result.top_performers} color="#10b981" />
-          <Bullets label="⚠️ NEEDS ATTENTION" items={result.needs_attention} color="#ef4444" />
+          <Bullets label="TOP PERFORMERS" items={result.top_performers} color="#10b981" />
+          <Bullets label="NEEDS ATTENTION" items={result.needs_attention} color="#ef4444" />
         </div>
-        <Bullets label="💡 TEAM INSIGHTS" items={result.team_insights} color="#6c63ff" />
-        <Bullets label="👣 RECOMMENDED ACTIONS" items={result.recommended_actions} color="#f59e0b" />
-        <Card style={{padding:16,border:`1px solid ${BWL.orange}33`,background:"#fff8f0"}}>
-          <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8}}>👑 DAVID'S FOCUS THIS WEEK</div>
-          <p style={{margin:0,fontSize:13,color:BWL.black,lineHeight:1.6}}>{result.david_focus}</p>
+        <Bullets label="TEAM INSIGHTS" items={result.team_insights} color="#6c63ff" />
+        <Bullets label="RECOMMENDED ACTIONS" items={result.recommended_actions} color="#f59e0b" />
+        <Card style={{padding:16,border:`1.5px solid ${BWL.orange}`,background:"#fff8f0"}}>
+          <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8,fontFamily:BWL.mono}}>DAVID'S FOCUS THIS WEEK</div>
+          <p style={{margin:0,fontSize:13,color:BWL.black,lineHeight:1.6,fontFamily:BWL.mono}}>{result.david_focus}</p>
         </Card>
       </>}
     </div>
@@ -940,29 +891,29 @@ function StrategicDecision() {
   const confColor = c => ({high:"#10b981",medium:"#f59e0b",low:"#ef4444"}[c]||BWL.gray);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="🧠 SITUATION / DECISION" value={situation} onChange={setSituation} placeholder="Describe the strategic decision or situation..." />
+      <Textarea label="SITUATION / DECISION" value={situation} onChange={setSituation} placeholder="Describe the strategic decision or situation..." />
       <Textarea label="OPTIONS BEING CONSIDERED (OPTIONAL)" value={options} onChange={setOptions} placeholder="List the options..." minHeight={80} />
-      <Btn onClick={gen} disabled={!situation.trim()} loading={loading} label="🧠 ANALYZE DECISION" />
+      <Btn onClick={gen} disabled={!situation.trim()} loading={loading} label="ANALYZE DECISION" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18}}>
+        <div style={{background:BWL.black,padding:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2}}>✅ RECOMMENDATION</div>
-            {result.confidence&&<span style={{background:confColor(result.confidence)+"22",color:confColor(result.confidence),borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700,textTransform:"uppercase"}}>{result.confidence} confidence</span>}
+            <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,fontFamily:BWL.mono}}>RECOMMENDATION</div>
+            {result.confidence&&<span style={{background:confColor(result.confidence)+"22",color:confColor(result.confidence),padding:"3px 12px",fontSize:11,fontWeight:700,textTransform:"uppercase",fontFamily:BWL.mono}}>{result.confidence} confidence</span>}
           </div>
-          <p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7}}>{result.recommendation}</p>
+          <p style={{margin:0,color:BWL.white,fontSize:14,lineHeight:1.7,fontFamily:BWL.mono}}>{result.recommendation}</p>
         </div>
         {result.pros_cons?.map((o,i)=>(
           <Card key={i} style={{padding:16}}>
             <div style={{fontWeight:900,fontSize:13,marginBottom:10}}>{o.option}</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-              <Bullets label="✅ PROS" items={o.pros} color="#10b981" />
-              <Bullets label="❌ CONS" items={o.cons} color="#ef4444" />
+              <Bullets label="PROS" items={o.pros} color="#10b981" />
+              <Bullets label="CONS" items={o.cons} color="#ef4444" />
             </div>
           </Card>
         ))}
-        <Bullets label="👣 NEXT STEPS" items={result.next_steps} color="#6c63ff" />
-        <ResultBlock label="📝 DECISION LOG" content={result.decision_log} copyable />
+        <Bullets label="NEXT STEPS" items={result.next_steps} color="#6c63ff" />
+        <ResultBlock label="DECISION LOG" content={result.decision_log} copyable />
       </>}
     </div>
   );
@@ -978,24 +929,24 @@ function SequenceBuilder() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="🎯 TARGET AUDIENCE / ICP" value={icp} onChange={setIcp} placeholder="Who are you targeting?" minHeight={80} />
-      <Textarea label="🎯 CAMPAIGN GOAL" value={goal} onChange={setGoal} placeholder="e.g. Book discovery call..." minHeight={70} />
-      <Btn onClick={gen} disabled={!icp.trim()||!goal.trim()} loading={loading} label="📨 BUILD EMAIL SEQUENCE" />
+      <Textarea label="TARGET AUDIENCE / ICP" value={icp} onChange={setIcp} placeholder="Who are you targeting?" minHeight={80} />
+      <Textarea label="CAMPAIGN GOAL" value={goal} onChange={setGoal} placeholder="e.g. Book discovery call..." minHeight={70} />
+      <Btn onClick={gen} disabled={!icp.trim()||!goal.trim()} loading={loading} label="BUILD EMAIL SEQUENCE" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:16}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4}}>SEQUENCE</div><div style={{fontSize:15,fontWeight:900,color:BWL.white}}>{result.sequence_name}</div></div>
+        <div style={{background:BWL.black,padding:16}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4,fontFamily:BWL.mono}}>SEQUENCE</div><div style={{fontSize:15,fontWeight:900,color:BWL.white}}>{result.sequence_name}</div></div>
         {result.emails?.map((e,i)=>(
           <Card key={i} style={{padding:18}}>
             <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
-              <span style={{background:BWL.black,color:BWL.white,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:900}}>Email {e.step}</span>
-              <span style={{fontSize:11,color:BWL.gray}}>{e.send_day}</span>
-              <span style={{fontSize:11,color:"#6c63ff",marginLeft:"auto"}}>{e.goal}</span>
+              <span style={{background:BWL.black,color:BWL.white,padding:"3px 12px",fontSize:11,fontWeight:900,fontFamily:BWL.mono}}>EMAIL {e.step}</span>
+              <span style={{fontSize:11,color:BWL.gray,fontFamily:BWL.mono}}>{e.send_day}</span>
+              <span style={{fontSize:11,color:"#6c63ff",marginLeft:"auto",fontFamily:BWL.mono}}>{e.goal}</span>
             </div>
-            <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Subject: {e.subject}</div>
-            <div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",background:BWL.bg,borderRadius:8,padding:12}}>{e.body}</div>
+            <div style={{fontSize:12,fontWeight:700,marginBottom:8,fontFamily:BWL.mono}}>Subject: {e.subject}</div>
+            <div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",background:BWL.bg,padding:12,fontFamily:BWL.mono}}>{e.body}</div>
           </Card>
         ))}
-        <Bullets label="💡 TIPS" items={result.tips} color={BWL.orange} />
+        <Bullets label="TIPS" items={result.tips} color={BWL.orange} />
       </>}
     </div>
   );
@@ -1011,17 +962,17 @@ function LeadResearch() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="🔍 COMPANY / LEAD TO RESEARCH" value={target} onChange={setTarget} placeholder="Company name, website, or any lead details..." minHeight={90} />
-      <Btn onClick={gen} disabled={!target.trim()} loading={loading} label="🔍 RESEARCH LEAD" />
+      <Textarea label="COMPANY / LEAD TO RESEARCH" value={target} onChange={setTarget} placeholder="Company name, website, or any lead details..." minHeight={90} />
+      <Btn onClick={gen} disabled={!target.trim()} loading={loading} label="RESEARCH LEAD" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-          <div style={{flex:1}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8}}>OVERVIEW</div><p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7}}>{result.company_summary}</p></div>
-          <div style={{textAlign:"center",marginLeft:20}}><div style={{fontSize:32,fontWeight:900,color:result.estimated_fit_score>=80?"#10b981":result.estimated_fit_score>=60?"#f59e0b":"#ef4444"}}>{result.estimated_fit_score}</div><div style={{fontSize:9,color:BWL.gray,fontWeight:700}}>FIT SCORE</div></div>
+        <div style={{background:BWL.black,padding:18,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div style={{flex:1}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:8,fontFamily:BWL.mono}}>OVERVIEW</div><p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7,fontFamily:BWL.mono}}>{result.company_summary}</p></div>
+          <div style={{textAlign:"center",marginLeft:20}}><div style={{fontSize:32,fontWeight:900,color:result.estimated_fit_score>=80?"#10b981":result.estimated_fit_score>=60?"#f59e0b":"#ef4444"}}>{result.estimated_fit_score}</div><div style={{fontSize:9,color:BWL.gray,fontWeight:700,fontFamily:BWL.mono}}>FIT SCORE</div></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="😤 PAIN POINTS" items={result.pain_points} color="#ef4444" /><Bullets label="🗣 TALKING POINTS" items={result.talking_points} color="#6c63ff" /></div>
-        <Card style={{padding:16}}><div style={{fontSize:10,color:"#10b981",fontWeight:900,letterSpacing:2,marginBottom:6}}>✅ WHY BWL FITS</div><p style={{margin:"0 0 10px",fontSize:13,lineHeight:1.6}}>{result.why_bwl_fits}</p><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6}}>🎯 ANGLE</div><p style={{margin:0,fontSize:13,lineHeight:1.6}}>{result.recommended_angle}</p></Card>
-        <ResultBlock label="📄 RESEARCH SUMMARY" content={result.research_summary} copyable />
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="PAIN POINTS" items={result.pain_points} color="#ef4444" /><Bullets label="TALKING POINTS" items={result.talking_points} color="#6c63ff" /></div>
+        <Card style={{padding:16}}><div style={{fontSize:10,color:"#10b981",fontWeight:900,letterSpacing:2,marginBottom:6,fontFamily:BWL.mono}}>WHY BWL FITS</div><p style={{margin:"0 0 10px",fontSize:13,lineHeight:1.6,fontFamily:BWL.mono}}>{result.why_bwl_fits}</p><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6,fontFamily:BWL.mono}}>ANGLE</div><p style={{margin:0,fontSize:13,lineHeight:1.6,fontFamily:BWL.mono}}>{result.recommended_angle}</p></Card>
+        <ResultBlock label="RESEARCH SUMMARY" content={result.research_summary} copyable />
       </>}
     </div>
   );
@@ -1037,15 +988,15 @@ function ColdEmailWriter() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="👤 LEAD INFO" value={lead} onChange={setLead} placeholder="Company, contact, role, pain points..." minHeight={90} />
-      <Textarea label="🎯 OFFER / ANGLE (OPTIONAL)" value={offer} onChange={setOffer} placeholder="What are you pitching?" minHeight={70} />
-      <Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="❄️ WRITE COLD EMAIL" />
+      <Textarea label="LEAD INFO" value={lead} onChange={setLead} placeholder="Company, contact, role, pain points..." minHeight={90} />
+      <Textarea label="OFFER / ANGLE (OPTIONAL)" value={offer} onChange={setOffer} placeholder="What are you pitching?" minHeight={70} />
+      <Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="WRITE COLD EMAIL" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:16}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white,marginBottom:8}}>{result.subject_line}</div><div style={{fontSize:9,color:BWL.gray,fontWeight:700,marginBottom:4}}>ALT SUBJECT</div><div style={{fontSize:13,color:"#ccc"}}>{result.alt_subject}</div></div>
-        <ResultBlock label="✉️ COLD EMAIL" content={result.email_body} copyable />
-        <ResultBlock label="🔄 FOLLOW-UP (DAY 3)" content={result.follow_up} color={BWL.gray} copyable />
-        <Bullets label="💡 TIPS" items={result.tips} color={BWL.orange} />
+        <div style={{background:BWL.black,padding:16}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4,fontFamily:BWL.mono}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white,marginBottom:8}}>{result.subject_line}</div><div style={{fontSize:9,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>ALT SUBJECT</div><div style={{fontSize:13,color:"#ccc",fontFamily:BWL.mono}}>{result.alt_subject}</div></div>
+        <ResultBlock label="COLD EMAIL" content={result.email_body} copyable />
+        <ResultBlock label="FOLLOW-UP (DAY 3)" content={result.follow_up} color={BWL.gray} copyable />
+        <Bullets label="TIPS" items={result.tips} color={BWL.orange} />
       </>}
     </div>
   );
@@ -1061,15 +1012,15 @@ function CallScript() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="👤 LEAD / COMPANY INFO" value={lead} onChange={setLead} placeholder="Who are you calling?" minHeight={90} />
-      <Card><CardHeader label="🎯 CALL GOAL" /><input value={goal} onChange={e=>setGoal(e.target.value)} style={{width:"100%",background:"transparent",border:"none",color:BWL.black,fontSize:13,padding:"12px 16px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></Card>
-      <Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="📞 GENERATE CALL SCRIPT" />
+      <Textarea label="LEAD / COMPANY INFO" value={lead} onChange={setLead} placeholder="Who are you calling?" minHeight={90} />
+      <Card><CardHeader label="CALL GOAL" /><input value={goal} onChange={e=>setGoal(e.target.value)} style={{width:"100%",background:"transparent",border:"none",color:BWL.black,fontSize:13,padding:"12px 16px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></Card>
+      <Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="GENERATE CALL SCRIPT" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:16}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6}}>OPENER</div><p style={{margin:"0 0 12px",color:BWL.white,fontSize:13,lineHeight:1.7}}>{result.opener}</p><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6}}>VALUE PROP</div><p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7}}>{result.value_prop}</p></div>
-        <Bullets label="❓ DISCOVERY QUESTIONS" items={result.discovery_questions} color="#6c63ff" />
-        <Card style={{padding:16}}><div style={{fontSize:10,color:"#f59e0b",fontWeight:900,letterSpacing:2,marginBottom:10}}>🛡 OBJECTION HANDLING</div>{result.objection_handling?.map((o,i)=><div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<result.objection_handling.length-1?`1px solid ${BWL.lightGray}`:"none"}}><div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:4}}>"{o.objection}"</div><div style={{fontSize:12,lineHeight:1.5}}>→ {o.response}</div></div>)}</Card>
-        <ResultBlock label="📜 FULL SCRIPT" content={result.full_script} copyable />
+        <div style={{background:BWL.black,padding:16}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6,fontFamily:BWL.mono}}>OPENER</div><p style={{margin:"0 0 12px",color:BWL.white,fontSize:13,lineHeight:1.7,fontFamily:BWL.mono}}>{result.opener}</p><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6,fontFamily:BWL.mono}}>VALUE PROP</div><p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7,fontFamily:BWL.mono}}>{result.value_prop}</p></div>
+        <Bullets label="DISCOVERY QUESTIONS" items={result.discovery_questions} color="#6c63ff" />
+        <Card style={{padding:16}}><div style={{fontSize:10,color:"#f59e0b",fontWeight:900,letterSpacing:2,marginBottom:10,fontFamily:BWL.mono}}>OBJECTION HANDLING</div>{result.objection_handling?.map((o,i)=><div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<result.objection_handling.length-1?`1px solid ${BWL.lightGray}`:"none"}}><div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:4,fontFamily:BWL.mono}}>"{o.objection}"</div><div style={{fontSize:12,lineHeight:1.5,fontFamily:BWL.mono}}>→ {o.response}</div></div>)}</Card>
+        <ResultBlock label="FULL SCRIPT" content={result.full_script} copyable />
       </>}
     </div>
   );
@@ -1086,26 +1037,26 @@ function AfterCallAutomation() {
   const outColor = o => ({connected:"#10b981",interested:"#10b981",meeting_booked:"#10b981",no_answer:"#f59e0b",left_voicemail:"#f59e0b",not_interested:"#ef4444"}[o]||BWL.gray);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="📞 CALL NOTES" value={callNotes} onChange={setCallNotes} placeholder="What happened on the call? Messy notes are fine." />
-      <Btn onClick={gen} disabled={!callNotes.trim()} loading={loading} label="⚡ GENERATE AFTER-CALL AUTOMATIONS" />
+      <Textarea label="CALL NOTES" value={callNotes} onChange={setCallNotes} placeholder="What happened on the call? Messy notes are fine." />
+      <Btn onClick={gen} disabled={!callNotes.trim()} loading={loading} label="GENERATE AFTER-CALL AUTOMATIONS" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18}}>
+        <div style={{background:BWL.black,padding:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2}}>CALL SUMMARY</div>
-            {result.outcome&&<span style={{background:outColor(result.outcome)+"22",color:outColor(result.outcome),borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700,textTransform:"uppercase"}}>{result.outcome.replace("_"," ")}</span>}
+            <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,fontFamily:BWL.mono}}>CALL SUMMARY</div>
+            {result.outcome&&<span style={{background:outColor(result.outcome)+"22",color:outColor(result.outcome),padding:"3px 12px",fontSize:11,fontWeight:700,textTransform:"uppercase",fontFamily:BWL.mono}}>{result.outcome.replace("_"," ")}</span>}
           </div>
-          <p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7}}>{result.call_summary}</p>
+          <p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7,fontFamily:BWL.mono}}>{result.call_summary}</p>
         </div>
-        <ResultBlock label="🗃 CRM NOTES" content={result.crm_notes} copyable />
+        <ResultBlock label="CRM NOTES" content={result.crm_notes} copyable />
         {result.follow_up_email&&<Card style={{padding:18}}>
-          <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:10}}>✉️ FOLLOW-UP EMAIL</div>
-          <div style={{background:BWL.black,borderRadius:8,padding:"10px 14px",marginBottom:10}}><div style={{fontSize:9,color:BWL.gray,fontWeight:700,marginBottom:3}}>SUBJECT</div><div style={{fontSize:13,fontWeight:700,color:BWL.white}}>{result.follow_up_email.subject}</div></div>
-          <div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",background:BWL.bg,borderRadius:8,padding:14}}>{result.follow_up_email.body}</div>
-          <button onClick={()=>navigator.clipboard.writeText(result.follow_up_email.body)} style={{marginTop:10,background:BWL.black,color:BWL.white,border:"none",borderRadius:8,padding:"7px 16px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Copy Email</button>
+          <div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:10,fontFamily:BWL.mono}}>FOLLOW-UP EMAIL</div>
+          <div style={{background:BWL.black,padding:"10px 14px",marginBottom:10}}><div style={{fontSize:9,color:BWL.gray,fontWeight:700,marginBottom:3,fontFamily:BWL.mono}}>SUBJECT</div><div style={{fontSize:13,fontWeight:700,color:BWL.white,fontFamily:BWL.mono}}>{result.follow_up_email.subject}</div></div>
+          <div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",background:BWL.bg,padding:14,fontFamily:BWL.mono}}>{result.follow_up_email.body}</div>
+          <button onClick={()=>navigator.clipboard.writeText(result.follow_up_email.body)} style={{marginTop:10,background:BWL.black,color:BWL.white,border:"none",padding:"7px 16px",fontSize:11,fontWeight:700,cursor:"pointer"}}>COPY EMAIL</button>
         </Card>}
-        <Card style={{padding:16,border:`1px solid ${BWL.orange}33`,background:"#fff8f0"}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6}}>👣 NEXT ACTION</div><p style={{margin:0,fontSize:13,color:BWL.black,lineHeight:1.6}}>{result.next_action}</p></Card>
-        <ResultBlock label="💬 SLACK UPDATE" content={result.slack_update} color="#6c63ff" copyable />
+        <Card style={{padding:16,border:`1.5px solid ${BWL.orange}`,background:"#fff8f0"}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6,fontFamily:BWL.mono}}>NEXT ACTION</div><p style={{margin:0,fontSize:13,color:BWL.black,lineHeight:1.6,fontFamily:BWL.mono}}>{result.next_action}</p></Card>
+        <ResultBlock label="SLACK UPDATE" content={result.slack_update} color="#6c63ff" copyable />
       </>}
     </div>
   );
@@ -1121,11 +1072,11 @@ function InfluencerOutreach() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="🌟 INFLUENCER INFO" value={influencer} onChange={setInfluencer} placeholder="Name, niche, platform, followers..." minHeight={80} />
-      <Textarea label="📁 CAMPAIGN / BRAND" value={campaign} onChange={setCampaign} placeholder="What brand or campaign are you pitching?" minHeight={80} />
-      <Btn onClick={gen} disabled={!influencer.trim()||!campaign.trim()} loading={loading} label="🌟 GENERATE OUTREACH" />
+      <Textarea label="INFLUENCER INFO" value={influencer} onChange={setInfluencer} placeholder="Name, niche, platform, followers..." minHeight={80} />
+      <Textarea label="CAMPAIGN / BRAND" value={campaign} onChange={setCampaign} placeholder="What brand or campaign are you pitching?" minHeight={80} />
+      <Btn onClick={gen} disabled={!influencer.trim()||!campaign.trim()} loading={loading} label="GENERATE OUTREACH" />
       <Err msg={error} />
-      {result && <>{result.subject&&<div style={{background:BWL.black,borderRadius:12,padding:"14px 18px"}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white}}>{result.subject}</div></div>}<ResultBlock label="✉️ OUTREACH" content={result.outreach_message} copyable /><ResultBlock label="🔄 FOLLOW-UP (DAY 3)" content={result.follow_up} color={BWL.gray} copyable /><ResultBlock label="📋 COLLAB BRIEF" content={result.collaboration_brief} color="#6c63ff" copyable /><Bullets label="💡 TIPS" items={result.tips} color={BWL.orange} /></>}
+      {result && <>{result.subject&&<div style={{background:BWL.black,padding:"14px 18px"}}><div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4,fontFamily:BWL.mono}}>SUBJECT</div><div style={{fontSize:14,fontWeight:700,color:BWL.white}}>{result.subject}</div></div>}<ResultBlock label="OUTREACH" content={result.outreach_message} copyable /><ResultBlock label="FOLLOW-UP (DAY 3)" content={result.follow_up} color={BWL.gray} copyable /><ResultBlock label="COLLAB BRIEF" content={result.collaboration_brief} color="#6c63ff" copyable /><Bullets label="TIPS" items={result.tips} color={BWL.orange} /></>}
     </div>
   );
 }
@@ -1140,13 +1091,13 @@ function CampaignBrief() {
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="📁 CAMPAIGN DETAILS" value={details} onChange={setDetails} placeholder="Brand, product, goal, audience, budget..." />
-      <Btn onClick={gen} disabled={!details.trim()} loading={loading} label="📁 BUILD CAMPAIGN BRIEF" />
+      <Textarea label="CAMPAIGN DETAILS" value={details} onChange={setDetails} placeholder="Brand, product, goal, audience, budget..." />
+      <Btn onClick={gen} disabled={!details.trim()} loading={loading} label="BUILD CAMPAIGN BRIEF" />
       <Err msg={error} />
       {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4}}>CAMPAIGN</div><div style={{fontSize:18,fontWeight:900,color:BWL.white,marginBottom:10}}>{result.campaign_name}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.7}}>{result.objective}</div></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="📦 DELIVERABLES" items={result.deliverables} color="#6c63ff" /><Bullets label="📊 KPIs" items={result.kpis} color="#10b981" /><Bullets label="✅ DOs" items={result.dos} color="#10b981" /><Bullets label="❌ DON'Ts" items={result.donts} color="#ef4444" /></div>
-        <ResultBlock label="📄 FULL BRIEF" content={result.full_brief} copyable />
+        <div style={{background:BWL.black,padding:18}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4,fontFamily:BWL.mono}}>CAMPAIGN</div><div style={{fontSize:18,fontWeight:900,color:BWL.white,marginBottom:10}}>{result.campaign_name}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.7,fontFamily:BWL.mono}}>{result.objective}</div></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="DELIVERABLES" items={result.deliverables} color="#6c63ff" /><Bullets label="KPIs" items={result.kpis} color="#10b981" /><Bullets label="DOs" items={result.dos} color="#10b981" /><Bullets label="DON'Ts" items={result.donts} color="#ef4444" /></div>
+        <ResultBlock label="FULL BRIEF" content={result.full_brief} copyable />
       </>}
     </div>
   );
@@ -1156,10 +1107,13 @@ function InfluencerTracker() {
   const [influencers, setInfluencers] = useState(() => { const s=storage.get("influencer-tracker"); return s?JSON.parse(s.value):[]; });
   const [form, setForm] = useState({ name:"", handle:"", platform:"Instagram", niche:"", followers:"", status:"under_nego", rate:"", notes:"", email:"", contact:"" });
   const [showForm, setShowForm] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [filter, setFilter] = useState("all");
+  const save = (list) => { setInfluencers(list); storage.set("influencer-tracker", JSON.stringify(list)); };
+  const add = () => { save([{...form,id:Date.now(),created_at:new Date().toISOString()},...influencers]); setForm({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:"",email:"",contact:""}); setShowForm(false); };
+  const del = (id) => save(influencers.filter(i=>i.id!==id));
+  const updateStatus = (id,status) => save(influencers.map(i=>i.id===id?{...i,status}:i));
 
   const handleCSV = async (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -1167,65 +1121,40 @@ function InfluencerTracker() {
     const text = await file.text();
     const lines = text.split("\n").filter(l => l.trim());
     const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g,""));
-    const rows = lines.slice(1).map(line => {
-      const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g,""));
-      return headers.reduce((obj, h, i) => ({ ...obj, [h]: vals[i] || "" }), {});
-    });
+    const rows = lines.slice(1).map(line => { const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g,"")); return headers.reduce((obj, h, i) => ({ ...obj, [h]: vals[i] || "" }), {}); });
     const fieldMap = { name:["name","fullname"], handle:["handle","username","ig","tiktok","account"], platform:["platform","channel"], niche:["niche","category","genre"], followers:["followers","followercount","subs"], rate:["rate","fee","price","cost"], status:["status"], notes:["notes","remarks","comment"], email:["email","emailaddress"], contact:["contact","phone","mobile","number"] };
     const findField = (row, keys) => { for (const k of keys) { const match = Object.keys(row).find(h => h.includes(k)); if (match && row[match]) return row[match]; } return ""; };
-    const imported = rows.filter(r => findField(r, fieldMap.name)).map(r => ({
-      id: Date.now() + Math.random(),
-      name: findField(r, fieldMap.name),
-      handle: findField(r, fieldMap.handle),
-      platform: findField(r, fieldMap.platform) || "Instagram",
-      niche: findField(r, fieldMap.niche),
-      followers: findField(r, fieldMap.followers),
-      rate: findField(r, fieldMap.rate),
-      status: findField(r, fieldMap.status) || "under_nego",
-      notes: findField(r, fieldMap.notes),
-      email: findField(r, fieldMap.email),
-      contact: findField(r, fieldMap.contact),
-      created_at: new Date().toISOString()
-    }));
-    const merged = [...imported, ...influencers];
-    save(merged);
+    const imported = rows.filter(r => findField(r, fieldMap.name)).map(r => ({ id: Date.now() + Math.random(), name: findField(r, fieldMap.name), handle: findField(r, fieldMap.handle), platform: findField(r, fieldMap.platform) || "Instagram", niche: findField(r, fieldMap.niche), followers: findField(r, fieldMap.followers), rate: findField(r, fieldMap.rate), status: findField(r, fieldMap.status) || "under_nego", notes: findField(r, fieldMap.notes), email: findField(r, fieldMap.email), contact: findField(r, fieldMap.contact), created_at: new Date().toISOString() }));
+    save([...imported, ...influencers]);
     setImportResult({ count: imported.length, skipped: rows.length - imported.length });
-    setImporting(false); setShowImport(false);
-    e.target.value = "";
+    setImporting(false); e.target.value = "";
   };
-  const save = (list) => { setInfluencers(list); storage.set("influencer-tracker", JSON.stringify(list)); };
-  const add = () => { save([{...form,id:Date.now(),created_at:new Date().toISOString()},...influencers]); setForm({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:"",email:"",contact:""}); setShowForm(false); };
-  const del = (id) => save(influencers.filter(i=>i.id!==id));
-  const updateStatus = (id,status) => save(influencers.map(i=>i.id===id?{...i,status}:i));
-  const statuses = {active:{label:"🟢 Active",color:"#10b981"},paid:{label:"💰 Paid",color:"#6c63ff"},under_nego:{label:"🟡 Under Nego",color:"#f59e0b"},completed:{label:"✅ Completed",color:BWL.gray},declined:{label:"❌ Declined",color:"#ef4444"}};
+
+  const statuses = {active:{label:"Active",color:"#10b981"},paid:{label:"Paid",color:"#6c63ff"},under_nego:{label:"Under Nego",color:"#f59e0b"},completed:{label:"Completed",color:BWL.gray},declined:{label:"Declined",color:"#ef4444"}};
   const filtered = filter==="all"?influencers:influencers.filter(i=>i.status===filter);
   const counts = Object.keys(statuses).reduce((a,k)=>({...a,[k]:influencers.filter(i=>i.status===k).length}),{});
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {[["all","All",BWL.black],...Object.entries(statuses).map(([k,v])=>[k,v.label,v.color])].map(([k,l,c])=>(
-          <button key={k} onClick={()=>setFilter(k)} style={{padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:700,background:filter===k?c:BWL.white,color:filter===k?BWL.white:BWL.gray,border:filter===k?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer"}}>{l} <span style={{fontSize:10,opacity:0.8}}>({k==="all"?influencers.length:counts[k]})</span></button>
+        {[["all","ALL",BWL.black],...Object.entries(statuses).map(([k,v])=>[k,v.label.toUpperCase(),v.color])].map(([k,l,c])=>(
+          <button key={k} onClick={()=>setFilter(k)} style={{padding:"6px 14px",fontSize:11,fontWeight:700,background:filter===k?c:BWL.white,color:filter===k?BWL.white:BWL.gray,border:filter===k?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer",fontFamily:BWL.mono}}>{l} ({k==="all"?influencers.length:counts[k]})</button>
         ))}
         <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-          <label style={{padding:"6px 16px",borderRadius:20,fontSize:11,fontWeight:700,background:"#6c63ff",color:BWL.white,cursor:"pointer",border:"none"}}>
-            {importing ? "⏳ Importing..." : "📥 Import CSV"}
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleCSV} style={{display:"none"}} disabled={importing} />
+          <label style={{padding:"6px 16px",fontSize:11,fontWeight:700,background:"#6c63ff",color:BWL.white,cursor:"pointer",fontFamily:BWL.mono}}>
+            {importing ? "IMPORTING..." : "IMPORT CSV"}
+            <input type="file" accept=".csv" onChange={handleCSV} style={{display:"none"}} disabled={importing} />
           </label>
-          <button onClick={()=>setShowForm(!showForm)} style={{padding:"6px 16px",borderRadius:20,fontSize:11,fontWeight:700,background:BWL.orange,color:BWL.white,border:"none",cursor:"pointer"}}>+ Add Influencer</button>
+          <button onClick={()=>setShowForm(!showForm)} style={{padding:"6px 16px",fontSize:11,fontWeight:700,background:BWL.orange,color:BWL.white,border:"none",cursor:"pointer",fontFamily:BWL.mono}}>+ ADD</button>
         </div>
       </div>
-
-      {importResult && (
-        <div style={{background:"#f0faf0",border:"1px solid #10b98133",borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontSize:13,color:"#10b981",fontWeight:700}}>✅ Imported {importResult.count} influencers successfully!{importResult.skipped > 0 && ` (${importResult.skipped} skipped — no name)`}</div>
-          <button onClick={()=>setImportResult(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#10b981"}}>✕</button>
-        </div>
-      )}
-
-      {showForm&&<Card style={{padding:18}}><CardHeader label="➕ ADD INFLUENCER" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["name","Name *"],["handle","Handle"],["niche","Niche"],["followers","Followers"],["rate","Rate"],["email","Email"],["contact","Contact #"]].map(([k,l])=><div key={k}><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>{l.toUpperCase()}</div><input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div>)}<div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook","LinkedIn"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Notes..." style={{width:"100%",minHeight:60,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} /></div><div style={{padding:"0 16px 16px",display:"flex",gap:8}}><button onClick={add} disabled={!form.name.trim()} style={{flex:1,padding:11,borderRadius:10,background:form.name.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:form.name.trim()?"pointer":"not-allowed"}}>✅ Add</button><button onClick={()=>setShowForm(false)} style={{padding:"11px 20px",borderRadius:10,background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,fontSize:13,cursor:"pointer"}}>Cancel</button></div></Card>}
-
-      {filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:40,marginBottom:12}}>🌟</div><div style={{fontSize:14,fontWeight:700}}>No influencers yet — import CSV or add manually</div></div>:
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(inf=><Card key={inf.id} style={{padding:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:14}}>{inf.name}</div><div style={{fontSize:12,color:BWL.gray,marginTop:2}}>@{inf.handle} • {inf.platform}{inf.followers&&` • ${inf.followers}`}</div>{inf.niche&&<div style={{fontSize:11,color:BWL.gray,marginTop:2}}>Niche: {inf.niche}</div>}{(inf.email||inf.contact)&&<div style={{fontSize:11,color:BWL.gray,marginTop:2}}>{inf.email&&`✉️ ${inf.email}`}{inf.email&&inf.contact&&" · "}{inf.contact&&`📱 ${inf.contact}`}</div>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{background:statuses[inf.status]?.color+"22",color:statuses[inf.status]?.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{statuses[inf.status]?.label}</span>{inf.rate&&<span style={{fontSize:11,color:BWL.gray}}>💰 {inf.rate}</span>}</div></div>{inf.notes&&<div style={{fontSize:12,color:BWL.darkGray,background:BWL.bg,borderRadius:8,padding:"8px 12px",marginBottom:8}}>{inf.notes}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==inf.status).map(([k,v])=><button key={k} onClick={()=>updateStatus(inf.id,k)} style={{background:BWL.bg,color:v.color,border:`1px solid ${v.color}33`,borderRadius:8,padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer"}}>→ {v.label}</button>)}<button onClick={()=>del(inf.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,borderRadius:8,padding:"4px 10px",fontSize:10,cursor:"pointer"}}>🗑</button></div></Card>)}</div>}
+      {importResult && <div style={{background:"#f0faf0",border:"1px solid #10b98133",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:13,color:"#10b981",fontWeight:700,fontFamily:BWL.mono}}>Imported {importResult.count} influencers!{importResult.skipped > 0 && ` (${importResult.skipped} skipped)`}</div>
+        <button onClick={()=>setImportResult(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#10b981"}}>X</button>
+      </div>}
+      {showForm&&<Card style={{padding:18}}><CardHeader label="ADD INFLUENCER" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["name","Name *"],["handle","Handle"],["niche","Niche"],["followers","Followers"],["rate","Rate"],["email","Email"],["contact","Contact #"]].map(([k,l])=><div key={k}><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>{l.toUpperCase()}</div><input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div>)}<div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook","LinkedIn"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Notes..." style={{width:"100%",minHeight:60,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:BWL.mono,resize:"vertical",boxSizing:"border-box"}} /></div><div style={{padding:"0 16px 16px",display:"flex",gap:8}}><button onClick={add} disabled={!form.name.trim()} style={{flex:1,padding:11,background:form.name.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:form.name.trim()?"pointer":"not-allowed"}}>ADD</button><button onClick={()=>setShowForm(false)} style={{padding:"11px 20px",background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,fontSize:13,cursor:"pointer"}}>CANCEL</button></div></Card>}
+      {filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:14,fontWeight:700,fontFamily:BWL.mono}}>No influencers yet — import CSV or add manually</div></div>:
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(inf=><Card key={inf.id} style={{padding:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:14}}>{inf.name}</div><div style={{fontSize:12,color:BWL.gray,marginTop:2,fontFamily:BWL.mono}}>@{inf.handle} · {inf.platform}{inf.followers&&` · ${inf.followers}`}</div>{inf.niche&&<div style={{fontSize:11,color:BWL.gray,marginTop:2,fontFamily:BWL.mono}}>Niche: {inf.niche}</div>}{(inf.email||inf.contact)&&<div style={{fontSize:11,color:BWL.gray,marginTop:2,fontFamily:BWL.mono}}>{inf.email&&inf.email}{inf.email&&inf.contact&&" · "}{inf.contact&&inf.contact}</div>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{background:statuses[inf.status]?.color+"22",color:statuses[inf.status]?.color,padding:"3px 12px",fontSize:11,fontWeight:700,fontFamily:BWL.mono}}>{statuses[inf.status]?.label}</span>{inf.rate&&<span style={{fontSize:11,color:BWL.gray,fontFamily:BWL.mono}}>{inf.rate}</span>}</div></div>{inf.notes&&<div style={{fontSize:12,color:BWL.darkGray,background:BWL.bg,padding:"8px 12px",marginBottom:8,fontFamily:BWL.mono}}>{inf.notes}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==inf.status).map(([k,v])=><button key={k} onClick={()=>updateStatus(inf.id,k)} style={{background:BWL.bg,color:v.color,border:`1px solid ${v.color}33`,padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:BWL.mono}}>{v.label}</button>)}<button onClick={()=>del(inf.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,padding:"4px 10px",fontSize:10,cursor:"pointer"}}>DELETE</button></div></Card>)}</div>}
     </div>
   );
 }
@@ -1239,205 +1168,10 @@ function ContentTracker() {
   const add = () => { save([{...form,id:Date.now(),created_at:new Date().toISOString()},...posts]); setForm({influencer:"",platform:"Instagram",content_type:"Post",caption:"",post_date:"",status:"planned",link:""}); setShowForm(false); };
   const del = (id) => save(posts.filter(p=>p.id!==id));
   const updateStatus = (id,status) => save(posts.map(p=>p.id===id?{...p,status}:p));
-  const statuses = {planned:{label:"📅 Planned",color:"#6c63ff"},submitted:{label:"📤 Submitted",color:"#f59e0b"},live:{label:"🟢 Live",color:"#10b981"},revision:{label:"✏️ Revision",color:BWL.orange},approved:{label:"✅ Approved",color:"#10b981"}};
+  const statuses = {planned:{label:"Planned",color:"#6c63ff"},submitted:{label:"Submitted",color:"#f59e0b"},live:{label:"Live",color:"#10b981"},revision:{label:"Revision",color:BWL.orange},approved:{label:"Approved",color:"#10b981"}};
   const filtered = filter==="all"?posts:posts.filter(p=>p.status===filter);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {[["all","All"],...Object.entries(statuses).map(([k,v])=>[k,v.label])].map(([k,l])=><button key={k} onClick={()=>setFilter(k)} style={{padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:700,background:filter===k?(k==="all"?BWL.black:statuses[k]?.color):BWL.white,color:filter===k?BWL.white:BWL.gray,border:filter===k?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer"}}>{l} <span style={{fontSize:10,opacity:0.8}}>({k==="all"?posts.length:posts.filter(p=>p.status===k).length})</span></button>)}
-        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"6px 16px",borderRadius:20,fontSize:11,fontWeight:700,background:BWL.orange,color:BWL.white,border:"none",cursor:"pointer"}}>+ Add Content</button>
-      </div>
-      {showForm&&<Card style={{padding:18}}><CardHeader label="➕ ADD CONTENT" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["influencer","Influencer *"],["link","Post Link"]].map(([k,l])=><div key={k}><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>{l.toUpperCase()}</div><input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div>)}<div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>TYPE</div><select value={form.content_type} onChange={e=>setForm(p=>({...p,content_type:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Post","Reel","Story","Video","TikTok","Tweet"].map(t=><option key={t}>{t}</option>)}</select></div><div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>POST DATE</div><input type="date" value={form.post_date} onChange={e=>setForm(p=>({...p,post_date:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div><div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><textarea value={form.caption} onChange={e=>setForm(p=>({...p,caption:e.target.value}))} placeholder="Caption / notes..." style={{width:"100%",minHeight:70,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,borderRadius:8,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} /></div><div style={{padding:"0 16px 16px",display:"flex",gap:8}}><button onClick={add} disabled={!form.influencer.trim()} style={{flex:1,padding:11,borderRadius:10,background:form.influencer.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:form.influencer.trim()?"pointer":"not-allowed"}}>✅ Add</button><button onClick={()=>setShowForm(false)} style={{padding:"11px 20px",borderRadius:10,background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,fontSize:13,cursor:"pointer"}}>Cancel</button></div></Card>}
-      {filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:40,marginBottom:12}}>📸</div><div style={{fontSize:14,fontWeight:700}}>No content tracked yet</div></div>:
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(post=><Card key={post.id} style={{padding:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:14}}>{post.influencer}</div><div style={{fontSize:12,color:BWL.gray,marginTop:2}}>{post.platform} • {post.content_type}{post.post_date&&` • ${new Date(post.post_date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}`}</div>{post.link&&<a href={post.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:BWL.orange,marginTop:2,display:"block"}}>🔗 View Post</a>}</div><span style={{background:statuses[post.status]?.color+"22",color:statuses[post.status]?.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{statuses[post.status]?.label}</span></div>{post.caption&&<div style={{fontSize:12,color:BWL.darkGray,background:BWL.bg,borderRadius:8,padding:"8px 12px",marginBottom:8,lineHeight:1.5}}>{post.caption}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==post.status).map(([k,v])=><button key={k} onClick={()=>updateStatus(post.id,k)} style={{background:BWL.bg,color:v.color,border:`1px solid ${v.color}33`,borderRadius:8,padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer"}}>→ {v.label}</button>)}<button onClick={()=>del(post.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,borderRadius:8,padding:"4px 10px",fontSize:10,cursor:"pointer"}}>🗑</button></div></Card>)}</div>}
-    </div>
-  );
-}
-
-function DesignBrief() {
-  const [request, setRequest] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
-  const gen = async () => {
-    setLoading(true); setResult(null); setError(null);
-    const prompt = `Creative director at BuildWithLeverage. Build design brief: ${request}. Return ONLY valid JSON: {"project_title":"t","objective":"o","deliverables":["d1"],"dimensions":"dim","brand_guidelines":["g1"],"mood":["v1"],"references":"inspiration","deadline_suggestion":"turnaround","full_brief":"complete formatted design brief"}`;
-    try { const r=await callClaude(prompt); setResult(r); } catch(e){setError(e.message);}
-    setLoading(false);
-  };
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="🎨 DESIGN REQUEST" value={request} onChange={setRequest} placeholder="What needs to be designed?" />
-      <Btn onClick={gen} disabled={!request.trim()} loading={loading} label="🎨 GENERATE DESIGN BRIEF" />
-      <Err msg={error} />
-      {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:18}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:4}}>PROJECT</div><div style={{fontSize:16,fontWeight:900,color:BWL.white,marginBottom:8}}>{result.project_title}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.6}}>{result.objective}</div></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="📦 DELIVERABLES" items={result.deliverables} color="#6c63ff" /><Bullets label="🎭 MOOD" items={result.mood} color="#a855f7" /></div>
-        <Bullets label="📐 BRAND GUIDELINES" items={result.brand_guidelines} color={BWL.orange} />
-        <ResultBlock label="📄 FULL DESIGN BRIEF" content={result.full_brief} copyable />
-      </>}
-    </div>
-  );
-}
-
-function FeedbackSummary() {
-  const [feedback, setFeedback] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
-  const gen = async () => {
-    setLoading(true); setResult(null); setError(null);
-    const prompt = `Project manager at BuildWithLeverage. Summarize design feedback: ${feedback}. Return ONLY valid JSON: {"summary":"1-2 sentence overview","required_changes":["c1"],"nice_to_have":["n1"],"keep_as_is":["k1"],"tone":"positive|mixed|critical","designer_message":"complete actionable message to designer"}`;
-    try { const r=await callClaude(prompt); setResult(r); } catch(e){setError(e.message);}
-    setLoading(false);
-  };
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Textarea label="💬 PASTE FEEDBACK" value={feedback} onChange={setFeedback} placeholder="Paste raw feedback — messy is fine..." />
-      <Btn onClick={gen} disabled={!feedback.trim()} loading={loading} label="💬 SUMMARIZE FEEDBACK" />
-      <Err msg={error} />
-      {result && <>
-        <div style={{background:BWL.black,borderRadius:12,padding:16}}><div style={{fontSize:10,color:BWL.orange,fontWeight:900,letterSpacing:2,marginBottom:6}}>OVERVIEW</div><p style={{margin:0,color:BWL.white,fontSize:13,lineHeight:1.7}}>{result.summary}</p></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="🔴 REQUIRED CHANGES" items={result.required_changes} color="#ef4444" /><Bullets label="🟡 NICE TO HAVE" items={result.nice_to_have} color="#f59e0b" /></div>
-        <Bullets label="✅ KEEP AS IS" items={result.keep_as_is} color="#10b981" />
-        <ResultBlock label="✉️ MESSAGE FOR DESIGNER" content={result.designer_message} copyable />
-      </>}
-    </div>
-  );
-}
-
-function Settings({ slackToken, setSlackToken, slackIds, setSlackIds }) {
-  const [token, setToken] = useState(slackToken || "");
-  const [ids, setIds] = useState(slackIds || DEFAULT_SLACK_IDS);
-  const [saved, setSaved] = useState(false);
-  const save = () => {
-    setSlackToken(token); setSlackIds(ids);
-    storage.set("slack-token", token); storage.set("slack-ids", JSON.stringify(ids));
-    setSaved(true); setTimeout(() => setSaved(false), 2000);
-  };
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Card>
-        <CardHeader label="🔑 SLACK BOT TOKEN" />
-        <div style={{ padding: 16 }}>
-          <input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="xoxb-..." style={{ width: "100%", background: BWL.bg, border: `1px solid ${BWL.lightGray}`, borderRadius: 8, color: BWL.black, fontSize: 13, padding: "10px 14px", outline: "none", fontFamily: "monospace", boxSizing: "border-box" }} />
-        </div>
-      </Card>
-      <Card>
-        <CardHeader label="👥 SLACK USER IDs" />
-        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-          {Object.entries(ids).map(([name, id]) => (
-            <div key={name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 160, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{name.split(" ")[0]}</div>
-              <input value={id} onChange={e => setIds(p => ({ ...p, [name]: e.target.value }))} placeholder="U0XXXXXXXXX" style={{ flex: 1, background: BWL.bg, border: `1px solid ${BWL.lightGray}`, borderRadius: 8, color: BWL.black, fontSize: 12, padding: "8px 12px", outline: "none", fontFamily: "monospace" }} />
-            </div>
-          ))}
-        </div>
-      </Card>
-      <button onClick={save} style={{ width: "100%", padding: 13, borderRadius: 10, background: BWL.black, color: BWL.white, border: "none", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-        {saved ? "✅ Saved!" : "💾 SAVE SETTINGS"}
-      </button>
-    </div>
-  );
-}
-
-const TEAM_CONFIG = [
-  { key:"david", name:"David Perlov", role:"CEO", emoji:"", tools:[{key:"briefing",label:"Daily Briefing",component:<DailyBriefing/>},{key:"team_perf",label:"Team Performance",component:<TeamPerformance/>},{key:"decision",label:"Strategic Decision",component:<StrategicDecision/>}]},
-  { key:"tin", name:"Kristine Miel (Tin)", role:"Outbound Marketing", emoji:"", tools:[{key:"sequence",label:"Sequence Builder",component:<SequenceBuilder/>},{key:"lead",label:"Lead Research",component:<LeadResearch/>}]},
-  { key:"suki", name:"Suki Santos", role:"Outbound Marketing", emoji:"", tools:[{key:"sequence",label:"Sequence Builder",component:<SequenceBuilder/>},{key:"lead",label:"Lead Research",component:<LeadResearch/>}]},
-  { key:"caleb", name:"Caleb Bentil", role:"SDR / Sales", emoji:"", tools:[{key:"cold",label:"Cold Email",component:<ColdEmailWriter/>},{key:"script",label:"Call Script",component:<CallScript/>},{key:"aftercall",label:"After-Call",component:<AfterCallAutomation/>}]},
-  { key:"cyril", name:"Cyril Butanas", role:"Influencer Outreach", emoji:"", tools:[{key:"outreach",label:"Outreach",component:<InfluencerOutreach/>},{key:"brief",label:"Campaign Brief",component:<CampaignBrief/>},{key:"tracker",label:"Influencer Tracker",component:<InfluencerTracker/>},{key:"content",label:"Content Tracker",component:<ContentTracker/>}]},
-  { key:"darlene", name:"Darlene Mae Malolos", role:"Graphic Designer", emoji:"", tools:[{key:"brief",label:"Design Brief",component:<DesignBrief/>},{key:"feedback",label:"Feedback Summary",component:<FeedbackSummary/>}]},
-];
-
-function TeamMode() {
-  const [selectedMember, setSelectedMember] = useState(null);
-  const [activeTool, setActiveTool] = useState(null);
-  const select = m => { setSelectedMember(m); setActiveTool(m.tools[0].key); };
-  return (
-    <div>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 10, color: BWL.gray, fontWeight: 700, letterSpacing: 2, marginBottom: 10 }}>SELECT TEAM MEMBER</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {TEAM_CONFIG.map(m => (
-            <button key={m.key} onClick={() => select(m)} style={{ padding: "10px 16px", borderRadius: 10, background: selectedMember?.key===m.key ? BWL.black : BWL.white, color: selectedMember?.key===m.key ? BWL.white : BWL.black, border: selectedMember?.key===m.key ? `2px solid ${BWL.black}` : `1px solid ${BWL.lightGray}`, cursor: "pointer", display: "flex", flexDirection: "column", gap: 2 }}>
-              <div style={{ fontSize: 13, fontWeight: 900 }}>{m.emoji} {m.name.split(" ")[0]}</div>
-              <div style={{ fontSize: 9, color: selectedMember?.key===m.key ? BWL.orange : BWL.gray, fontWeight: 700, letterSpacing: 1 }}>{m.role.toUpperCase()}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-      {!selectedMember ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: BWL.gray }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>👆</div>
-          <div style={{ fontSize: 18, fontWeight: 900, color: BWL.black, marginBottom: 8 }}>Select a team member above</div>
-        </div>
-      ) : (
-        <div>
-          <div style={{ background: BWL.black, borderRadius: 14, padding: "16px 22px", marginBottom: 18 }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: BWL.white }}>{selectedMember.emoji} {selectedMember.name}</div>
-            <div style={{ fontSize: 11, color: BWL.orange, fontWeight: 700, letterSpacing: 2, marginTop: 4 }}>{selectedMember.role.toUpperCase()}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-            {selectedMember.tools.map(t => (
-              <button key={t.key} onClick={() => setActiveTool(t.key)} style={{ padding: "9px 16px", borderRadius: 10, fontSize: 12, fontWeight: 900, background: activeTool===t.key ? BWL.orange : BWL.white, color: activeTool===t.key ? BWL.white : BWL.gray, border: activeTool===t.key ? "none" : `1px solid ${BWL.lightGray}`, cursor: "pointer" }}>{t.label}</button>
-            ))}
-          </div>
-          {selectedMember.tools.find(t => t.key === activeTool)?.component}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const COS_TOOLS = [
-  { key: "dashboard", label: "DASHBOARD", sub: "Overview" },
-  { key: "ops", label: "OPS PULSE", sub: "Task Generator" },
-  { key: "rfp", label: "RFP ENGINE", sub: "Business Dev" },
-  { key: "report", label: "WEEKLY REPORT", sub: "Status Builder" },
-  { key: "comms", label: "EXEC COMMS", sub: "Comms Drafter" },
-  { key: "settings", label: "SETTINGS", sub: "Slack Config" },
-];
-
-export default function App() {
-  const [mode, setMode] = useState("cos");
-  const [active, setActive] = useState("dashboard");
-  const [slackToken, setSlackToken] = useState(() => storage.get("slack-token")?.value || "");
-  const [slackIds, setSlackIds] = useState(() => { const s = storage.get("slack-ids"); return s ? JSON.parse(s.value) : DEFAULT_SLACK_IDS; });
-
-  return (
-    <div style={{ fontFamily: BWL.font, background: BWL.bg, minHeight: "100vh", color: BWL.black,
-      backgroundImage: `linear-gradient(${BWL.black}18 1px, transparent 1px), linear-gradient(90deg, ${BWL.black}18 1px, transparent 1px)`,
-      backgroundSize: "40px 40px" }}>
-      <div style={{ background: BWL.bg, padding: "0 0", display: "flex", alignItems: "stretch", justifyContent: "space-between", borderBottom: `2px solid ${BWL.black}` }}>
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <div style={{ padding: "18px 28px", borderRight: `2px solid ${BWL.black}` }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: BWL.black, letterSpacing: -1, fontFamily: BWL.font }}>LEVERAGE<span style={{ color: BWL.orange }}>.</span></div>
-          </div>
-          <div style={{ padding: "18px 28px", borderRight: `2px solid ${BWL.black}` }}>
-            <div style={{ fontSize: 9, letterSpacing: 3, color: BWL.orange, fontWeight: 900, fontFamily: BWL.font }}>■ OPERATIONS HUB</div>
-            <div style={{ fontSize: 10, color: BWL.black, marginTop: 2, fontFamily: BWL.mono }}>CLAUDE-POWERED</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
-          {[["cos","🗂 CoS MODE"],["team","👥 TEAM MODE"]].map(([m,l])=>(
-            <button key={m} onClick={()=>setMode(m)} style={{ padding: "18px 28px", fontSize: 11, fontWeight: 900, background: mode===m ? BWL.orange : "transparent", color: mode===m ? BWL.white : BWL.black, border: "none", borderLeft: `2px solid ${BWL.black}`, cursor: "pointer", letterSpacing: 2, fontFamily: BWL.font }}>{l}</button>
-          ))}
-        </div>
-      </div>
-      {mode === "cos" && (
-        <div style={{ background: BWL.bg, borderBottom: `2px solid ${BWL.black}`, display: "flex" }}>
-          {COS_TOOLS.map(t => (
-            <button key={t.key} onClick={() => setActive(t.key)} style={{ padding: "16px 28px", background: active===t.key ? BWL.black : "transparent", border: "none", borderRight: `2px solid ${BWL.black}`, color: active===t.key ? BWL.white : BWL.black, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
-              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 2, fontFamily: BWL.font }}>{t.label}</div>
-              <div style={{ fontSize: 9, color: active===t.key ? BWL.orange : BWL.gray, fontWeight: 700, letterSpacing: 2, fontFamily: BWL.mono }}>{t.sub}</div>
-            </button>
-          ))}
-        </div>
-      )}
-      <div style={{ padding: "40px 48px", maxWidth: 1200, margin: "0 auto" }}>
-        {mode === "cos" && active === "dashboard" && <Dashboard slackIds={slackIds} />}
-        {mode === "cos" && active === "ops" && <OpsPulse slackIds={slackIds} />}
-        {mode === "cos" && active === "rfp" && <RFPEngine />}
-        {mode === "cos" && active === "report" && <WeeklyReport />}
-        {mode === "cos" && active === "comms" && <ExecComms />}
-        {mode === "cos" && active === "settings" && <Settings slackToken={slackToken} setSlackToken={setSlackToken} slackIds={slackIds} setSlackIds={setSlackIds} />}
-        {mode === "team" && <TeamMode />}
-      </div>
-    </div>
-  );
-}
+        {[["all","ALL"],...Object.entries(statuses).map(([k,v])=>[k,v.label.toUpperCase()])].map(([k,l])=><button key={k} onClick={()=>setFilter(k)} style={{padding:"6px 14px",fontSize:11,fontWeight:700,background:filter===k?(k==="all"?BWL.black:statuses[k]?.color):BWL.white,color:filter===k?BWL.white:BWL.gray,border:filter===k?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer",fontFamily:BWL.mono}}>{l} ({k==="all"?posts.length:posts.filter(p=>p.status===k).length})</button>)}
+        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"6px
