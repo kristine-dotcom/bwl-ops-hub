@@ -114,8 +114,8 @@ export default async function handler(req, res) {
     let rfps = [];
     try {
       rfps = JSON.parse(searchClean).rfps || [];
-    } catch {
-      return res.status(200).json({ message: "No RFPs parsed", date: today });
+    } catch (parseErr) {
+      return res.status(200).json({ message: "No RFPs parsed", date: today, debug: searchRaw.slice(0, 500) });
     }
 
     // Step 2: Filter 80%+ score only
