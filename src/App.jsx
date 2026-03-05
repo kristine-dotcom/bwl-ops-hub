@@ -1174,4 +1174,179 @@ function ContentTracker() {
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         {[["all","ALL"],...Object.entries(statuses).map(([k,v])=>[k,v.label.toUpperCase()])].map(([k,l])=><button key={k} onClick={()=>setFilter(k)} style={{padding:"6px 14px",fontSize:11,fontWeight:700,background:filter===k?(k==="all"?BWL.black:statuses[k]?.color):BWL.white,color:filter===k?BWL.white:BWL.gray,border:filter===k?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer",fontFamily:BWL.mono}}>{l} ({k==="all"?posts.length:posts.filter(p=>p.status===k).length})</button>)}
-        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"6px
+<button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"6px 16px",fontSize:11,fontWeight:700,background:showForm?BWL.black:BWL.orange,color:BWL.white,border:"none",cursor:"pointer",fontFamily:BWL.mono}}>{showForm?"CANCEL":"+ ADD"}</button>
+      </div>
+      {showForm&&<Card style={{padding:18}}>
+        <CardHeader label="ADD CONTENT" />
+        <div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {[["influencer","Influencer Name"],["link","Post Link"]].map(([k,l])=><div key={k}><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>{l.toUpperCase()}</div><input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div>)}
+          <div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(p=><option key={p}>{p}</option>)}</select></div>
+          <div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>CONTENT TYPE</div><select value={form.content_type} onChange={e=>setForm(p=>({...p,content_type:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{["Post","Reel","Story","Video","TikTok","Tweet"].map(t=><option key={t}>{t}</option>)}</select></div>
+          <div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>POST DATE</div><input type="date" value={form.post_date} onChange={e=>setForm(p=>({...p,post_date:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+          <div><div style={{fontSize:10,color:BWL.gray,fontWeight:700,marginBottom:4,fontFamily:BWL.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:"inherit"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
+        </div>
+        <div style={{padding:"0 16px 16px"}}><textarea value={form.caption} onChange={e=>setForm(p=>({...p,caption:e.target.value}))} placeholder="Caption or notes..." style={{width:"100%",minHeight:60,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"9px 12px",outline:"none",fontFamily:BWL.mono,resize:"vertical",boxSizing:"border-box"}} /></div>
+        <div style={{padding:"0 16px 16px",display:"flex",gap:8}}>
+          <button onClick={add} disabled={!form.influencer.trim()} style={{flex:1,padding:11,background:form.influencer.trim()?BWL.black:"#ccc",color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:form.influencer.trim()?"pointer":"not-allowed"}}>ADD</button>
+          <button onClick={()=>setShowForm(false)} style={{padding:"11px 20px",background:BWL.white,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,fontSize:13,cursor:"pointer"}}>CANCEL</button>
+        </div>
+      </Card>}
+      {filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:BWL.gray}}><div style={{fontSize:14,fontWeight:700,fontFamily:BWL.mono}}>No content tracked yet</div></div>:
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(post=><Card key={post.id} style={{padding:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:14}}>{post.influencer}</div>
+            <div style={{fontSize:12,color:BWL.gray,marginTop:2,fontFamily:BWL.mono}}>{post.platform} · {post.content_type}{post.post_date&&` · ${post.post_date}`}</div>
+            {post.link&&<a href={post.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:BWL.orange,fontFamily:BWL.mono}}>{post.link}</a>}
+          </div>
+          <span style={{background:statuses[post.status]?.color+"22",color:statuses[post.status]?.color,padding:"3px 12px",fontSize:11,fontWeight:700,fontFamily:BWL.mono}}>{statuses[post.status]?.label}</span>
+        </div>
+        {post.caption&&<div style={{fontSize:12,color:BWL.darkGray,background:BWL.bg,padding:"8px 12px",marginBottom:8,fontFamily:BWL.mono}}>{post.caption}</div>}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {Object.entries(statuses).filter(([k])=>k!==post.status).map(([k,v])=><button key={k} onClick={()=>updateStatus(post.id,k)} style={{background:BWL.bg,color:v.color,border:`1px solid ${v.color}33`,padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:BWL.mono}}>{v.label}</button>)}
+          <button onClick={()=>del(post.id)} style={{marginLeft:"auto",background:BWL.bg,color:BWL.gray,border:`1px solid ${BWL.lightGray}`,padding:"4px 10px",fontSize:10,cursor:"pointer"}}>DELETE</button>
+        </div>
+      </Card>)}</div>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════
+function Settings({ slackIds, setSlackIds }) {
+  const [token, setToken] = useState(storage.get("slack-token")?.value||"");
+  const [saved, setSaved] = useState(false);
+  const saveToken = () => { storage.set("slack-token", token); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <Card>
+        <CardHeader label="SLACK INTEGRATION" />
+        <div style={{padding:16,display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{fontSize:12,color:BWL.gray,fontFamily:BWL.mono}}>Paste your Slack Bot Token to enable DM sending.</div>
+          <input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="xoxb-..." style={{width:"100%",background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:13,padding:"10px 12px",outline:"none",fontFamily:BWL.mono,boxSizing:"border-box"}} />
+          <button onClick={saveToken} style={{padding:"10px 0",background:saved?"#10b981":BWL.black,color:BWL.white,border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>{saved?"SAVED!":"SAVE TOKEN"}</button>
+        </div>
+      </Card>
+      <Card>
+        <CardHeader label="SLACK USER IDs" />
+        <div style={{padding:16,display:"flex",flexDirection:"column",gap:8}}>
+          {TEAM_OPS.map(member=>(
+            <div key={member} style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:180,fontSize:12,fontWeight:700,flexShrink:0}}>{member}</div>
+              <input value={slackIds[member]||""} onChange={e=>setSlackIds(p=>({...p,[member]:e.target.value}))} placeholder="U0XXXXXXXXX" style={{flex:1,background:BWL.bg,border:`1px solid ${BWL.lightGray}`,color:BWL.black,fontSize:12,padding:"7px 10px",outline:"none",fontFamily:BWL.mono}} />
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════════════════
+const NAV = [
+  { id:"dashboard", label:"Dashboard" },
+  { id:"ops-pulse", label:"Ops Pulse" },
+  { id:"rfp", label:"RFP Engine" },
+  { id:"weekly-report", label:"Weekly Report" },
+  { id:"exec-comms", label:"Exec Comms" },
+  { id:"daily-briefing", label:"Daily Briefing", group:"team" },
+  { id:"team-performance", label:"Team Performance", group:"team" },
+  { id:"strategic-decision", label:"Strategic Decision", group:"team" },
+  { id:"sequence-builder", label:"Email Sequence", group:"outbound" },
+  { id:"lead-research", label:"Lead Research", group:"outbound" },
+  { id:"cold-email", label:"Cold Email", group:"outbound" },
+  { id:"call-script", label:"Call Script", group:"outbound" },
+  { id:"after-call", label:"After Call", group:"outbound" },
+  { id:"influencer-outreach", label:"Influencer Outreach", group:"influencer" },
+  { id:"campaign-brief", label:"Campaign Brief", group:"influencer" },
+  { id:"influencer-tracker", label:"Influencer Tracker", group:"influencer" },
+  { id:"content-tracker", label:"Content Tracker", group:"influencer" },
+  { id:"settings", label:"Settings" },
+];
+
+export default function App() {
+  const [unlocked, setUnlocked] = useState(()=>storage.get("bwl-auth")?.value==="1");
+  const [tab, setTab] = useState("dashboard");
+  const [navOpen, setNavOpen] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [slackIds, setSlackIds] = useState(()=>{ const s=storage.get("slack-ids"); return s?JSON.parse(s.value):DEFAULT_SLACK_IDS; });
+  const isMobile = useIsMobile();
+
+  const unlock = () => { storage.set("bwl-auth","1"); setUnlocked(true); };
+  const saveSlackIds = (ids) => { setSlackIds(ids); storage.set("slack-ids", JSON.stringify(ids)); };
+
+  if (!unlocked) return <PasswordScreen onUnlock={unlock} />;
+
+  const groupColors = { team:"#6c63ff", outbound:"#10b981", influencer:BWL.orange };
+  const currentNav = NAV.find(n=>n.id===tab);
+
+  const renderTab = () => {
+    switch(tab) {
+      case "dashboard": return <Dashboard />;
+      case "ops-pulse": return <OpsPulse slackIds={slackIds} />;
+      case "rfp": return <RFPEngine />;
+      case "weekly-report": return <WeeklyReport />;
+      case "exec-comms": return <ExecComms />;
+      case "daily-briefing": return <DailyBriefing />;
+      case "team-performance": return <TeamPerformance />;
+      case "strategic-decision": return <StrategicDecision />;
+      case "sequence-builder": return <SequenceBuilder />;
+      case "lead-research": return <LeadResearch />;
+      case "cold-email": return <ColdEmailWriter />;
+      case "call-script": return <CallScript />;
+      case "after-call": return <AfterCallAutomation />;
+      case "influencer-outreach": return <InfluencerOutreach />;
+      case "campaign-brief": return <CampaignBrief />;
+      case "influencer-tracker": return <InfluencerTracker />;
+      case "content-tracker": return <ContentTracker />;
+      case "settings": return <Settings slackIds={slackIds} setSlackIds={saveSlackIds} />;
+      default: return <Dashboard />;
+    }
+  };
+
+  return (
+    <div style={{fontFamily:BWL.font,background:BWL.bg,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+      {showSearch && <GlobalSearch onClose={()=>setShowSearch(false)} />}
+      {/* HEADER */}
+      <div style={{background:BWL.black,padding:"0 20px",display:"flex",alignItems:"center",gap:16,height:52,flexShrink:0,position:"sticky",top:0,zIndex:100}}>
+        <button onClick={()=>setNavOpen(!navOpen)} style={{background:"none",border:"none",color:BWL.white,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1}}>☰</button>
+        <div style={{fontSize:16,fontWeight:900,color:BWL.white,letterSpacing:-0.5}}>LEVERAGE<span style={{color:BWL.orange}}>.</span></div>
+        <div style={{fontSize:9,color:BWL.orange,fontWeight:900,letterSpacing:2,fontFamily:BWL.mono,marginTop:2}}>OPS HUB</div>
+        <div style={{flex:1}} />
+        <button onClick={()=>setShowSearch(true)} style={{background:"#ffffff18",border:"none",color:"#aaa",padding:"7px 14px",fontSize:11,cursor:"pointer",fontFamily:BWL.mono,letterSpacing:1}}>⌕ SEARCH</button>
+      </div>
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+        {/* SIDEBAR */}
+        {(navOpen||!isMobile) && (
+          <div style={{width:220,background:BWL.white,borderRight:`1.5px solid ${BWL.black}`,overflowY:"auto",flexShrink:0,position:isMobile?"fixed":"relative",top:isMobile?52:0,bottom:0,left:0,zIndex:99}}>
+            {NAV.map(n=>{
+              const gc = n.group ? groupColors[n.group] : null;
+              return (
+                <button key={n.id} onClick={()=>{setTab(n.id);setNavOpen(false);}}
+                  style={{width:"100%",textAlign:"left",padding:"11px 18px",fontSize:12,fontWeight:tab===n.id?900:600,background:tab===n.id?BWL.bg:"transparent",color:tab===n.id?BWL.black:BWL.gray,border:"none",borderLeft:tab===n.id?`3px solid ${gc||BWL.orange}`:"3px solid transparent",cursor:"pointer",fontFamily:BWL.font,display:"flex",alignItems:"center",gap:8}}>
+                  {gc&&<span style={{width:6,height:6,borderRadius:"50%",background:gc,flexShrink:0}} />}
+                  {n.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {/* MAIN CONTENT */}
+        <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px"}}>
+          <div style={{maxWidth:820,margin:"0 auto"}}>
+            <div style={{marginBottom:20,paddingBottom:16,borderBottom:`1px solid ${BWL.lightGray}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:10,color:currentNav?.group?groupColors[currentNav.group]:BWL.orange,fontWeight:900,letterSpacing:3,fontFamily:BWL.mono,marginBottom:4}}>{currentNav?.group?.toUpperCase()||"■"} TOOLS</div>
+                <div style={{fontSize:20,fontWeight:900,letterSpacing:-0.5}}>{currentNav?.label?.toUpperCase()}</div>
+              </div>
+            </div>
+            {renderTab()}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
