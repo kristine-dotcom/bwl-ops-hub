@@ -602,6 +602,129 @@ function RFPEngine() {
   );
 }
 
+function Dashboard({ slackIds }) {
+  const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
+  const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
+  const rfpTracker = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
+  const influencers = (() => { const s = storage.get("influencer-tracker"); return s ? JSON.parse(s.value) : []; })();
+
+  const getProgress = member => {
+    const t = tasks?.team_tasks?.[member]?.tasks || [];
+    if (!t.length) return null;
+    return Math.round((t.filter((_, i) => checked[`${member}-${i}`]).length / t.length) * 100);
+  };
+
+  const teamProgress = () => {
+    if (!tasks) return null;
+    let total = 0, done = 0;
+    TEAM_OPS.forEach(m => { const t = tasks.team_tasks?.[m]?.tasks || []; total += t.length; done += t.filter((_, i) => checked[`${m}-${i}`]).length; });
+    return total ? { pct: Math.round((done / total) * 100), total, done } : null;
+  };
+
+  const tp = teamProgress();
+  const won = rfpTracker.filter(t => t.status === "won");
+  const submitted = rfpTracker.filter(t => ["submitted","won","lost"].includes(t.status));
+  const winRate = submitted.length ? Math.round((won.length / submitted.length) * 100) : 0;
+  const totalRev = won.filter(t => t.revenue).reduce((a, t) => a + parseFloat(t.revenue.replace(/[^0-9.]/g,"")) || 0, 0);
+  const activeInf = influencers.filter(i => i.status === "active").length;
+  const negoInf = influencers.filter(i => i.status === "under_nego").length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* HEADER */}
+      <div style={{ borderBottom: `2px solid ${BWL.black}`, paddingBottom: 20 }}>
+        <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 6 }}>■ DASHBOARD</div>
+        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1 }}>{weekLabel()}</div>
+        <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginTop: 4 }}>
+          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+        </div>
+      </div>
+
+      {/* TOP STATS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+        {[
+          ["TEAM PROGRESS", tp ? `${tp.pct}%` : "—", tp ? `${tp.done}/${tp.total} tasks done` : "No tasks generated yet", tp?.pct === 100 ? "#10b981" : BWL.orange],
+          ["RFP WIN RATE", `${winRate}%`, `${won.length} won · ${rfpTracker.filter(t=>t.status==="submitted").length} pending`, winRate >= 50 ? "#10b981" : "#f59e0b"],
+          ["INFLUENCERS", `${influencers.length}`, `${activeInf} active · ${negoInf} under nego`, "#6c63ff"],
+        ].map(([label, value, sub, color]) => (
+          <div key={label} style={{ background: BWL.white, border: `1.5px solid ${BWL.black}`, padding: 20 }}>
+            <div style={{ fontSize: 9, color: BWL.gray, fontWeight: 900, letterSpacing: 3, marginBottom: 12, fontFamily: BWL.mono }}>{label}</div>
+            <div style={{ fontSize: 36, fontWeight: 900, color, marginBottom: 6 }}>{value}</div>
+            <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* TEAM PROGRESS */}
+      {tasks ? (
+        <Card>
+          <CardHeader label="TEAM TASK PROGRESS" />
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {TEAM_OPS.map(member => {
+              const p = getProgress(member);
+              if (p === null) return null;
+              const memberTasks = tasks?.team_tasks?.[member]?.tasks || [];
+              const overdue = memberTasks.filter((t, i) => !checked[`${member}-${i}`] && (() => {
+                if (!t.due_day) return false;
+                const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+                return days.indexOf(t.due_day) < new Date().getDay();
+              })()).length;
+              return (
+                <div key={member} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 140, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{member.split(" ")[0]}</div>
+                  <div style={{ flex: 1, background: BWL.lightGray, height: 6, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${p}%`, background: p === 100 ? "#10b981" : BWL.orange, transition: "width 0.3s" }} />
+                  </div>
+                  <div style={{ width: 36, fontSize: 12, fontWeight: 900, color: p === 100 ? "#10b981" : BWL.orange, textAlign: "right" }}>{p}%</div>
+                  {overdue > 0 && <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 700, whiteSpace: "nowrap" }}>{overdue} overdue</div>}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ) : (
+        <Card style={{ padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginBottom: 12 }}>NO TASKS GENERATED YET</div>
+          <div style={{ fontSize: 13, color: BWL.black }}>Go to OPS PULSE to generate this week's tasks.</div>
+        </Card>
+      )}
+
+      {/* RFP + INFLUENCER SUMMARY */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+        <Card>
+          <CardHeader label="RFP PIPELINE" />
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {rfpTracker.length === 0 ? <div style={{ fontSize: 12, color: BWL.gray, fontFamily: BWL.mono }}>No proposals saved yet.</div> :
+            [["Total", rfpTracker.length, BWL.black], ["Submitted", rfpTracker.filter(t=>t.status==="submitted").length, "#f59e0b"], ["Won", won.length, "#10b981"], ["Lost", rfpTracker.filter(t=>t.status==="lost").length, "#ef4444"]].map(([l, v, c]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${BWL.lightGray}` }}>
+                <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{l}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: c }}>{v}</div>
+              </div>
+            ))}
+            {totalRev > 0 && <div style={{ marginTop: 8, background: "#10b98111", padding: "10px 12px" }}>
+              <div style={{ fontSize: 9, color: "#10b981", fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>REVENUE WON</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#10b981" }}>${totalRev.toLocaleString()}</div>
+            </div>}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader label="INFLUENCER TRACKER" />
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {influencers.length === 0 ? <div style={{ fontSize: 12, color: BWL.gray, fontFamily: BWL.mono }}>No influencers tracked yet.</div> :
+            [["Total", influencers.length, BWL.black], ["Active", activeInf, "#10b981"], ["Under Nego", negoInf, "#f59e0b"], ["Paid", influencers.filter(i=>i.status==="paid").length, "#6c63ff"], ["Completed", influencers.filter(i=>i.status==="completed").length, BWL.gray]].map(([l, v, c]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${BWL.lightGray}` }}>
+                <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono }}>{l}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: c }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function WeeklyReport() {
   const [updates, setUpdates] = useState(""); const [slack, setSlack] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
@@ -1170,6 +1293,7 @@ function TeamMode() {
 }
 
 const COS_TOOLS = [
+  { key: "dashboard", label: "DASHBOARD", sub: "Overview" },
   { key: "ops", label: "OPS PULSE", sub: "Task Generator" },
   { key: "rfp", label: "RFP ENGINE", sub: "Business Dev" },
   { key: "report", label: "WEEKLY REPORT", sub: "Status Builder" },
@@ -1179,7 +1303,7 @@ const COS_TOOLS = [
 
 export default function App() {
   const [mode, setMode] = useState("cos");
-  const [active, setActive] = useState("ops");
+  const [active, setActive] = useState("dashboard");
   const [slackToken, setSlackToken] = useState(() => storage.get("slack-token")?.value || "");
   const [slackIds, setSlackIds] = useState(() => { const s = storage.get("slack-ids"); return s ? JSON.parse(s.value) : DEFAULT_SLACK_IDS; });
 
@@ -1214,6 +1338,7 @@ export default function App() {
         </div>
       )}
       <div style={{ padding: "40px 48px", maxWidth: 1200, margin: "0 auto" }}>
+        {mode === "cos" && active === "dashboard" && <Dashboard slackIds={slackIds} />}
         {mode === "cos" && active === "ops" && <OpsPulse slackIds={slackIds} />}
         {mode === "cos" && active === "rfp" && <RFPEngine />}
         {mode === "cos" && active === "report" && <WeeklyReport />}
