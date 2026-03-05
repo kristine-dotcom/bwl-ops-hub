@@ -22,6 +22,8 @@ const BWL_CONTEXT = `LEVERAGE. | David Perlov | $125M revenue generated | 11X RO
 
 const SLACK_USER_ID = "U09QJGY27JP"; // Kristine
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function callClaude(apiKey, prompt, maxTokens = 2000, useSearch = false) {
   const body = {
     model: "claude-sonnet-4-20250514",
@@ -48,7 +50,6 @@ async function callClaude(apiKey, prompt, maxTokens = 2000, useSearch = false) {
   return clean;
 }
 
-// ✅ FIXED: Upstash REST GET — correctly unwraps { result: "..." }
 async function kvGet(key) {
   try {
     const r = await fetch(process.env.KV_REST_API_URL + "/get/" + key, {
@@ -60,10 +61,9 @@ async function kvGet(key) {
   } catch { return null; }
 }
 
-// ✅ FIXED: Upstash REST SET — uses pipeline format which handles large payloads
 async function kvSet(key, value) {
   try {
-    const r = await fetch(process.env.KV_REST_API_URL + "/pipeline", {
+    await fetch(process.env.KV_REST_API_URL + "/pipeline", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + process.env.KV_REST_API_TOKEN,
@@ -71,8 +71,6 @@ async function kvSet(key, value) {
       },
       body: JSON.stringify([["SET", key, JSON.stringify(value)]]),
     });
-    const data = await r.json();
-    return data;
   } catch {}
 }
 
@@ -110,12 +108,19 @@ export default async function handler(req, res) {
       '{"rfps":[{"title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD","description":"2 sentences","relevance_score":85,"services_needed":["Outbound"],"source_url":"url or empty","source":"platform name"}]}';
 
     const searchRaw = await callClaude(apiKey, searchPrompt, 3000, true);
-    const searchClean = searchRaw.slice(searchRaw.indexOf("{"), searchRaw.lastIndexOf("}") + 1);
+
+    const firstBrace = searchRaw.indexOf("{");
+    const lastBrace = searchRaw.lastIndexOf("}");
+    if (firstBrace === -1 || lastBrace === -1) {
+      return res.status(200).json({ message: "No RFPs parsed", date: today, debug: searchRaw.slice(0, 300) });
+    }
+
+    const searchClean = searchRaw.slice(firstBrace, lastBrace + 1);
     let rfps = [];
     try {
       rfps = JSON.parse(searchClean).rfps || [];
     } catch (parseErr) {
-      return res.status(200).json({ message: "No RFPs parsed", date: today, debug: searchRaw.slice(0, 500) });
+      return res.status(200).json({ message: "No RFPs parsed", date: today, debug: searchClean.slice(0, 300) });
     }
 
     // Step 2: Filter 80%+ score only
@@ -127,7 +132,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "No high-fit RFPs", date: today });
     }
 
-    // Step 3: Auto-generate proposals for high-fit RFPs
+    // Step 3: Auto-generate proposals (max 3, 30s delay between each to avoid rate limit)
     for (const rfp of highFit.slice(0, 3)) {
       try {
         const metaPrompt =
@@ -175,15 +180,19 @@ export default async function handler(req, res) {
           created_at: new Date().toISOString(),
           auto_generated: true,
         });
+
+        // 30s delay between proposals to stay under 30k tokens/min rate limit
+        await sleep(30000);
+
       } catch (e) {
         results.push({ error: e.message, title: rfp.title });
       }
     }
 
-    // Step 4: Save to KV — safe merge, guards against corrupted data
+    // Step 4: Save to KV — safe merge
     if (results.length > 0) {
       const existing = await kvGet("rfp-tracker");
-      const validExisting = Array.isArray(existing) ? existing : []; // ✅ fixes l.filter error
+      const validExisting = Array.isArray(existing) ? existing : [];
       const merged = [...results, ...validExisting];
       await kvSet("rfp-tracker", merged);
     }
