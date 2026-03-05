@@ -634,4 +634,159 @@ function Settings({ slackToken, setSlackToken, slackIds, setSlackIds }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Card><CardHeader label="🔑 SLACK BOT TOKEN" /><div style={{ padding: 16 }}><input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="xoxb-..." style={{ width: "100%", background: BWL.bg, border: `1px solid ${BWL.lightGray}`, borderRadius: 8, color: BWL.black, fontSize: 13, padding: "10px 14px", outline: "none", fontFamily: "monospace", boxSizing: "border-box" }} /></div></Card>
-      <Card><CardHeader label="👥 SLACK USER IDs" /><div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>{Object.entries(ids).map(([name, id]) => (<div key={name} style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 160, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{name.split(" ")[0]}</div><input value={id} onChange={e => setIds(p => ({ ...p, [name]: e.target.value }))} placeholder="U0XXXXXXXXX" style={{ flex: 1, background: BWL.bg, border: `1px solid ${BWL.lightGray}`, borderRadius:
+// Replace everything from line 637 onwards with this:
+
+      <Card><CardHeader label="👥 SLACK USER IDs" /><div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>{Object.entries(ids).map(([name, id]) => (<div key={name} style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 160, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{name.split(" ")[0]}</div><input value={id} onChange={e => setIds(p => ({ ...p, [name]: e.target.value }))} placeholder="U0XXXXXXXXX" style={{ flex: 1, background: BWL.bg, border: `1px solid ${BWL.lightGray}`, borderRadius: 8, color: BWL.black, fontSize: 13, padding: "10px 14px", outline: "none", fontFamily: "monospace", boxSizing: "border-box" }} /></div>))}</div></Card>
+      <button onClick={save} style={{ width: "100%", padding: 13, borderRadius: 10, background: saved ? "#10b981" : BWL.black, color: BWL.white, border: "none", fontSize: 14, fontWeight: 900, cursor: "pointer", letterSpacing: 1 }}>
+        {saved ? "✅ Saved!" : "💾 SAVE SETTINGS"}
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════════════════
+const NAV = [
+  { key: "dashboard", label: "📊 Dashboard" },
+  { key: "ops-pulse", label: "⚡ Ops Pulse" },
+  { key: "rfp", label: "📄 RFP Engine" },
+  {
+    key: "cos", label: "🧠 CoS Tools", children: [
+      { key: "weekly-report", label: "📋 Weekly Report" },
+      { key: "exec-comms", label: "✉️ Exec Comms" },
+      { key: "daily-briefing", label: "☀️ Daily Briefing" },
+      { key: "team-performance", label: "📊 Team Performance" },
+      { key: "strategic-decision", label: "🧠 Strategic Decision" },
+    ]
+  },
+  {
+    key: "outbound", label: "📨 Outbound", children: [
+      { key: "sequence-builder", label: "📨 Sequence Builder" },
+      { key: "lead-research", label: "🔍 Lead Research" },
+      { key: "cold-email", label: "❄️ Cold Email" },
+      { key: "call-script", label: "📞 Call Script" },
+      { key: "after-call", label: "⚡ After Call" },
+    ]
+  },
+  {
+    key: "influencer", label: "🌟 Influencer", children: [
+      { key: "influencer-outreach", label: "🌟 Outreach" },
+      { key: "campaign-brief", label: "📁 Campaign Brief" },
+      { key: "influencer-tracker", label: "📋 Tracker" },
+      { key: "content-tracker", label: "📸 Content Tracker" },
+    ]
+  },
+  {
+    key: "design", label: "🎨 Design", children: [
+      { key: "design-brief", label: "🎨 Design Brief" },
+      { key: "feedback-summary", label: "💬 Feedback Summary" },
+    ]
+  },
+  { key: "settings", label: "⚙️ Settings" },
+];
+
+export default function App() {
+  const [page, setPage] = useState("dashboard");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState(null);
+  const [slackToken, setSlackToken] = useState(() => storage.get("slack-token")?.value || "");
+  const [slackIds, setSlackIds] = useState(() => { const s = storage.get("slack-ids"); return s ? JSON.parse(s.value) : DEFAULT_SLACK_IDS; });
+  const isMobile = useIsMobile();
+
+  const navigate = (key) => { setPage(key); setMenuOpen(false); };
+
+  const renderPage = () => {
+    switch (page) {
+      case "dashboard": return <Dashboard />;
+      case "ops-pulse": return <OpsPulse slackIds={slackIds} />;
+      case "rfp": return <RFPEngine />;
+      case "weekly-report": return <WeeklyReport />;
+      case "exec-comms": return <ExecComms />;
+      case "daily-briefing": return <DailyBriefing />;
+      case "team-performance": return <TeamPerformance />;
+      case "strategic-decision": return <StrategicDecision />;
+      case "sequence-builder": return <SequenceBuilder />;
+      case "lead-research": return <LeadResearch />;
+      case "cold-email": return <ColdEmailWriter />;
+      case "call-script": return <CallScript />;
+      case "after-call": return <AfterCallAutomation />;
+      case "influencer-outreach": return <InfluencerOutreach />;
+      case "campaign-brief": return <CampaignBrief />;
+      case "influencer-tracker": return <InfluencerTracker />;
+      case "content-tracker": return <ContentTracker />;
+      case "design-brief": return <DesignBrief />;
+      case "feedback-summary": return <FeedbackSummary />;
+      case "settings": return <Settings slackToken={slackToken} setSlackToken={setSlackToken} slackIds={slackIds} setSlackIds={setSlackIds} />;
+      default: return <Dashboard />;
+    }
+  };
+
+  const currentLabel = NAV.flatMap(n => n.children ? n.children : [n]).find(n => n.key === page)?.label || "Dashboard";
+
+  return (
+    <div style={{ minHeight: "100vh", background: BWL.bg, fontFamily: BWL.font }}>
+      {/* HEADER */}
+      <div style={{ background: BWL.black, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 54, position: "sticky", top: 0, zIndex: 100, borderBottom: `2px solid ${BWL.orange}` }}>
+        <div style={{ fontSize: 18, fontWeight: 900, color: BWL.white, letterSpacing: -0.5 }}>
+          LEVERAGE<span style={{ color: BWL.orange }}>.</span>
+          <span style={{ fontSize: 10, color: BWL.gray, fontWeight: 400, marginLeft: 8, letterSpacing: 2 }}>OPS HUB</span>
+        </div>
+        {isMobile ? (
+          <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", color: BWL.white, fontSize: 22, cursor: "pointer" }}>☰</button>
+        ) : (
+          <div style={{ display: "flex", gap: 4 }}>
+            {NAV.map(n => (
+              <div key={n.key} style={{ position: "relative" }}
+                onMouseEnter={() => n.children && setOpenGroup(n.key)}
+                onMouseLeave={() => setOpenGroup(null)}>
+                <button onClick={() => !n.children && navigate(n.key)}
+                  style={{ padding: "6px 12px", background: page === n.key || n.children?.some(c => c.key === page) ? BWL.orange : "transparent", color: BWL.white, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap" }}>
+                  {n.label}{n.children && " ▾"}
+                </button>
+                {n.children && openGroup === n.key && (
+                  <div style={{ position: "absolute", top: "100%", left: 0, background: BWL.black, border: `1px solid ${BWL.darkGray}`, borderRadius: 8, padding: 6, minWidth: 180, zIndex: 200, boxShadow: "0 8px 24px #0008" }}>
+                    {n.children.map(c => (
+                      <button key={c.key} onClick={() => navigate(c.key)}
+                        style={{ display: "block", width: "100%", padding: "8px 12px", background: page === c.key ? BWL.orange : "transparent", color: BWL.white, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", borderRadius: 6, textAlign: "left" }}>
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MOBILE MENU */}
+      {isMobile && menuOpen && (
+        <div style={{ background: BWL.black, padding: 16, display: "flex", flexDirection: "column", gap: 4, position: "sticky", top: 54, zIndex: 99 }}>
+          {NAV.map(n => n.children ? (
+            <div key={n.key}>
+              <div style={{ fontSize: 10, color: BWL.gray, fontWeight: 900, letterSpacing: 2, padding: "8px 10px 4px" }}>{n.label.toUpperCase()}</div>
+              {n.children.map(c => (
+                <button key={c.key} onClick={() => navigate(c.key)}
+                  style={{ display: "block", width: "100%", padding: "9px 16px", background: page === c.key ? BWL.orange : "transparent", color: BWL.white, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", borderRadius: 6, textAlign: "left" }}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button key={n.key} onClick={() => navigate(n.key)}
+              style={{ display: "block", width: "100%", padding: "9px 16px", background: page === n.key ? BWL.orange : "transparent", color: BWL.white, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", borderRadius: 6, textAlign: "left" }}>
+              {n.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* PAGE CONTENT */}
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px 16px" }}>
+        <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 16 }}>■ {currentLabel.toUpperCase()}</div>
+        {renderPage()}
+      </div>
+    </div>
+  );
+}
