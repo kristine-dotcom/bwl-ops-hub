@@ -3,8 +3,9 @@ import { useState, useEffect } from "react";
 const BWL = {
   bg: "#F5F0E8", black: "#0A0A0A", orange: "#E8390E",
   white: "#FFFFFF", gray: "#888888", lightGray: "#C8C2B8", darkGray: "#333333",
-  font: "'Arial Black', 'Arial Bold', Arial, sans-serif",
-  mono: "'Courier New', Courier, monospace",
+  font: "'Barlow Condensed', 'Arial Black', Arial, sans-serif",
+  body: "'Barlow', Arial, sans-serif",
+  mono: "'Courier Prime', 'Courier New', monospace",
 };
 
 const DEFAULT_SLACK_IDS = {
@@ -91,8 +92,8 @@ function ExportBtn({ title, contentId }) {
   );
 }
 
-const Card = ({ children, style = {} }) => <div style={{ background: BWL.white, border: `1.5px solid ${BWL.black}`, borderRadius: 0, ...style }}>{children}</div>;
-const CardHeader = ({ label, color = BWL.orange }) => <div style={{ padding: "10px 16px", borderBottom: `1.5px solid ${BWL.black}`, fontSize: 10, color, fontWeight: 900, letterSpacing: 3, fontFamily: BWL.font }}>{label}</div>;
+const Card = ({ children, style = {} }) => <div style={{ background: BWL.white, border: `1px solid ${BWL.lightGray}`, borderRadius: 0, ...style }}>{children}</div>;
+const CardHeader = ({ label, color = BWL.orange }) => <div style={{ padding: "12px 20px", borderBottom: `1px solid ${BWL.lightGray}`, fontSize: 11, color, fontWeight: 800, letterSpacing: 4, fontFamily: BWL.font, textTransform: "uppercase" }}>{label}</div>;
 
 function Textarea({ label, value, onChange, placeholder, minHeight = 120 }) {
   return (
@@ -434,9 +435,9 @@ function Dashboard() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ borderBottom: `2px solid ${BWL.black}`, paddingBottom: 20 }}>
-        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1 }}>{weekLabel()}</div>
-        <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginTop: 4 }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div>
+      <div style={{ borderBottom: `2px solid ${BWL.black}`, paddingBottom: 24 }}>
+        <div style={{ fontSize: 64, fontWeight: 900, fontFamily: "'Barlow Condensed', Arial, sans-serif", textTransform: "uppercase", lineHeight: 1, letterSpacing: 1 }}>{weekLabel().toUpperCase()}</div>
+        <div style={{ fontSize: 12, color: BWL.gray, fontFamily: "'Courier Prime', monospace", marginTop: 8, letterSpacing: 3 }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).toUpperCase()}</div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
         {[["TEAM PROGRESS", tp ? `${tp.pct}%` : "—", tp ? `${tp.done}/${tp.total} tasks done` : "No tasks yet", tp?.pct === 100 ? "#10b981" : BWL.orange],["RFP WIN RATE", `${winRate}%`, `${won.length} won · ${rfpTracker.filter(t=>t.status==="submitted").length} pending`, winRate >= 50 ? "#10b981" : "#f59e0b"],["INFLUENCERS", `${influencers.length}`, `${activeInf} active · ${negoInf} negotiating`, "#6c63ff"]].map(([label, value, sub, color]) => (
@@ -820,28 +821,28 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: BWL.bg, fontFamily: BWL.font }}>
-      <div style={{ background: BWL.black, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 54, position: "sticky", top: 0, zIndex: 100, borderBottom: `2px solid ${BWL.orange}` }}>
-        <div style={{ fontSize: 18, fontWeight: 900, color: BWL.white, letterSpacing: -0.5 }}>
+      <div style={{       background: BWL.black, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60, position: "sticky", top: 0, zIndex: 100, borderBottom: `3px solid ${BWL.orange}` }}>
+        <div style={{ fontSize: 22, fontWeight: 900, color: BWL.white, letterSpacing: 2, fontFamily: "'Barlow Condensed', Arial, sans-serif", textTransform: "uppercase", marginRight: 8 }}>
           LEVERAGE<span style={{ color: BWL.orange }}>.</span>
-          <span style={{ fontSize: 10, color: BWL.gray, fontWeight: 400, marginLeft: 8, letterSpacing: 2 }}>OPS HUB</span>
+          <span style={{ fontSize: 11, color: BWL.gray, fontWeight: 500, marginLeft: 10, letterSpacing: 3, fontFamily: "'Courier Prime', monospace" }}>OPS HUB</span>
         </div>
         {isMobile ? (
           <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", color: BWL.white, fontSize: 22, cursor: "pointer" }}>≡</button>
         ) : (
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex" }}>
             {NAV.map(n => (
               <div key={n.key} style={{ position: "relative" }}
                 onMouseEnter={() => n.children && setOpenGroup(n.key)}
                 onMouseLeave={() => setOpenGroup(null)}>
                 <button onClick={() => !n.children && navigate(n.key)}
-                  style={{ padding: "6px 12px", background: page === n.key || n.children?.some(c => c.key === page) ? BWL.orange : "transparent", color: BWL.white, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", borderRadius: 6, whiteSpace: "nowrap", letterSpacing: 0.5 }}>
+                  style={{ padding: "0 20px", height: 60, background: page === n.key || n.children?.some(c => c.key === page) ? BWL.orange : "transparent", color: BWL.white, border: "none", borderRight: `1px solid #1a1a1a`, fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", letterSpacing: 2, fontFamily: BWL.font, textTransform: "uppercase" }}>
                   {n.label}{n.children && " ▾"}
                 </button>
                 {n.children && openGroup === n.key && (
-                  <div style={{ position: "absolute", top: "100%", left: 0, background: BWL.black, border: `1px solid ${BWL.darkGray}`, borderRadius: 8, padding: 6, minWidth: 200, zIndex: 200, boxShadow: "0 8px 24px #0008" }}>
+                  <div style={{ position: "absolute", top: "100%", left: 0, background: BWL.black, border: `1px solid #222`, padding: "4px 0", minWidth: 220, zIndex: 200, boxShadow: "0 8px 32px #000a" }}>
                     {n.children.map(c => (
                       <button key={c.key} onClick={() => navigate(c.key)}
-                        style={{ display: "block", width: "100%", padding: "8px 12px", background: page === c.key ? BWL.orange : "transparent", color: BWL.white, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", borderRadius: 6, textAlign: "left", letterSpacing: 0.5 }}>
+                        style={{ display: "block", width: "100%", padding: "12px 20px", background: page === c.key ? BWL.orange : "transparent", color: BWL.white, border: "none", borderBottom: "1px solid #1a1a1a", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "left", letterSpacing: 2, fontFamily: BWL.font, textTransform: "uppercase" }}>
                         {c.label}
                       </button>
                     ))}
@@ -872,8 +873,11 @@ export default function App() {
           ))}
         </div>
       )}
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px 16px" }}>
-        <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 16 }}>■ {currentLabel}</div>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px" }}>
+        <div style={{ fontSize: 11, color: BWL.orange, fontWeight: 800, letterSpacing: 4, marginBottom: 20, fontFamily: "'Barlow Condensed', Arial, sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ display: "inline-block", width: 8, height: 8, background: BWL.orange }}></span>
+          SYSTEM STATUS: {currentLabel}
+        </div>
         {renderPage()}
       </div>
     </div>
