@@ -159,19 +159,67 @@ function OpsPulse({ slackIds }) {
   const [slackStatus, setSlackStatus] = useState({});
   const [showInput, setShowInput] = useState(false);
   const [storageLoading, setStorageLoading] = useState(true);
+  const [history, setHistory] = useState([]);
 
   useEffect(() => {
     Promise.all([
       storage.get("ops-pulse-current"),
       storage.get("ops-pulse-checked"),
-    ]).then(([r, c]) => {
+      storage.get("ops-pulse-history"),
+    ]).then(([r, c, h]) => {
       if (r) setResult(JSON.parse(r.value));
       if (c) setChecked(JSON.parse(c.value));
+      if (h) setHistory(JSON.parse(h.value));
       setStorageLoading(false);
     });
   }, []);
 
+  // Save snapshot of current week to history
+  const saveToHistory = async (res, chk) => {
+    const weekKey = new Date().toISOString().split("T")[0].substring(0, 7) + "-" +
+      (() => { const d = new Date(); const day = d.getDay(); const mon = new Date(d); mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); return mon.toISOString().split("T")[0]; })();
+
+    const memberStats = TEAM_OPS.map(m => {
+      const tasks = res?.team_tasks?.[m]?.tasks || [];
+      const done = tasks.filter((_, i) => chk[`${m}-${i}`]).length;
+      const overdue = tasks.filter((t, i) => !chk[`${m}-${i}`] && (() => {
+        if (!t.due_day) return false;
+        const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+        return days.indexOf(t.due_day) < new Date().getDay();
+      })()).length;
+      const blockers = res?.team_tasks?.[m]?.blockers || [];
+      return { name: m, total: tasks.length, done, overdue, blockers };
+    });
+
+    const total = memberStats.reduce((a, m) => a + m.total, 0);
+    const done = memberStats.reduce((a, m) => a + m.done, 0);
+    const allBlockers = memberStats.flatMap(m => m.blockers);
+
+    const snapshot = {
+      weekKey,
+      weekLabel: weekLabel(),
+      savedAt: new Date().toISOString(),
+      teamCompletion: total ? Math.round((done / total) * 100) : 0,
+      totalTasks: total,
+      doneTasks: done,
+      overdueCount: memberStats.reduce((a, m) => a + m.overdue, 0),
+      memberStats,
+      blockers: allBlockers,
+      summary: res?.week_summary || "",
+    };
+
+    const existing = await storage.get("ops-pulse-history");
+    let hist = existing ? JSON.parse(existing.value) : [];
+    // Remove if same week already saved, keep last 4 weeks
+    hist = hist.filter(h => h.weekKey !== weekKey);
+    hist = [snapshot, ...hist].slice(0, 4);
+    setHistory(hist);
+    await storage.set("ops-pulse-history", JSON.stringify(hist));
+  };
+
   const clearTasks = async () => {
+    // Snapshot before clearing
+    if (result) await saveToHistory(result, checked);
     setResult(null); setChecked({});
     await storage.delete("ops-pulse-current");
     await storage.delete("ops-pulse-checked");
@@ -298,7 +346,7 @@ Return ONLY valid JSON:
             <p style={{ margin: 0, color: BWL.darkGray, fontSize: 13, lineHeight: 1.7 }}>{result.week_summary}</p>
           </Card>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {[["team","TEAM VIEW"],["person","PER PERSON"]].map(([v,l]) => (
+            {[["team","TEAM VIEW"],["person","PER PERSON"],["history","HISTORY"]].map(([v,l]) => (
               <button key={v} onClick={() => { setView(v); if (v==="team") setSelectedMember(null); }}
                 style={{ padding: "7px 16px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: view===v ? BWL.black : BWL.white, color: view===v ? BWL.white : BWL.gray, border: view===v ? "none" : `1px solid ${BWL.lightGray}`, cursor: "pointer" }}>{l}</button>
             ))}
@@ -387,6 +435,84 @@ Return ONLY valid JSON:
                     </div>
                   );
                 })()}
+              </div>
+            )}
+            {view === "history" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {history.length === 0 ? (
+                  <Card style={{ padding: 32, textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginBottom: 8 }}>NO HISTORY YET</div>
+                    <div style={{ fontSize: 13, color: BWL.black }}>History is saved automatically when you start a new week.</div>
+                  </Card>
+                ) : history.map((h, hi) => {
+                  const topPerformer = [...h.memberStats].sort((a, b) => (b.done/Math.max(b.total,1)) - (a.done/Math.max(a.total,1)))[0];
+                  const needsAttention = [...h.memberStats].sort((a, b) => b.overdue - a.overdue)[0];
+                  const commonBlockers = h.blockers.slice(0, 3);
+                  return (
+                    <Card key={hi} style={{ overflow: "hidden" }}>
+                      <div style={{ background: BWL.black, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: BWL.white, fontFamily: BWL.font }}>{h.weekLabel.toUpperCase()}</div>
+                          <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono, marginTop: 2 }}>{new Date(h.savedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 28, fontWeight: 900, color: h.teamCompletion === 100 ? "#10b981" : BWL.orange }}>{h.teamCompletion}%</div>
+                          <div style={{ fontSize: 9, color: BWL.gray, fontFamily: BWL.mono }}>{h.doneTasks}/{h.totalTasks} DONE</div>
+                        </div>
+                      </div>
+                      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                        {/* Progress bar */}
+                        <div style={{ background: BWL.lightGray, height: 6, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${h.teamCompletion}%`, background: h.teamCompletion === 100 ? "#10b981" : BWL.orange, transition: "width 0.3s" }} />
+                        </div>
+                        {/* Stats row */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                          {[
+                            ["TASKS DONE", `${h.doneTasks}/${h.totalTasks}`, BWL.orange],
+                            ["OVERDUE", h.overdueCount, h.overdueCount > 0 ? "#ef4444" : "#10b981"],
+                            ["BLOCKERS", h.blockers.length, h.blockers.length > 0 ? "#f59e0b" : "#10b981"],
+                          ].map(([l, v, c]) => (
+                            <div key={l} style={{ background: BWL.bg, padding: "10px 12px" }}>
+                              <div style={{ fontSize: 9, color: BWL.gray, fontFamily: BWL.mono, letterSpacing: 2, marginBottom: 4 }}>{l}</div>
+                              <div style={{ fontSize: 20, fontWeight: 900, color: c, fontFamily: BWL.font }}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Per-member breakdown */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono, letterSpacing: 2, marginBottom: 2 }}>MEMBER COMPLETION</div>
+                          {h.memberStats.filter(m => m.total > 0).map(m => {
+                            const pct = Math.round((m.done / m.total) * 100);
+                            return (
+                              <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div style={{ width: 80, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{m.name.split(" ")[0]}</div>
+                                <div style={{ flex: 1, background: BWL.lightGray, height: 5, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#10b981" : BWL.orange }} />
+                                </div>
+                                <div style={{ width: 36, fontSize: 11, fontWeight: 800, color: pct === 100 ? "#10b981" : BWL.orange, textAlign: "right" }}>{pct}%</div>
+                                {m.overdue > 0 && <div style={{ fontSize: 10, color: "#ef4444", fontWeight: 700, whiteSpace: "nowrap" }}>{m.overdue} late</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Blockers */}
+                        {commonBlockers.length > 0 && (
+                          <div style={{ background: "#fff8f0", border: `1px solid ${BWL.orange}22`, padding: "10px 14px" }}>
+                            <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 800, letterSpacing: 2, fontFamily: BWL.mono, marginBottom: 6 }}>BLOCKERS THIS WEEK</div>
+                            {commonBlockers.map((b, i) => <div key={i} style={{ fontSize: 12, color: BWL.darkGray, marginBottom: 4, paddingLeft: 8, borderLeft: `2px solid ${BWL.orange}` }}>{b}</div>)}
+                          </div>
+                        )}
+                        {/* Highlights */}
+                        {(topPerformer?.total > 0 || needsAttention?.overdue > 0) && (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            {topPerformer?.total > 0 && <div style={{ background: "#f0faf0", padding: "10px 12px" }}><div style={{ fontSize: 9, color: "#10b981", fontWeight: 800, letterSpacing: 2, marginBottom: 4 }}>TOP PERFORMER</div><div style={{ fontSize: 13, fontWeight: 700 }}>{topPerformer.name.split(" ")[0]}</div><div style={{ fontSize: 11, color: BWL.gray }}>{topPerformer.done}/{topPerformer.total} tasks</div></div>}
+                            {needsAttention?.overdue > 0 && <div style={{ background: "#fff0ee", padding: "10px 12px" }}><div style={{ fontSize: 9, color: "#ef4444", fontWeight: 800, letterSpacing: 2, marginBottom: 4 }}>NEEDS ATTENTION</div><div style={{ fontSize: 13, fontWeight: 700 }}>{needsAttention.name.split(" ")[0]}</div><div style={{ fontSize: 11, color: BWL.gray }}>{needsAttention.overdue} overdue</div></div>}
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>
