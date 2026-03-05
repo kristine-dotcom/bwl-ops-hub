@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const BWL = {
   bg: "#F5F0E8", black: "#0A0A0A", orange: "#E8390E",
@@ -18,9 +18,33 @@ const DEFAULT_SLACK_IDS = {
 };
 
 const storage = {
-  get: (key) => { try { const v = localStorage.getItem(key); return v ? { value: v } : null; } catch { return null; } },
-  set: (key, value) => { try { localStorage.setItem(key, value); } catch {} },
-  delete: (key) => { try { localStorage.removeItem(key); } catch {} },
+  get: async (key) => {
+    try {
+      const r = await fetch("/api/kv", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", key }),
+      });
+      const data = await r.json();
+      if (data.value === null || data.value === undefined) return null;
+      return { value: typeof data.value === "string" ? data.value : JSON.stringify(data.value) };
+    } catch { return null; }
+  },
+  set: async (key, value) => {
+    try {
+      await fetch("/api/kv", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", key, value }),
+      });
+    } catch {}
+  },
+  delete: async (key) => {
+    try {
+      await fetch("/api/kv", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", key }),
+      });
+    } catch {}
+  },
 };
 
 function weekLabel() {
@@ -42,11 +66,11 @@ async function callClaude(prompt, maxTokens = 2000) {
 
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  useState(() => {
+  useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
-  });
+  }, []);
   return isMobile;
 };
 
@@ -125,21 +149,38 @@ const INPUT_TYPES = [{ key: "transcript", label: "Meeting Transcript" },{ key: "
 function OpsPulse({ slackIds }) {
   const [inputs, setInputs] = useState({ transcript: "", sod: "", email: "", slack: "" });
   const [activeTab, setActiveTab] = useState("transcript");
-  const [result, setResult] = useState(() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; });
+  const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [checked, setChecked] = useState(() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; });
+  const [checked, setChecked] = useState({});
   const [selectedMember, setSelectedMember] = useState(null);
   const [view, setView] = useState("team");
   const [slackStatus, setSlackStatus] = useState({});
   const [showInput, setShowInput] = useState(false);
+  const [storageLoading, setStorageLoading] = useState(true);
 
-  const clearTasks = () => { setResult(null); setChecked({}); storage.delete("ops-pulse-current"); storage.delete("ops-pulse-checked"); };
+  useEffect(() => {
+    Promise.all([
+      storage.get("ops-pulse-current"),
+      storage.get("ops-pulse-checked"),
+    ]).then(([r, c]) => {
+      if (r) setResult(JSON.parse(r.value));
+      if (c) setChecked(JSON.parse(c.value));
+      setStorageLoading(false);
+    });
+  }, []);
+
+  const clearTasks = async () => {
+    setResult(null); setChecked({});
+    await storage.delete("ops-pulse-current");
+    await storage.delete("ops-pulse-checked");
+  };
 
   const sendDM = async (member) => {
     const userId = slackIds?.[member];
     if (!userId) { setSlackStatus(p => ({ ...p, [member]: "NO ID" })); return; }
-    const token = storage.get("slack-token")?.value;
+    const tokenData = await storage.get("slack-token");
+    const token = tokenData?.value;
     if (!token) { setSlackStatus(p => ({ ...p, [member]: "NO TOKEN" })); return; }
     const tasks = result?.team_tasks?.[member]?.tasks || [];
     const taskLines = tasks.map((t, i) => `${i+1}. [${t.priority?.toUpperCase()}] ${t.task}${t.due ? ` (${t.due})` : ""}`).join("\n");
@@ -159,7 +200,8 @@ function OpsPulse({ slackIds }) {
 
   const generate = async () => {
     setLoading(true); setResult(null); setError(null); setChecked({});
-    storage.delete("ops-pulse-current"); storage.delete("ops-pulse-checked");
+    await storage.delete("ops-pulse-current");
+    await storage.delete("ops-pulse-checked");
     const context = INPUT_TYPES.filter(t => inputs[t.key].trim()).map(t => `=== ${t.label} ===\n${inputs[t.key]}`).join("\n\n");
     const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
     const prompt = `You are AI Chief of Staff for BuildWithLeverage. Today is ${today}. Generate weekly tasks per team member.
@@ -176,15 +218,15 @@ Return ONLY valid JSON:
       const text = data.content?.find(b => b.type === "text")?.text || "";
       const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       setResult(parsed); setShowInput(false);
-      storage.set("ops-pulse-current", JSON.stringify(parsed));
+      await storage.set("ops-pulse-current", JSON.stringify(parsed));
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
 
-  const toggleCheck = (member, idx) => {
+  const toggleCheck = async (member, idx) => {
     const newChecked = { ...checked, [`${member}-${idx}`]: !checked[`${member}-${idx}`] };
     setChecked(newChecked);
-    storage.set("ops-pulse-checked", JSON.stringify(newChecked));
+    await storage.set("ops-pulse-checked", JSON.stringify(newChecked));
   };
 
   const isOverdue = (dueDay) => {
@@ -208,6 +250,8 @@ Return ONLY valid JSON:
     TEAM_OPS.forEach(m => { const t = result.team_tasks?.[m]?.tasks || []; total += t.length; done += t.filter((_, i) => checked[`${m}-${i}`]).length; });
     return total ? Math.round((done / total) * 100) : 0;
   };
+
+  if (storageLoading) return <div style={{ padding: 40, textAlign: "center", color: BWL.gray, fontFamily: BWL.mono, fontSize: 12 }}>LOADING...</div>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -355,10 +399,29 @@ Return ONLY valid JSON:
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════════
 function Dashboard() {
-  const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
-  const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
-  const rfpTracker = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
-  const influencers = (() => { const s = storage.get("influencer-tracker"); return s ? JSON.parse(s.value) : []; })();
+  const [tasks, setTasks] = useState(null);
+  const [checked, setChecked] = useState({});
+  const [rfpTracker, setRfpTracker] = useState([]);
+  const [influencers, setInfluencers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      storage.get("ops-pulse-current"),
+      storage.get("ops-pulse-checked"),
+      storage.get("rfp-tracker"),
+      storage.get("influencer-tracker"),
+    ]).then(([t, c, r, inf]) => {
+      if (t) setTasks(JSON.parse(t.value));
+      if (c) setChecked(JSON.parse(c.value));
+      if (r) setRfpTracker(JSON.parse(r.value));
+      if (inf) setInfluencers(JSON.parse(inf.value));
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: BWL.gray, fontFamily: BWL.mono, fontSize: 12 }}>LOADING...</div>;
+
   const getProgress = member => { const t = tasks?.team_tasks?.[member]?.tasks || []; if (!t.length) return null; return Math.round((t.filter((_, i) => checked[`${member}-${i}`]).length / t.length) * 100); };
   const teamProgress = () => { if (!tasks) return null; let total = 0, done = 0; TEAM_OPS.forEach(m => { const t = tasks.team_tasks?.[m]?.tasks || []; total += t.length; done += t.filter((_, i) => checked[`${m}-${i}`]).length; }); return total ? { pct: Math.round((done / total) * 100), total, done } : null; };
   const tp = teamProgress();
@@ -368,10 +431,10 @@ function Dashboard() {
   const totalRev = won.filter(t => t.revenue).reduce((a, t) => a + parseFloat(t.revenue.replace(/[^0-9.]/g,"")) || 0, 0);
   const activeInf = influencers.filter(i => i.status === "active").length;
   const negoInf = influencers.filter(i => i.status === "under_nego").length;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ borderBottom: `2px solid ${BWL.black}`, paddingBottom: 20 }}>
-        <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 6 }}>DASHBOARD</div>
         <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1 }}>{weekLabel()}</div>
         <div style={{ fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, marginTop: 4 }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div>
       </div>
@@ -414,20 +477,27 @@ function urgencyTag(deadline) {
 
 function RFPEngine() {
   const [keywords, setKeywords] = useState(""); const [rfps, setRfps] = useState([]); const [selected, setSelected] = useState(null); const [proposal, setProposal] = useState(null); const [loading, setLoading] = useState({ search: false, proposal: false }); const [error, setError] = useState(null); const [view, setView] = useState("search");
-  const [tracker, setTracker] = useState(() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; });
+  const [tracker, setTracker] = useState([]);
   const [expandedScore, setExpandedScore] = useState(null); const [editNote, setEditNote] = useState({}); const [editRev, setEditRev] = useState({});
+
+  useEffect(() => {
+    storage.get("rfp-tracker").then(s => { if (s) setTracker(JSON.parse(s.value)); });
+  }, []);
+
   const setLoad = (k,v) => setLoading(p=>({...p,[k]:v}));
-  const persist = (list) => { setTracker(list); storage.set("rfp-tracker", JSON.stringify(list)); };
+  const persist = async (list) => { setTracker(list); await storage.set("rfp-tracker", JSON.stringify(list)); };
   const saveToTracker = (rfp, pt) => { const e={id:Date.now(),title:rfp.title,organization:rfp.organization,type:rfp.type||"Other",budget:rfp.budget,deadline:rfp.deadline||"",services:rfp.services_needed||[],score:rfp.relevance_score,proposal:pt,status:"draft",revenue:"",notes:"",created_at:new Date().toISOString()}; persist([e,...tracker]); };
   const updateStatus = (id,status) => persist(tracker.map(t=>t.id===id?{...t,status}:t));
   const updateField = (id,field,val) => persist(tracker.map(t=>t.id===id?{...t,[field]:val}:t));
   const del = (id) => persist(tracker.filter(t=>t.id!==id));
+
   const search = async () => {
     setLoad("search",true); setError(null); setRfps([]); setSelected(null); setProposal(null);
     const prompt = `RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1","s2"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound","Paid Media"],"source":"..."}]}`;
     try { const res = await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]})}); const data = await res.json(); if(data.error) throw new Error(data.error.message); const raw = data.content?.find(b=>b.type==="text")?.text||""; setRfps(JSON.parse(raw.slice(raw.indexOf("{"),raw.lastIndexOf("}")+1)).rfps||[]); } catch(e){setError(e.message);}
     setLoad("search",false);
   };
+
   const genProposal = async rfp => {
     setSelected(rfp); setProposal(null); setLoad("proposal",true);
     const tpl = PROPOSAL_TEMPLATES[rfp.type] || PROPOSAL_TEMPLATES.Other;
@@ -435,11 +505,13 @@ function RFPEngine() {
     try { const r=await callClaude(prompt,3000); setProposal(r); } catch(e){setError(e.message);}
     setLoad("proposal",false);
   };
+
   const sc = s => s>=80?"#10b981":s>=60?"#f59e0b":"#ef4444";
   const ss = s => ({draft:{color:BWL.gray,label:"DRAFT"},submitted:{color:"#f59e0b",label:"SUBMITTED"},won:{color:"#10b981",label:"WON"},lost:{color:"#ef4444",label:"LOST"}}[s]||{color:BWL.gray,label:s});
   const won = tracker.filter(t=>t.status==="won"); const submitted = tracker.filter(t=>["submitted","won","lost"].includes(t.status)); const winRate = submitted.length ? Math.round((won.length/submitted.length)*100) : 0;
   const totalRev = won.filter(t=>t.revenue).reduce((a,t)=>a+parseFloat(t.revenue.replace(/[^0-9.]/g,""))||0,0);
   const pipelineRev = tracker.filter(t=>t.status==="submitted"&&t.revenue).reduce((a,t)=>a+parseFloat(t.revenue.replace(/[^0-9.]/g,""))||0,0);
+
   return (
     <div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>{[["search","FIND RFPs"],["tracker",`PIPELINE (${tracker.length})`]].map(([v,l])=>(<button key={v} onClick={()=>setView(v)} style={{padding:"8px 18px",borderRadius:20,fontSize:12,fontWeight:700,background:view===v?BWL.black:BWL.white,color:view===v?BWL.white:BWL.gray,border:view===v?"none":`1px solid ${BWL.lightGray}`,cursor:"pointer"}}>{l}</button>))}</div>
@@ -540,16 +612,22 @@ function CampaignBrief() {
 }
 
 function InfluencerTracker() {
-  const [influencers, setInfluencers] = useState(() => { const s=storage.get("influencer-tracker"); return s?JSON.parse(s.value):[]; });
+  const [influencers, setInfluencers] = useState([]);
   const [form, setForm] = useState({ name:"", handle:"", platform:"Instagram", niche:"", followers:"", status:"under_nego", rate:"", notes:"", email:"", contact:"" });
   const [showForm, setShowForm] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [filter, setFilter] = useState("all");
-  const save = (list) => { setInfluencers(list); storage.set("influencer-tracker", JSON.stringify(list)); };
+
+  useEffect(() => {
+    storage.get("influencer-tracker").then(s => { if (s) setInfluencers(JSON.parse(s.value)); });
+  }, []);
+
+  const save = async (list) => { setInfluencers(list); await storage.set("influencer-tracker", JSON.stringify(list)); };
   const add = () => { save([{...form,id:Date.now(),created_at:new Date().toISOString()},...influencers]); setForm({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:"",email:"",contact:""}); setShowForm(false); };
   const del = (id) => save(influencers.filter(i=>i.id!==id));
   const updateStatus = (id,status) => save(influencers.map(i=>i.id===id?{...i,status}:i));
+
   const handleCSV = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     setImporting(true); setImportResult(null);
@@ -564,9 +642,11 @@ function InfluencerTracker() {
     setImportResult({ count: imported.length, skipped: rows.length - imported.length });
     setImporting(false); e.target.value = "";
   };
+
   const statuses = {active:{label:"ACTIVE",color:"#10b981"},paid:{label:"PAID",color:"#6c63ff"},under_nego:{label:"NEGOTIATING",color:"#f59e0b"},completed:{label:"COMPLETED",color:BWL.gray},declined:{label:"DECLINED",color:"#ef4444"}};
   const filtered = filter==="all"?influencers:influencers.filter(i=>i.status===filter);
   const counts = Object.keys(statuses).reduce((a,k)=>({...a,[k]:influencers.filter(i=>i.status===k).length}),{});
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -585,16 +665,23 @@ function InfluencerTracker() {
 }
 
 function ContentTracker() {
-  const [posts, setPosts] = useState(() => { const s=storage.get("content-tracker"); return s?JSON.parse(s.value):[]; });
+  const [posts, setPosts] = useState([]);
   const [form, setForm] = useState({ influencer:"", platform:"Instagram", content_type:"Post", caption:"", post_date:"", status:"planned", link:"" });
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
-  const save = (list) => { setPosts(list); storage.set("content-tracker", JSON.stringify(list)); };
+
+  useEffect(() => {
+    storage.get("content-tracker").then(s => { if (s) setPosts(JSON.parse(s.value)); });
+  }, []);
+
+  const save = async (list) => { setPosts(list); await storage.set("content-tracker", JSON.stringify(list)); };
   const add = () => { save([{...form,id:Date.now(),created_at:new Date().toISOString()},...posts]); setForm({influencer:"",platform:"Instagram",content_type:"Post",caption:"",post_date:"",status:"planned",link:""}); setShowForm(false); };
   const del = (id) => save(posts.filter(p=>p.id!==id));
   const updateStatus = (id,status) => save(posts.map(p=>p.id===id?{...p,status}:p));
+
   const statuses = {planned:{label:"PLANNED",color:"#6c63ff"},submitted:{label:"SUBMITTED",color:"#f59e0b"},live:{label:"LIVE",color:"#10b981"},revision:{label:"REVISION",color:BWL.orange},approved:{label:"APPROVED",color:"#10b981"}};
   const filtered = filter==="all"?posts:posts.filter(p=>p.status===filter);
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -630,7 +717,14 @@ function Settings({ slackToken, setSlackToken, slackIds, setSlackIds }) {
   const [token, setToken] = useState(slackToken || "");
   const [ids, setIds] = useState(slackIds || DEFAULT_SLACK_IDS);
   const [saved, setSaved] = useState(false);
-  const save = () => { setSlackToken(token); setSlackIds(ids); storage.set("slack-token", token); storage.set("slack-ids", JSON.stringify(ids)); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+
+  const save = async () => {
+    setSlackToken(token); setSlackIds(ids);
+    await storage.set("slack-token", token);
+    await storage.set("slack-ids", JSON.stringify(ids));
+    setSaved(true); setTimeout(() => setSaved(false), 2000);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Card><CardHeader label="SLACK BOT TOKEN" /><div style={{ padding: 16 }}><input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="xoxb-..." style={{ width: "100%", background: BWL.bg, border: `1px solid ${BWL.lightGray}`, borderRadius: 8, color: BWL.black, fontSize: 13, padding: "10px 14px", outline: "none", fontFamily: "monospace", boxSizing: "border-box" }} /></div></Card>
@@ -649,38 +743,30 @@ const NAV = [
   { key: "dashboard", label: "DASHBOARD" },
   { key: "ops-pulse", label: "OPS PULSE" },
   { key: "rfp", label: "RFP ENGINE" },
-  {
-    key: "cos", label: "CoS TOOLS", children: [
-      { key: "weekly-report", label: "WEEKLY REPORT" },
-      { key: "exec-comms", label: "EXEC COMMS" },
-      { key: "daily-briefing", label: "DAILY BRIEFING" },
-      { key: "team-performance", label: "TEAM PERFORMANCE" },
-      { key: "strategic-decision", label: "STRATEGIC DECISION" },
-    ]
-  },
-  {
-    key: "outbound", label: "OUTBOUND", children: [
-      { key: "sequence-builder", label: "SEQUENCE BUILDER" },
-      { key: "lead-research", label: "LEAD RESEARCH" },
-      { key: "cold-email", label: "COLD EMAIL" },
-      { key: "call-script", label: "CALL SCRIPT" },
-      { key: "after-call", label: "AFTER CALL" },
-    ]
-  },
-  {
-    key: "influencer", label: "INFLUENCER", children: [
-      { key: "influencer-outreach", label: "OUTREACH" },
-      { key: "campaign-brief", label: "CAMPAIGN BRIEF" },
-      { key: "influencer-tracker", label: "TRACKER" },
-      { key: "content-tracker", label: "CONTENT TRACKER" },
-    ]
-  },
-  {
-    key: "design", label: "DESIGN", children: [
-      { key: "design-brief", label: "DESIGN BRIEF" },
-      { key: "feedback-summary", label: "FEEDBACK SUMMARY" },
-    ]
-  },
+  { key: "cos", label: "CoS TOOLS", children: [
+    { key: "weekly-report", label: "WEEKLY REPORT" },
+    { key: "exec-comms", label: "EXEC COMMS" },
+    { key: "daily-briefing", label: "DAILY BRIEFING" },
+    { key: "team-performance", label: "TEAM PERFORMANCE" },
+    { key: "strategic-decision", label: "STRATEGIC DECISION" },
+  ]},
+  { key: "outbound", label: "OUTBOUND", children: [
+    { key: "sequence-builder", label: "SEQUENCE BUILDER" },
+    { key: "lead-research", label: "LEAD RESEARCH" },
+    { key: "cold-email", label: "COLD EMAIL" },
+    { key: "call-script", label: "CALL SCRIPT" },
+    { key: "after-call", label: "AFTER CALL" },
+  ]},
+  { key: "influencer", label: "INFLUENCER", children: [
+    { key: "influencer-outreach", label: "OUTREACH" },
+    { key: "campaign-brief", label: "CAMPAIGN BRIEF" },
+    { key: "influencer-tracker", label: "TRACKER" },
+    { key: "content-tracker", label: "CONTENT TRACKER" },
+  ]},
+  { key: "design", label: "DESIGN", children: [
+    { key: "design-brief", label: "DESIGN BRIEF" },
+    { key: "feedback-summary", label: "FEEDBACK SUMMARY" },
+  ]},
   { key: "settings", label: "SETTINGS" },
 ];
 
@@ -688,9 +774,19 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState(null);
-  const [slackToken, setSlackToken] = useState(() => storage.get("slack-token")?.value || "");
-  const [slackIds, setSlackIds] = useState(() => { const s = storage.get("slack-ids"); return s ? JSON.parse(s.value) : DEFAULT_SLACK_IDS; });
+  const [slackToken, setSlackToken] = useState("");
+  const [slackIds, setSlackIds] = useState(DEFAULT_SLACK_IDS);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    Promise.all([
+      storage.get("slack-token"),
+      storage.get("slack-ids"),
+    ]).then(([t, ids]) => {
+      if (t) setSlackToken(t.value);
+      if (ids) setSlackIds(JSON.parse(ids.value));
+    });
+  }, []);
 
   const navigate = (key) => { setPage(key); setMenuOpen(false); };
 
@@ -724,7 +820,6 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: BWL.bg, fontFamily: BWL.font }}>
-      {/* HEADER */}
       <div style={{ background: BWL.black, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 54, position: "sticky", top: 0, zIndex: 100, borderBottom: `2px solid ${BWL.orange}` }}>
         <div style={{ fontSize: 18, fontWeight: 900, color: BWL.white, letterSpacing: -0.5 }}>
           LEVERAGE<span style={{ color: BWL.orange }}>.</span>
@@ -757,8 +852,6 @@ export default function App() {
           </div>
         )}
       </div>
-
-      {/* MOBILE MENU */}
       {isMobile && menuOpen && (
         <div style={{ background: BWL.black, padding: 16, display: "flex", flexDirection: "column", gap: 4, position: "sticky", top: 54, zIndex: 99 }}>
           {NAV.map(n => n.children ? (
@@ -779,8 +872,6 @@ export default function App() {
           ))}
         </div>
       )}
-
-      {/* PAGE CONTENT */}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px 16px" }}>
         <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 16 }}>■ {currentLabel}</div>
         {renderPage()}
