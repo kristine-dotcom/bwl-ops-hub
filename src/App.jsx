@@ -602,122 +602,6 @@ function RFPEngine() {
   );
 }
 
-function SODParser() {
-  const [raw, setRaw] = useState("");
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const parse = async () => {
-    setLoading(true); setResult(null); setError(null);
-    const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-    const prompt = `You are AI Chief of Staff for BuildWithLeverage. Today is ${today}.
-Parse these SOD (Start of Day) Slack messages from the team. Messages may be casual, detailed, or anything in between.
-Team members: ${TEAM_OPS.join(", ")}
-
-For each person found in the messages:
-- Extract what they worked on / plan to work on
-- Identify any blockers or questions they raised
-- Note their general mood/energy (positive/neutral/concerned)
-- Flag anything that needs David or Kristine's attention
-
-RAW SLACK MESSAGES:
-${raw}
-
-Return ONLY valid JSON:
-{
-  "parsed_date": "${today}",
-  "summary": "2-3 sentence overall team SOD summary",
-  "members": [
-    {
-      "name": "exact name from team list",
-      "clocked_in": true,
-      "updates": ["update 1", "update 2"],
-      "blockers": ["blocker or question"],
-      "mood": "positive|neutral|concerned",
-      "needs_attention": true or false,
-      "attention_reason": "why if needs_attention is true"
-    }
-  ],
-  "missing_members": ["names of team members with no SOD"],
-  "flags_for_leadership": ["anything David or Kristine needs to act on"]
-}`;
-    try {
-      const res = await fetch("/api/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }) });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-      const text = data.content?.find(b => b.type === "text")?.text || "";
-      setResult(JSON.parse(text.replace(/```json|```/g, "").trim()));
-    } catch(e) { setError(e.message); }
-    setLoading(false);
-  };
-
-  const moodColor = m => ({ positive: "#10b981", neutral: "#f59e0b", concerned: "#ef4444" }[m] || BWL.gray);
-  const moodIcon = m => ({ positive: "🟢", neutral: "🟡", concerned: "🔴" }[m] || "⚪");
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Textarea label="💬 PASTE SOD SLACK MESSAGES" value={raw} onChange={setRaw} placeholder="Paste all SOD messages here — any format, any order. Claude will figure it out." minHeight={160} />
-      <Btn onClick={parse} disabled={!raw.trim()} loading={loading} label="⚡ PARSE SOD REPORT" />
-      <Err msg={error} />
-      {result && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ background: BWL.black, borderRadius: 0, border: `1.5px solid ${BWL.black}`, padding: 20 }}>
-            <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 3, marginBottom: 8 }}>📋 SOD SUMMARY — {result.parsed_date}</div>
-            <p style={{ margin: 0, color: BWL.white, fontSize: 13, lineHeight: 1.7, fontFamily: BWL.mono }}>{result.summary}</p>
-          </div>
-
-          {result.missing_members?.length > 0 && (
-            <div style={{ background: "#fff8f0", border: `1.5px solid ${BWL.orange}`, padding: "12px 16px" }}>
-              <div style={{ fontSize: 10, color: BWL.orange, fontWeight: 900, letterSpacing: 2, marginBottom: 6 }}>⚠️ NO SOD YET</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {result.missing_members.map((m, i) => <span key={i} style={{ background: BWL.orange + "18", color: BWL.orange, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>{m}</span>)}
-              </div>
-            </div>
-          )}
-
-          {result.flags_for_leadership?.length > 0 && (
-            <Card style={{ padding: 16 }}>
-              <div style={{ fontSize: 10, color: "#ef4444", fontWeight: 900, letterSpacing: 2, marginBottom: 8 }}>🚨 FLAGS FOR LEADERSHIP</div>
-              {result.flags_for_leadership.map((f, i) => (
-                <div key={i} style={{ fontSize: 12, color: BWL.black, marginBottom: 6, paddingLeft: 10, borderLeft: `2px solid #ef4444`, lineHeight: 1.5, fontFamily: BWL.mono }}>{f}</div>
-              ))}
-            </Card>
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {result.members?.map((m, i) => (
-              <Card key={i} style={{ padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 14 }}>{moodIcon(m.mood)}</span>
-                    <div style={{ fontWeight: 900, fontSize: 14 }}>{m.name}</div>
-                    {m.needs_attention && <span style={{ background: "#fff0ee", color: BWL.orange, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>⚠️ NEEDS ATTENTION</span>}
-                  </div>
-                  <span style={{ fontSize: 10, color: moodColor(m.mood), fontWeight: 700, letterSpacing: 1 }}>{m.mood?.toUpperCase()}</span>
-                </div>
-                {m.attention_reason && <div style={{ background: "#fff0ee", border: `1px solid ${BWL.orange}33`, padding: "8px 12px", marginBottom: 10, fontSize: 12, color: BWL.orange, fontFamily: BWL.mono }}>{m.attention_reason}</div>}
-                {m.updates?.length > 0 && (
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, color: "#10b981", fontWeight: 900, letterSpacing: 2, marginBottom: 5 }}>✅ UPDATES</div>
-                    {m.updates.map((u, j) => <div key={j} style={{ fontSize: 12, color: BWL.darkGray, marginBottom: 4, paddingLeft: 10, borderLeft: `2px solid #10b981`, lineHeight: 1.5, fontFamily: BWL.mono }}>{u}</div>)}
-                  </div>
-                )}
-                {m.blockers?.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 9, color: "#ef4444", fontWeight: 900, letterSpacing: 2, marginBottom: 5 }}>🚧 BLOCKERS / QUESTIONS</div>
-                    {m.blockers.map((b, j) => <div key={j} style={{ fontSize: 12, color: BWL.darkGray, marginBottom: 4, paddingLeft: 10, borderLeft: `2px solid #ef4444`, lineHeight: 1.5, fontFamily: BWL.mono }}>{b}</div>)}
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function WeeklyReport() {
   const [updates, setUpdates] = useState(""); const [slack, setSlack] = useState(""); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
   const gen = async () => {
@@ -1287,7 +1171,6 @@ function TeamMode() {
 
 const COS_TOOLS = [
   { key: "ops", label: "OPS PULSE", sub: "Task Generator" },
-  { key: "sod", label: "SOD PARSER", sub: "Auto-Parse" },
   { key: "rfp", label: "RFP ENGINE", sub: "Business Dev" },
   { key: "report", label: "WEEKLY REPORT", sub: "Status Builder" },
   { key: "comms", label: "EXEC COMMS", sub: "Comms Drafter" },
@@ -1332,7 +1215,6 @@ export default function App() {
       )}
       <div style={{ padding: "40px 48px", maxWidth: 1200, margin: "0 auto" }}>
         {mode === "cos" && active === "ops" && <OpsPulse slackIds={slackIds} />}
-        {mode === "cos" && active === "sod" && <SODParser />}
         {mode === "cos" && active === "rfp" && <RFPEngine />}
         {mode === "cos" && active === "report" && <WeeklyReport />}
         {mode === "cos" && active === "comms" && <ExecComms />}
