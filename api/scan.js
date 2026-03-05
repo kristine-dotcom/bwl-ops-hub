@@ -174,7 +174,7 @@ export default async function handler(req, res) {
           auto_generated: true,
         });
       } catch (e) {
-        console.error("Proposal gen failed for " + rfp.title + ":", e.message);
+        results.push({ error: e.message, title: rfp.title });
       }
     }
 
