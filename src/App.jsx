@@ -31,16 +31,17 @@ const GlobalStyle = () => (
 const storage = {
   get: async (key) => {
     try {
-      const r = await window.storage.get(key);
-      if (!r) return null;
-      return { value: typeof r.value === "string" ? r.value : JSON.stringify(r.value) };
+      const r = await fetch("/api/kv", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"get",key}) });
+      const data = await r.json();
+      if (data.value===null||data.value===undefined) return null;
+      return { value: typeof data.value==="string" ? data.value : JSON.stringify(data.value) };
     } catch { return null; }
   },
   set: async (key, value) => {
-    try { await window.storage.set(key, value); } catch {}
+    try { await fetch("/api/kv", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"set",key,value}) }); } catch {}
   },
   delete: async (key) => {
-    try { await window.storage.delete(key); } catch {}
+    try { await fetch("/api/kv", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"delete",key}) }); } catch {}
   },
 };
 
@@ -56,18 +57,10 @@ const useIsMobile = () => {
   return m;
 };
 
-async function callClaude(prompt, maxTokens=2000, useWebSearch=false) {
-  const body = {
-    model:"claude-sonnet-4-20250514",
-    max_tokens:maxTokens,
-    messages:[{role:"user",content:prompt}],
-  };
-  if (useWebSearch) {
-    body.tools = [{type:"web_search_20250305",name:"web_search"}];
-  }
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+async function callClaude(prompt, maxTokens=2000) {
+  const res = await fetch("/api/claude", {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(body),
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
@@ -536,7 +529,7 @@ function OpsPulse({slackIds}) {
     const today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
     const prompt=`You are AI Chief of Staff for BuildWithLeverage. Today is ${today}. Generate weekly tasks per team member. Team: ${TEAM_OPS.join(", ")}. IMPORTANT: SOD Report tasks belong to Kristine Mirabueno unless stated otherwise. For each task include due_day (Monday/Tuesday/Wednesday/Thursday/Friday/EOW). INPUTS:\n${context}\nReturn ONLY valid JSON: {"week_summary":"...","team_tasks":{"Suki Santos":{"role":"...","tasks":[{"task":"...","priority":"high|medium|low","due":"...","due_day":"Monday","type":"action|follow-up|proactive"}],"blockers":[]},"Kristine Mirabueno":{"role":"...","tasks":[],"blockers":[]},"Kristine Miel Zulaybar":{"role":"...","tasks":[],"blockers":[]},"Caleb Bentil":{"role":"...","tasks":[],"blockers":[]},"David Perlov":{"role":"...","tasks":[],"blockers":[]},"Cyril Butanas":{"role":"...","tasks":[],"blockers":[]},"Darlene Mae Malolos":{"role":"...","tasks":[],"blockers":[]}},"follow_ups_needed":["..."],"risks":["..."]}`;
     try {
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:8000,messages:[{role:"user",content:prompt}]})});
+    const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:8000,messages:[{role:"user",content:prompt}]})});
       const data=await res.json();
       if(data.error) throw new Error(data.error.message);
       const text=data.content?.find(b=>b.type==="text")?.text||"";
@@ -993,8 +986,9 @@ function RFPEngine() {
     setLoad("search",true);setError(null);setRfps([]);setSelected(null);setProposal(null);
     const prompt=`RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string if unknown","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1","s2"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound","Paid Media"],"source_url":"direct URL to RFP page or empty string","source":"organization or platform name"}]}`;
     try {
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]})});
-      const data=await res.json();if(data.error) throw new Error(data.error.message);
+      const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]})});
+      const data=await res.json();
+      if(data.error) throw new Error(data.error.message);
       const raw=data.content?.find(b=>b.type==="text")?.text||"";
       const clean=raw.replace(/```json|```/g,"").trim();
       setRfps(JSON.parse(clean.slice(clean.indexOf("{"),clean.lastIndexOf("}")+1)).rfps||[]);
@@ -1012,7 +1006,7 @@ RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp
 ${customText?"Extra context: "+customText:""}
 Return ONLY valid compact JSON (no newlines inside string values):
 {"subject_line":"A NEW [X] FOR [ORG]","why_bwl":["reason with real stat"],"relevant_results":["result with numbers"],"investment":"price range","timeline":"timeline","requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}`;
-      const r1=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:metaPrompt}]})});
+      const r1=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:metaPrompt}]})});
       const d1=await r1.json();
       if(d1.error) throw new Error(d1.error.message);
       const t1=(d1.content?.find(b=>b.type==="text")?.text||"").replace(/```json|```/g,"").trim();
@@ -1038,7 +1032,7 @@ Write the full proposal. Format:
 
 Plain text only. No JSON. No markdown.`;
 
-      const r2=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:textPrompt}]})});
+      const r2=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:textPrompt}]})});
       const d2=await r2.json();
       if(d2.error) throw new Error(d2.error.message);
       const proposalText=d2.content?.find(b=>b.type==="text")?.text||"";
