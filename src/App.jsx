@@ -602,7 +602,99 @@ function RFPEngine() {
   );
 }
 
-function Dashboard({ slackIds }) {
+function GlobalSearch({ onClose }) {
+  const [query, setQuery] = useState("");
+  const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
+  const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
+  const influencers = (() => { const s = storage.get("influencer-tracker"); return s ? JSON.parse(s.value) : []; })();
+  const rfps = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
+
+  const q = query.toLowerCase().trim();
+
+  const taskResults = !q ? [] : TEAM_OPS.flatMap(member => {
+    const memberTasks = tasks?.team_tasks?.[member]?.tasks || [];
+    return memberTasks.filter(t => t.task.toLowerCase().includes(q)).map((t, i) => ({ type: "task", member, task: t.task, priority: t.priority, due: t.due, done: checked[`${member}-${i}`] }));
+  });
+
+  const influencerResults = !q ? [] : influencers.filter(i =>
+    i.name?.toLowerCase().includes(q) || i.handle?.toLowerCase().includes(q) || i.niche?.toLowerCase().includes(q) || i.platform?.toLowerCase().includes(q)
+  );
+
+  const rfpResults = !q ? [] : rfps.filter(r =>
+    r.title?.toLowerCase().includes(q) || r.organization?.toLowerCase().includes(q)
+  );
+
+  const total = taskResults.length + influencerResults.length + rfpResults.length;
+  const pColor = p => ({ high: "#ef4444", medium: "#f59e0b", low: "#10b981" }[p] || BWL.gray);
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#0A0A0Aee", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 60 }} onClick={onClose}>
+      <div style={{ width: "100%", maxWidth: 680, background: BWL.bg, border: `2px solid ${BWL.black}` }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${BWL.black}` }}>
+          <div style={{ fontSize: 11, color: BWL.gray, fontWeight: 900, padding: "0 16px", letterSpacing: 2, fontFamily: BWL.mono }}>SEARCH</div>
+          <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Search tasks, influencers, RFPs..."
+            style={{ flex: 1, padding: "16px", background: "transparent", border: "none", fontSize: 15, fontWeight: 700, outline: "none", fontFamily: BWL.font, color: BWL.black }} />
+          <button onClick={onClose} style={{ padding: "16px 20px", background: "none", border: "none", fontSize: 16, cursor: "pointer", color: BWL.gray, borderLeft: `2px solid ${BWL.black}` }}>✕</button>
+        </div>
+
+        {q && (
+          <div style={{ maxHeight: 480, overflowY: "auto" }}>
+            {total === 0 ? (
+              <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: BWL.gray, fontFamily: BWL.mono }}>No results for "{query}"</div>
+            ) : (
+              <>
+                {taskResults.length > 0 && (
+                  <div>
+                    <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: BWL.orange, borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>TASKS ({taskResults.length})</div>
+                    {taskResults.map((r, i) => (
+                      <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: r.done ? "#f9f9f9" : BWL.white }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: r.done ? BWL.gray : BWL.black, textDecoration: r.done ? "line-through" : "none", marginBottom: 4 }}>{r.task}</div>
+                        <div style={{ display: "flex", gap: 10, fontSize: 10, fontFamily: BWL.mono }}>
+                          <span style={{ color: BWL.gray }}>{r.member}</span>
+                          <span style={{ color: pColor(r.priority), fontWeight: 700 }}>{r.priority}</span>
+                          {r.due && <span style={{ color: BWL.gray }}>{r.due}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {influencerResults.length > 0 && (
+                  <div>
+                    <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: "#6c63ff", borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>INFLUENCERS ({influencerResults.length})</div>
+                    {influencerResults.map((inf, i) => (
+                      <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: BWL.white }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{inf.name}</div>
+                        <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono }}>@{inf.handle} · {inf.platform}{inf.niche && ` · ${inf.niche}`}{inf.followers && ` · ${inf.followers}`}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {rfpResults.length > 0 && (
+                  <div>
+                    <div style={{ padding: "10px 16px", fontSize: 9, fontWeight: 900, letterSpacing: 3, color: "#10b981", borderBottom: `1px solid ${BWL.lightGray}`, fontFamily: BWL.mono }}>RFP PIPELINE ({rfpResults.length})</div>
+                    {rfpResults.map((r, i) => (
+                      <div key={i} style={{ padding: "12px 16px", borderBottom: `1px solid ${BWL.lightGray}`, background: BWL.white }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{r.title}</div>
+                        <div style={{ fontSize: 10, color: BWL.gray, fontFamily: BWL.mono }}>{r.organization} · {r.status?.toUpperCase()}{r.revenue && ` · ${r.revenue}`}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {!q && (
+          <div style={{ padding: 20, fontSize: 11, color: BWL.gray, fontFamily: BWL.mono, textAlign: "center" }}>
+            Type to search across tasks, influencers, and RFP pipeline
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
   const tasks = (() => { const s = storage.get("ops-pulse-current"); return s ? JSON.parse(s.value) : null; })();
   const checked = (() => { const s = storage.get("ops-pulse-checked"); return s ? JSON.parse(s.value) : {}; })();
   const rfpTracker = (() => { const s = storage.get("rfp-tracker"); return s ? JSON.parse(s.value) : []; })();
