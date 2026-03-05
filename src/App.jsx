@@ -1194,11 +1194,66 @@ Plain text only. No JSON. No markdown.`;
           {viewingProposal&&(
             <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.7)",zIndex:500,overflowY:"auto",padding:"40px 20px"}}>
               <div style={{maxWidth:860,margin:"0 auto"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
                   <div style={{fontSize:14,fontWeight:700,color:"#fff",fontFamily:T.font}}>{viewingProposal.title}</div>
-                  <button onClick={()=>setViewingProposal(null)} style={{background:T.orange,color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>✕ CLOSE</button>
+                  <div style={{display:"flex",gap:8}}>
+                    {viewingProposal.source_url&&(
+                      <a href={viewingProposal.source_url} target="_blank" rel="noreferrer"
+                        style={{background:T.orange,color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,fontFamily:T.font,textDecoration:"none"}}>
+                        🔗 VIEW RFP
+                      </a>
+                    )}
+                    <button onClick={()=>{
+                      const printWin=window.open("","_blank");
+                      const proposalEl=document.getElementById("proposal-print-area");
+                      printWin.document.write("<html><head><title>"+viewingProposal.title+"</title>");
+                      printWin.document.write("<style>@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');body{margin:0;padding:0;font-family:'Space Grotesk',sans-serif;background:#F5F5F0;}table{border-collapse:collapse;width:100%;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style>");
+                      printWin.document.write("</head><body>");
+                      printWin.document.write(proposalEl.innerHTML);
+                      printWin.document.write("</body></html>");
+                      printWin.document.close();
+                      printWin.focus();
+                      setTimeout(()=>printWin.print(),800);
+                    }} style={{background:"#fff",color:T.black,border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
+                      🖨️ PRINT / SAVE PDF
+                    </button>
+                    <button onClick={()=>navigator.clipboard.writeText(viewingProposal.proposal)}
+                      style={{background:"#333",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
+                      COPY TEXT
+                    </button>
+                    <button onClick={()=>setViewingProposal(null)} style={{background:T.red,color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>✕ CLOSE</button>
+                  </div>
                 </div>
-                <BrandedProposal proposal={{full_proposal_text:viewingProposal.proposal,subject_line:viewingProposal.title,requirements_checklist:[]}} rfp={{organization:viewingProposal.organization}} />
+                {/* Submission checklist */}
+                <div style={{background:T.black,border:"2px solid "+T.orange,borderRadius:0,padding:"16px 24px",marginBottom:16}}>
+                  <div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:3,marginBottom:10}}>// SUBMISSION CHECKLIST</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    {[
+                      {label:"Proposal PDF ready",done:true},
+                      {label:"RFP source link saved",done:!!viewingProposal.source_url},
+                      {label:"Budget/pricing included",done:!!viewingProposal.budget},
+                      {label:"Contact info in proposal",done:true},
+                      {label:"Deadline not expired",done:(()=>{const u=urgencyTag(viewingProposal.deadline);return !u||u.label!=="EXPIRED";})()},
+                      {label:"Status tracked in pipeline",done:true},
+                    ].map((item,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:item.done?"#fff":"#888",fontFamily:T.mono}}>
+                        <span style={{color:item.done?T.green:T.red,fontSize:14}}>{item.done?"✓":"✗"}</span>
+                        {item.label}
+                      </div>
+                    ))}
+                  </div>
+                  {viewingProposal.source_url?(
+                    <a href={viewingProposal.source_url} target="_blank" rel="noreferrer"
+                      style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:14,background:T.orange,color:"#fff",padding:"10px 20px",fontSize:12,fontWeight:700,fontFamily:T.font,textDecoration:"none"}}>
+                      SUBMIT ON RFP PORTAL ↗
+                    </a>
+                  ):(
+                    <div style={{marginTop:12,fontSize:11,color:"#666",fontFamily:T.mono}}>⚠ No source URL saved — find the RFP portal manually to submit.</div>
+                  )}
+                </div>
+                <div id="proposal-print-area">
+                  <BrandedProposal proposal={{full_proposal_text:viewingProposal.proposal,subject_line:viewingProposal.title,requirements_checklist:[]}} rfp={{organization:viewingProposal.organization}} />
+                </div>
               </div>
             </div>
           )}
@@ -1258,7 +1313,7 @@ Plain text only. No JSON. No markdown.`;
                       )}
                     </div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <button onClick={()=>setViewingProposal(t)} style={{background:T.black,color:"#fff",border:"none",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>👁 VIEW</button>
+                    <button onClick={()=>setViewingProposal(t)} style={{background:T.black,color:"#fff",border:"none",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>👁 VIEW</button>
                       {t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:T.bg,color:T.yellow,border:"1px solid "+T.yellow+"44",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>SUBMITTED</button>}
                       {t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:T.bg,color:T.green,border:"1px solid "+T.green+"44",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>WON</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:T.bg,color:T.red,border:"1px solid "+T.red+"44",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>LOST</button></>}
                       <button onClick={()=>navigator.clipboard.writeText(t.proposal)} style={{background:T.bg,color:T.orange,border:"1px solid "+T.border,borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>COPY</button>
