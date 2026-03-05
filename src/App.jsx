@@ -1,18 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 
 const T = {
-  bg:"#F7F4EF", surface:"#FFFFFF", border:"#E5E0D8", borderDark:"#C8C2B8",
-  black:"#0D0D0D", orange:"#E8390E", orangeHov:"#C72E0A", orangeSoft:"#FDF1EE",
+  bg:"#F5F5F0", surface:"#FFFFFF", border:"#E5E0D8", borderDark:"#C8C2B8",
+  black:"#000000", orange:"#FF3300", orangeHov:"#CC2900", orangeSoft:"#FFF0ED",
   gray:"#6B7280", grayLight:"#9CA3AF", darkGray:"#374151",
   green:"#10B981", yellow:"#F59E0B", red:"#EF4444", purple:"#7C3AED",
-  font:"'Barlow Condensed','Arial Narrow',Arial,sans-serif",
-  body:"'Inter','Segoe UI',Arial,sans-serif",
+  cream:"#F5F5F0",
+  font:"'Space Grotesk','Arial Narrow',Arial,sans-serif",
+  body:"'Space Grotesk','Segoe UI',Arial,sans-serif",
   mono:"'JetBrains Mono','Courier New',monospace",
 };
 
 const GlobalStyle = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
     body{background:${T.bg};font-family:${T.body};color:${T.black};-webkit-font-smoothing:antialiased;}
     ::-webkit-scrollbar{width:6px;height:6px;}
@@ -30,17 +31,16 @@ const GlobalStyle = () => (
 const storage = {
   get: async (key) => {
     try {
-      const r = await fetch("/api/kv", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"get",key}) });
-      const data = await r.json();
-      if (data.value===null||data.value===undefined) return null;
-      return { value: typeof data.value==="string" ? data.value : JSON.stringify(data.value) };
+      const r = await window.storage.get(key);
+      if (!r) return null;
+      return { value: typeof r.value === "string" ? r.value : JSON.stringify(r.value) };
     } catch { return null; }
   },
   set: async (key, value) => {
-    try { await fetch("/api/kv", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"set",key,value}) }); } catch {}
+    try { await window.storage.set(key, value); } catch {}
   },
   delete: async (key) => {
-    try { await fetch("/api/kv", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"delete",key}) }); } catch {}
+    try { await window.storage.delete(key); } catch {}
   },
 };
 
@@ -56,10 +56,18 @@ const useIsMobile = () => {
   return m;
 };
 
-async function callClaude(prompt, maxTokens=2000) {
-  const res = await fetch("/api/claude", {
+async function callClaude(prompt, maxTokens=2000, useWebSearch=false) {
+  const body = {
+    model:"claude-sonnet-4-20250514",
+    max_tokens:maxTokens,
+    messages:[{role:"user",content:prompt}],
+  };
+  if (useWebSearch) {
+    body.tools = [{type:"web_search_20250305",name:"web_search"}];
+  }
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
+    body:JSON.stringify(body),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
@@ -69,7 +77,7 @@ async function callClaude(prompt, maxTokens=2000) {
 }
 
 const Badge = ({label,color=T.orange,bg}) => (
-  <span style={{display:"inline-flex",alignItems:"center",background:bg||color+"18",color,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:700,letterSpacing:0.8,fontFamily:T.font,textTransform:"uppercase"}}>{label}</span>
+  <span style={{display:"inline-flex",alignItems:"center",background:bg||color+"18",color,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:700,letterSpacing:0.8,fontFamily:T.mono,textTransform:"uppercase"}}>{label}</span>
 );
 
 const Pill = ({label,color=T.orange,active,onClick}) => (
@@ -87,7 +95,7 @@ const Card = ({children,style={},hover=false}) => {
 };
 
 const CardLabel = ({children,color=T.orange}) => (
-  <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color,textTransform:"uppercase",fontFamily:T.font}}>{children}</div>
+  <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color,textTransform:"uppercase",fontFamily:T.mono}}>{children}</div>
 );
 
 const SectionHeader = ({label,action}) => (
@@ -129,7 +137,7 @@ const CopyBtn = ({text}) => {
   const [copied,setCopied] = useState(false);
   return (
     <button onClick={()=>{navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),2000);}}
-      style={{background:copied?T.green:T.black,color:"#fff",border:"none",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"background 0.2s",fontFamily:T.font,letterSpacing:0.5}}>
+      style={{background:copied?T.green:T.black,color:"#fff",border:"none",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"background 0.2s",fontFamily:T.mono,letterSpacing:0.5}}>
       {copied?"✓ COPIED":"COPY"}
     </button>
   );
@@ -153,16 +161,6 @@ const Bullets = ({label,items,color}) => {
   );
 };
 
-const ResultBlock = ({label,content,color=T.orange,copyable}) => (
-  <Card style={{padding:18}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <CardLabel color={color}>{label}</CardLabel>
-      {copyable&&<CopyBtn text={content} />}
-    </div>
-    <div style={{fontSize:13,color:T.darkGray,lineHeight:1.8,whiteSpace:"pre-wrap",background:T.bg,borderRadius:8,padding:14}}>{content}</div>
-  </Card>
-);
-
 const ProgressBar = ({value,color,height=6}) => (
   <div style={{background:T.border,borderRadius:99,height,overflow:"hidden"}}>
     <div style={{height:"100%",width:`${value}%`,background:value===100?T.green:(color||T.orange),borderRadius:99,transition:"width 0.4s ease"}} />
@@ -171,7 +169,7 @@ const ProgressBar = ({value,color,height=6}) => (
 
 const StatBlock = ({label,value,sub,color}) => (
   <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:"18px 20px"}}>
-    <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:T.gray,textTransform:"uppercase",fontFamily:T.font,marginBottom:8}}>{label}</div>
+    <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:T.gray,textTransform:"uppercase",fontFamily:T.mono,marginBottom:8}}>{label}</div>
     <div style={{fontSize:32,fontWeight:900,color:color||T.orange,fontFamily:T.font,lineHeight:1,marginBottom:6}}>{value}</div>
     {sub&&<div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono}}>{sub}</div>}
   </div>
@@ -191,6 +189,218 @@ const LoadingScreen = () => (
     <div style={{fontSize:12,color:T.grayLight,fontFamily:T.mono,letterSpacing:2}}>LOADING…</div>
   </div>
 );
+
+// ─── BRANDED PROPOSAL RENDERER ────────────────────────────────────────────────
+const isSectionHeader = (line) => {
+  if (line.length < 5) return false;
+  const twoDigits = line[0] >= "0" && line[0] <= "9" && line[1] >= "0" && line[1] <= "9";
+  return twoDigits && line.indexOf("//") !== -1;
+};
+const parseSectionHeader = (line) => {
+  const slashIdx = line.indexOf("//");
+  return { num: line.slice(0, 2), title: line.slice(slashIdx + 2).trim() };
+};
+const isKeyInsight = (line) => line.toUpperCase().indexOf("KEY INSIGHT") !== -1 && line.indexOf("//") !== -1;
+const isTableRow = (line) => line.includes("|") && line.split("|").length >= 3;
+const isDividerRow = (line) => {
+  const stripped = line.replace(/[\|\s\-]/g, "");
+  return stripped.length === 0;
+};
+const isAllCapsSubtitle = (line) => {
+  if (line.length < 4 || line.length > 60) return false;
+  if (line[0] >= "0" && line[0] <= "9") return false;
+  return line === line.toUpperCase();
+};
+
+const parseProposalText = (text) => {
+  const blocks = [];
+  const lines = text.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (isSectionHeader(line)) {
+      const parsed = parseSectionHeader(line);
+      blocks.push({ type: "section", num: parsed.num, title: parsed.title });
+      i++; continue;
+    }
+    if (isKeyInsight(line)) {
+      const insightLines = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== "" && !isSectionHeader(lines[i].trim())) {
+        insightLines.push(lines[i].trim());
+        i++;
+      }
+      blocks.push({ type: "insight", content: insightLines.join(" ") });
+      continue;
+    }
+    if (isTableRow(line)) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].includes("|")) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+      const trows = tableLines
+        .filter((l) => !isDividerRow(l))
+        .map((l) => l.split("|").map((c) => c.trim()).filter((c) => c.length > 0));
+      if (trows.length > 0) blocks.push({ type: "table", rows: trows });
+      continue;
+    }
+    if (line === "") { blocks.push({ type: "spacer" }); i++; continue; }
+    if (isAllCapsSubtitle(line)) {
+      blocks.push({ type: "subtitle", content: line });
+      i++; continue;
+    }
+    const paraLines = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !isSectionHeader(lines[i].trim()) &&
+      !isTableRow(lines[i].trim()) &&
+      !isKeyInsight(lines[i].trim())
+    ) {
+      paraLines.push(lines[i].trim());
+      i++;
+    }
+    if (paraLines.length > 0) blocks.push({ type: "para", content: paraLines.join(" ") });
+  }
+  return blocks;
+};
+
+const ProposalTable = ({rows}) => {
+  if (!rows || rows.length === 0) return null;
+  const header = rows[0];
+  const body = rows.slice(1);
+  const thStyle = {padding:"10px 14px",color:"#fff",textAlign:"left",fontWeight:700,letterSpacing:1,fontSize:10};
+  const tdStyle = {padding:"9px 14px",color:T.black,fontSize:12};
+  return (
+    <table style={{width:"100%",borderCollapse:"collapse",margin:"16px 0",fontFamily:T.mono,fontSize:12}}>
+      <thead>
+        <tr style={{background:T.black}}>
+          {header.map((h,hi) => <th key={hi} style={thStyle}>{h}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {body.map((row,ri) => (
+          <tr key={ri} style={{background:ri%2===0?T.cream:"#EBEBDF",borderBottom:"1px solid "+T.border}}>
+            {row.map((cell,ci) => <td key={ci} style={tdStyle}>{cell}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
+const BrandedProposal = ({proposal, rfp}) => {
+  const now = new Date();
+  const monthYear = now.toLocaleDateString("en-US",{month:"long",year:"numeric"}).toUpperCase();
+  // eslint-disable-next-line no-unused-vars
+  const text = proposal.full_proposal_text || "";
+  const blocks = parseProposalText(text);
+
+  return (
+    <div style={{fontFamily:T.body,background:T.cream,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{background:T.black,padding:"32px 40px",borderBottom:`4px solid ${T.orange}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:28}}>
+          <div>
+            <div style={{fontSize:32,fontWeight:700,color:"#fff",letterSpacing:4,fontFamily:T.font,lineHeight:1}}>
+              LEVERAGE<span style={{color:T.orange}}>.</span>
+            </div>
+            <div style={{fontSize:10,color:"#555",fontFamily:T.mono,marginTop:6,letterSpacing:3}}>
+              CLIENT PROPOSAL // {rfp?.organization?.toUpperCase() || "CLIENT"}
+            </div>
+            <div style={{fontSize:10,color:"#444",fontFamily:T.mono,marginTop:2,letterSpacing:2}}>
+              PREPARED {monthYear}
+            </div>
+          </div>
+          {/* Logo mark */}
+          <div style={{width:48,height:48,position:"relative",flexShrink:0}}>
+            <div style={{position:"absolute",bottom:6,left:6,width:4,height:42,background:"#fff",transform:"rotate(32deg)",transformOrigin:"bottom left",borderRadius:2}} />
+            <div style={{position:"absolute",bottom:0,left:0,width:16,height:16,borderRadius:"50%",background:T.orange}} />
+          </div>
+        </div>
+        <div style={{borderTop:"1px solid #2a2a2a",paddingTop:24}}>
+          <div style={{fontSize:36,fontWeight:700,color:"#fff",lineHeight:1.1,letterSpacing:1,textTransform:"uppercase",maxWidth:520,fontFamily:T.font}}>
+            {proposal.subject_line || `A NEW REVENUE CHANNEL FOR ${rfp?.organization?.toUpperCase()}`}
+          </div>
+          <div style={{fontSize:10,color:"#555",fontFamily:T.mono,marginTop:12,letterSpacing:4}}>
+            P R E P A R E D &nbsp; F O R &nbsp; // &nbsp; {rfp?.organization?.toUpperCase()}
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{padding:"36px 40px",background:T.cream}}>
+        {blocks.map((block, i) => {
+          if (block.type === "section") return (
+            <div key={i} style={{marginTop: i===0?0:32,marginBottom:16,borderTop:i===0?"none":`1px solid ${T.black}`,paddingTop:i===0?0:24}}>
+              <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+                <span style={{fontSize:11,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>{block.num} //</span>
+                <span style={{fontSize:16,fontWeight:700,color:T.black,fontFamily:T.font,letterSpacing:1,textTransform:"uppercase"}}>{block.title}</span>
+              </div>
+            </div>
+          );
+          if (block.type === "subtitle") return (
+            <div key={i} style={{fontSize:11,fontWeight:700,color:T.black,fontFamily:T.mono,letterSpacing:2,marginTop:20,marginBottom:8,textTransform:"uppercase"}}>{block.content}</div>
+          );
+          if (block.type === "insight") return (
+            <div key={i} style={{background:T.black,border:`2px solid ${T.orange}`,padding:"16px 20px",margin:"20px 0",position:"relative"}}>
+              <div style={{fontSize:9,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:3,marginBottom:8}}>// KEY INSIGHT</div>
+              <div style={{fontSize:13,color:"#fff",lineHeight:1.7,fontFamily:T.body}}>{block.content}</div>
+            </div>
+          );
+          if (block.type === "table") return <ProposalTable key={i} rows={block.rows} />;
+          if (block.type === "spacer") return <div key={i} style={{height:8}} />;
+          if (block.type === "para") return (
+            <p key={i} style={{fontSize:13,color:T.black,lineHeight:1.8,margin:"0 0 12px",fontFamily:T.body}}>{block.content}</p>
+          );
+          return null;
+        })}
+      </div>
+
+      {/* Requirements Checklist */}
+      {proposal.requirements_checklist?.length > 0 && (
+        <div style={{padding:"0 40px 32px"}}>
+          <div style={{borderTop:`2px solid ${T.black}`,paddingTop:24}}>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.mono,marginBottom:16}}>// RFP REQUIREMENTS CHECKLIST</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {proposal.requirements_checklist.map((item,i)=>(
+                <div key={i} style={{display:"flex",gap:14,padding:"11px 16px",background:item.addressed?"#F0FDF4":"#FFF5F5",borderLeft:`3px solid ${item.addressed?T.green:T.red}`}}>
+                  <span style={{fontSize:15,flexShrink:0,marginTop:1}}>{item.addressed?"✅":"❌"}</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:T.black,fontFamily:T.font}}>{item.requirement}</div>
+                    {item.how&&<div style={{fontSize:11,color:T.gray,marginTop:3,fontFamily:T.mono,lineHeight:1.5}}>{item.how}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{background:T.black,padding:"24px 40px",display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:`4px solid ${T.orange}`}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:700,color:"#fff",fontFamily:T.font,letterSpacing:1}}>David Perlov</div>
+          <div style={{fontSize:9,color:T.orange,fontFamily:T.mono,letterSpacing:3,marginTop:4}}>FOUNDER</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#fff",fontFamily:T.font,letterSpacing:2,marginTop:2}}>LEVERAGE<span style={{color:T.orange}}>.</span></div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:11,color:"#888",fontFamily:T.mono,lineHeight:2}}>
+            david@buildwithleverage.com<br/>
+            (201) 290-1536<br/>
+            buildwithleverage.com
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{padding:"14px 40px",background:T.cream,borderTop:`1px solid ${T.border}`,display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <CopyBtn text={text} />
+      </div>
+    </div>
+  );
+};
 
 const TEAM_OPS = ["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Caleb Bentil","David Perlov","Cyril Butanas","Darlene Mae Malolos"];
 const DEFAULT_SLACK_IDS = {
@@ -326,7 +536,7 @@ function OpsPulse({slackIds}) {
     const today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
     const prompt=`You are AI Chief of Staff for BuildWithLeverage. Today is ${today}. Generate weekly tasks per team member. Team: ${TEAM_OPS.join(", ")}. IMPORTANT: SOD Report tasks belong to Kristine Mirabueno unless stated otherwise. For each task include due_day (Monday/Tuesday/Wednesday/Thursday/Friday/EOW). INPUTS:\n${context}\nReturn ONLY valid JSON: {"week_summary":"...","team_tasks":{"Suki Santos":{"role":"...","tasks":[{"task":"...","priority":"high|medium|low","due":"...","due_day":"Monday","type":"action|follow-up|proactive"}],"blockers":[]},"Kristine Mirabueno":{"role":"...","tasks":[],"blockers":[]},"Kristine Miel Zulaybar":{"role":"...","tasks":[],"blockers":[]},"Caleb Bentil":{"role":"...","tasks":[],"blockers":[]},"David Perlov":{"role":"...","tasks":[],"blockers":[]},"Cyril Butanas":{"role":"...","tasks":[],"blockers":[]},"Darlene Mae Malolos":{"role":"...","tasks":[],"blockers":[]}},"follow_ups_needed":["..."],"risks":["..."]}`;
     try {
-      const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:8000,messages:[{role:"user",content:prompt}]})});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:8000,messages:[{role:"user",content:prompt}]})});
       const data=await res.json();
       if(data.error) throw new Error(data.error.message);
       const text=data.content?.find(b=>b.type==="text")?.text||"";
@@ -353,7 +563,6 @@ function OpsPulse({slackIds}) {
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      {/* Header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div>
           <div style={{fontSize:18,fontWeight:700,color:T.black,fontFamily:T.font}}>{weekLabel()}</div>
@@ -367,7 +576,6 @@ function OpsPulse({slackIds}) {
         </div>
       </div>
 
-      {/* Input panel */}
       {(showInput||!result)&&(
         <Card>
           <div style={{display:"flex",borderBottom:`1px solid ${T.border}`}}>
@@ -388,7 +596,6 @@ function OpsPulse({slackIds}) {
 
       {result&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {/* Summary */}
           <Card style={{padding:20}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
               <CardLabel color={T.orange}>{weekLabel()}</CardLabel>
@@ -401,7 +608,6 @@ function OpsPulse({slackIds}) {
             <p style={{margin:"14px 0 0",color:T.darkGray,fontSize:13,lineHeight:1.7}}>{result.week_summary}</p>
           </Card>
 
-          {/* View switcher */}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {[["team","👥 TEAM"],["person","👤 MEMBER"],["history","📋 HISTORY"]].map(([v,l])=>(
               <Pill key={v} label={l} active={view===v} onClick={()=>{setView(v);if(v==="team") setSelectedMember(null);}} />
@@ -414,7 +620,6 @@ function OpsPulse({slackIds}) {
             </div>
           </div>
 
-          {/* TEAM VIEW */}
           {view==="team"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {TEAM_OPS.map(member=>{
@@ -451,7 +656,6 @@ function OpsPulse({slackIds}) {
             </div>
           )}
 
-          {/* PERSON VIEW */}
           {view==="person"&&(
             <div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
@@ -464,7 +668,6 @@ function OpsPulse({slackIds}) {
                 const tasks=d.tasks||[],done=tasks.filter((_,i)=>checked[`${selectedMember}-${i}`]).length,p=tasks.length?Math.round((done/tasks.length)*100):0;
                 return (
                   <Card style={{padding:20}}>
-                    {/* Member header */}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
                       <div style={{display:"flex",gap:12,alignItems:"center"}}>
                         <Avatar name={selectedMember} size={44} />
@@ -479,8 +682,6 @@ function OpsPulse({slackIds}) {
                       </div>
                     </div>
                     <ProgressBar value={p} height={7} />
-
-                    {/* DM + Add Task */}
                     <div style={{marginTop:14,background:T.bg,borderRadius:10,padding:12}}>
                       {showDmContext[selectedMember]?(
                         <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -512,8 +713,6 @@ function OpsPulse({slackIds}) {
                         </div>
                       )}
                     </div>
-
-                    {/* Tasks */}
                     <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:8}}>
                       {tasks.map((t,i)=>{
                         const key=`${selectedMember}-${i}`,isDone=checked[key],overdue=!isDone&&isOverdue(t.due_day);
@@ -521,12 +720,10 @@ function OpsPulse({slackIds}) {
                         return (
                           <div key={i} style={{background:isDone?"#F0FDF4":overdue?"#FFF7F5":T.bg,borderRadius:10,padding:"12px 14px",border:`1px solid ${isDone?T.green+"33":overdue?T.orange+"44":T.border}`}}>
                             <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                              {/* Checkbox */}
                               <div onClick={()=>!isEditingThis&&toggleCheck(selectedMember,i)}
                                 style={{width:20,height:20,borderRadius:5,border:`2px solid ${isDone?T.green:overdue?T.orange:T.borderDark}`,background:isDone?T.green:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,cursor:"pointer"}}>
                                 {isDone&&<span style={{color:"#fff",fontSize:11,fontWeight:900}}>✓</span>}
                               </div>
-                              {/* Task content */}
                               <div style={{flex:1}}>
                                 {isEditingThis?(
                                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -560,13 +757,12 @@ function OpsPulse({slackIds}) {
                                   </>
                                 )}
                               </div>
-                              {/* Edit/Delete buttons */}
                               {!isEditingThis&&(
                                 <div style={{display:"flex",gap:2,flexShrink:0}}>
                                   <button onClick={()=>{setEditingTask(key);setEditingTaskText(t.task);}}
-                                    style={{background:"transparent",border:"none",color:T.grayLight,fontSize:14,cursor:"pointer",padding:"2px 6px",borderRadius:4}} title="Edit">✏️</button>
+                                    style={{background:"transparent",border:"none",color:T.grayLight,fontSize:14,cursor:"pointer",padding:"2px 6px",borderRadius:4}}>✏️</button>
                                   <button onClick={()=>deleteTask(selectedMember,i)}
-                                    style={{background:"transparent",border:"none",color:T.grayLight,fontSize:14,cursor:"pointer",padding:"2px 6px",borderRadius:4}} title="Delete">🗑</button>
+                                    style={{background:"transparent",border:"none",color:T.grayLight,fontSize:14,cursor:"pointer",padding:"2px 6px",borderRadius:4}}>🗑</button>
                                 </div>
                               )}
                             </div>
@@ -574,8 +770,6 @@ function OpsPulse({slackIds}) {
                         );
                       })}
                     </div>
-
-                    {/* Blockers */}
                     {d.blockers?.length>0&&(
                       <div style={{background:T.orangeSoft,border:`1px solid ${T.orange}22`,borderRadius:10,padding:"12px 16px",marginTop:14}}>
                         <CardLabel color={T.orange}>Blockers</CardLabel>
@@ -590,7 +784,6 @@ function OpsPulse({slackIds}) {
             </div>
           )}
 
-          {/* HISTORY VIEW */}
           {view==="history"&&(
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {history.length===0?(
@@ -637,12 +830,6 @@ function OpsPulse({slackIds}) {
                           );
                         })}
                       </div>
-                      {(topPerformer?.total>0||needsAttention?.overdue>0)&&(
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:14}}>
-                          {topPerformer?.total>0&&<div style={{background:"#F0FDF4",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:9,color:T.green,fontWeight:800,letterSpacing:2,marginBottom:4,fontFamily:T.font}}>TOP PERFORMER</div><div style={{fontWeight:700,fontSize:13}}>{topPerformer.name.split(" ")[0]}</div><div style={{fontSize:11,color:T.grayLight}}>{topPerformer.done}/{topPerformer.total} tasks</div></div>}
-                          {needsAttention?.overdue>0&&<div style={{background:T.orangeSoft,borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:9,color:T.red,fontWeight:800,letterSpacing:2,marginBottom:4,fontFamily:T.font}}>NEEDS ATTENTION</div><div style={{fontWeight:700,fontSize:13}}>{needsAttention.name.split(" ")[0]}</div><div style={{fontSize:11,color:T.grayLight}}>{needsAttention.overdue} overdue</div></div>}
-                        </div>
-                      )}
                     </div>
                   </Card>
                 );
@@ -689,8 +876,8 @@ function Dashboard() {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:24}}>
       <div style={{borderBottom:`2px solid ${T.black}`,paddingBottom:20}}>
-        <div style={{fontSize:11,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.font,marginBottom:6}}>BWL OPERATIONS HUB</div>
-        <div style={{fontSize:48,fontWeight:900,fontFamily:T.font,textTransform:"uppercase",lineHeight:1,letterSpacing:1}}>{new Date().toLocaleDateString("en-US",{weekday:"long"}).toUpperCase()}</div>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.mono,marginBottom:6}}>BWL OPERATIONS HUB</div>
+        <div style={{fontSize:48,fontWeight:700,fontFamily:T.font,textTransform:"uppercase",lineHeight:1,letterSpacing:1}}>{new Date().toLocaleDateString("en-US",{weekday:"long"}).toUpperCase()}</div>
         <div style={{fontSize:13,color:T.gray,fontFamily:T.mono,marginTop:6}}>{new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · {weekLabel()}</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
@@ -736,7 +923,7 @@ function Dashboard() {
                   <div style={{fontSize:18,fontWeight:800,color:c,fontFamily:T.font}}>{v}</div>
                 </div>
               ))}
-            {totalRev>0&&<div style={{background:"#F0FDF4",borderRadius:8,padding:"10px 12px",marginTop:4}}><div style={{fontSize:9,color:T.green,fontWeight:800,letterSpacing:2,fontFamily:T.font,marginBottom:4}}>REVENUE WON</div><div style={{fontSize:20,fontWeight:900,color:T.green,fontFamily:T.font}}>${totalRev.toLocaleString()}</div></div>}
+            {totalRev>0&&<div style={{background:"#F0FDF4",borderRadius:8,padding:"10px 12px",marginTop:4}}><div style={{fontSize:9,color:T.green,fontWeight:800,letterSpacing:2,fontFamily:T.mono,marginBottom:4}}>REVENUE WON</div><div style={{fontSize:20,fontWeight:900,color:T.green,fontFamily:T.font}}>${totalRev.toLocaleString()}</div></div>}
           </div>
         </Card>
         <Card>
@@ -758,36 +945,13 @@ function Dashboard() {
 
 // ─── RFP ENGINE ───────────────────────────────────────────────────────────────
 const PROPOSAL_TEMPLATES = {
-  Government:"formal, compliance-focused, emphasize track record, certifications, reporting",
-  Corporate:"ROI-driven, scalable, data-backed, executive-friendly",
+  Government:"formal, compliance-focused, emphasize track record, certifications, reporting. Price HIGH — government budgets are large.",
+  Corporate:"ROI-driven, scalable, data-backed, executive-friendly. Price competitively high.",
   Nonprofit:"mission-aligned, cost-efficient, impact-focused, community-driven",
   Other:"flexible, value-driven, relationship-focused"
 };
 
-const BWL_CONTEXT = `BuildWithLeverage (BWL) is a performance-based growth agency founded by David Perlov.
-
-KEY FACTS:
-- David Perlov personally generated over $125 million in revenue for brands
-- Worked with 20+ companies across nonprofits, government, lead gen, e-commerce
-- 11X ROAS (Return on Ad Spend) track record
-- Services: Outbound Sales Infrastructure, Paid Media, Influencer Marketing, Email Marketing, Web Design, Graphic Design
-- Performance-based model — results-driven, not just effort
-- Pricing is competitive and HIGH — reflect the scope and quality of work, never undersell
-- Contact: David Perlov | david@buildwithleverage.com | (201) 290-1536 | buildwithleverage.com
-
-PROPOSAL FORMAT & STYLE (follow this exactly):
-- Header: "LEVERAGE." logo + "CLIENT PROPOSAL // [CLIENT NAME]" + "PREPARED [MONTH YEAR]"
-- Bold headline: A punchy, benefit-driven headline (e.g. "A NEW REVENUE CHANNEL FOR [CLIENT]")
-- Opening paragraph: Personal, direct address to the decision maker. Reference their specific situation.
-- Sections numbered: 01 // THE OPPORTUNITY, 02 // WHAT WE BUILD, 03 // THE PILOT/PLAN, 04 // THE MATH, 05 // INVESTMENT, 06 // NEXT STEPS
-- Each section has a bold ALL-CAPS subtitle
-- Use real numbers, projections tables where relevant (conservative / moderate / aggressive scenarios)
-- Investment section: itemized table with ITEM | COST | NOTES columns
-- Performance fee: always include 20% profit share on closed deals
-- Close with: "David Perlov | FOUNDER | LEVERAGE. | david@buildwithleverage.com | (201) 290-1536 | buildwithleverage.com"
-- Tone: confident, direct, no fluff. Speaks to the client's specific pain points and goals.
-- Key insight callouts: use "// KEY INSIGHT" for standout points
-- Never sound generic — always tie back to the specific RFP organization and their goals`;
+const BWL_CONTEXT = `LEVERAGE. | David Perlov | $125M revenue generated | 11X ROAS | 20+ companies | Services: Outbound, Paid Media, Influencer, Email, Web/Graphic Design | 20% profit share on closed deals | david@buildwithleverage.com | (201) 290-1536 | buildwithleverage.com`;
 
 const urgencyTag = (deadline) => {
   if(!deadline) return null;
@@ -829,7 +993,7 @@ function RFPEngine() {
     setLoad("search",true);setError(null);setRfps([]);setSelected(null);setProposal(null);
     const prompt=`RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string if unknown","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1","s2"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound","Paid Media"],"source_url":"direct URL to RFP page or empty string","source":"organization or platform name"}]}`;
     try {
-      const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]})});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]})});
       const data=await res.json();if(data.error) throw new Error(data.error.message);
       const raw=data.content?.find(b=>b.type==="text")?.text||"";
       const clean=raw.replace(/```json|```/g,"").trim();
@@ -839,28 +1003,50 @@ function RFPEngine() {
   };
 
   const genProposal = async (rfp, customText) => {
-    setSelected(rfp);setProposal(null);setLoad("proposal",true);setEditingProposal(false);
+    setSelected(rfp);setProposal(null);setLoad("proposal",true);setEditingProposal(false);setError(null);
     const tpl=PROPOSAL_TEMPLATES[rfp.type]||PROPOSAL_TEMPLATES.Other;
-    const prompt=`You are a senior proposal writer for BuildWithLeverage.
-${BWL_CONTEXT}
-RFP Details:
-- Title: ${rfp.title}
-- Organization: ${rfp.organization}
-- Type: ${rfp.type} — use style: ${tpl}
-- Description: ${rfp.description}
-- Budget: ${rfp.budget}
-- Services needed: ${(rfp.services_needed||[]).join(", ")}
-${customText?`Additional context: ${customText}`:""}
-
-IMPORTANT:
-- Use REAL BWL stats (125M revenue generated, 11X ROAS, 20+ companies served)
-- Price competitively HIGH — these are government/corporate budgets, do not undersell
-- Generate a checklist of what the RFP specifically requires, then confirm each is addressed
-
-Return ONLY valid JSON: {"subject_line":"...","why_bwl":["specific reason using real BWL stats"],"relevant_results":["real result with actual numbers"],"investment":"competitive price range","timeline":"...","requirements_checklist":[{"requirement":"what RFP asks for","addressed":true,"how":"how proposal addresses it"}],"full_proposal_text":"complete formatted proposal — minimum 500 words, professional, branded"}`;
     try {
-      const r=await callClaude(prompt,4000);
-      setProposal(r);setEditedProposalText(r.full_proposal_text);
+      // Call 1: metadata + checklist (small JSON, safe)
+      const metaPrompt=`You are a senior proposal writer for BuildWithLeverage (LEVERAGE.).
+RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")}
+${customText?"Extra context: "+customText:""}
+Return ONLY valid compact JSON (no newlines inside string values):
+{"subject_line":"A NEW [X] FOR [ORG]","why_bwl":["reason with real stat"],"relevant_results":["result with numbers"],"investment":"price range","timeline":"timeline","requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}`;
+      const r1=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:metaPrompt}]})});
+      const d1=await r1.json();
+      if(d1.error) throw new Error(d1.error.message);
+      const t1=(d1.content?.find(b=>b.type==="text")?.text||"").replace(/```json|```/g,"").trim();
+      const meta=JSON.parse(t1.slice(t1.indexOf("{"),t1.lastIndexOf("}")+1));
+
+      // Call 2: full proposal TEXT only (no JSON wrapper, no escaping issues)
+      const textPrompt=`Senior proposal writer for LEVERAGE. (BuildWithLeverage).
+Stats: $125M revenue generated, 11X ROAS, 20+ companies, 20% profit share on closed deals.
+RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")}
+${customText?"Context: "+customText:""}
+
+Write the full proposal. Format:
+- Personal opening paragraph
+- 01 // THE OPPORTUNITY
+- 02 // WHAT WE BUILD
+- 03 // THE PILOT
+- 04 // THE MATH (pipe table: Conservative/Moderate/Aggressive scenarios)
+- 05 // INVESTMENT (pipe table: ITEM | COST | NOTES, include 20% profit share)
+- 06 // NEXT STEPS
+- Use // KEY INSIGHT before standout points
+- Price HIGH for ${rfp.type}
+- End: David Perlov // FOUNDER // LEVERAGE. // david@buildwithleverage.com // (201) 290-1536 // buildwithleverage.com
+
+Plain text only. No JSON. No markdown.`;
+
+      const r2=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:textPrompt}]})});
+      const d2=await r2.json();
+      if(d2.error) throw new Error(d2.error.message);
+      const proposalText=d2.content?.find(b=>b.type==="text")?.text||"";
+      if(!proposalText) throw new Error("Empty proposal response");
+
+      const full={...meta,full_proposal_text:proposalText};
+      setProposal(full);
+      setEditedProposalText(proposalText);
     } catch(e){setError(e.message);}
     setLoad("proposal",false);
   };
@@ -927,7 +1113,7 @@ Return ONLY valid JSON: {"subject_line":"...","why_bwl":["specific reason using 
                         </div>
                         <div style={{textAlign:"center",marginLeft:14}}>
                           <div style={{fontSize:28,fontWeight:900,color:sc(rfp.relevance_score),fontFamily:T.font,lineHeight:1}}>{rfp.relevance_score}</div>
-                          <button onClick={()=>setExpandedScore(isExp?null:rfp.id)} style={{fontSize:10,color:T.orange,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:T.font}}>{isExp?"HIDE":"WHY?"}</button>
+                          <button onClick={()=>setExpandedScore(isExp?null:rfp.id)} style={{fontSize:10,color:T.orange,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:T.mono}}>{isExp?"HIDE":"WHY?"}</button>
                         </div>
                       </div>
                       {isExp&&rfp.score_breakdown&&(
@@ -959,57 +1145,39 @@ Return ONLY valid JSON: {"subject_line":"...","why_bwl":["specific reason using 
               </div>
             );
           })()}
+
+          {/* BRANDED PROPOSAL VIEW */}
           {proposal&&selected&&(
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div><CardLabel>Proposal</CardLabel><div style={{fontSize:11,color:T.grayLight,marginTop:2}}>Template: <strong>{selected.type}</strong></div></div>
+                <div>
+                  <CardLabel>Branded Proposal</CardLabel>
+                  <div style={{fontSize:11,color:T.grayLight,marginTop:2}}>Template: <strong>{selected.type}</strong> · LEVERAGE. format</div>
+                </div>
                 <div style={{display:"flex",gap:8}}>
                   {selected.source_url&&<a href={selected.source_url} target="_blank" rel="noreferrer" style={{padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:700,background:T.orangeSoft,color:T.orange,border:`1px solid ${T.orange}33`}}>VIEW RFP ↗</a>}
                   <Pill label="← BACK" onClick={()=>{setProposal(null);setSelected(null);setEditingProposal(false);}} />
                 </div>
               </div>
-              <Card style={{background:T.black,padding:18}}>
-                <CardLabel color={T.orange}>Subject Line</CardLabel>
-                <div style={{fontSize:15,fontWeight:700,color:"#fff",marginTop:6}}>{proposal.subject_line}</div>
-              </Card>
-              {proposal.requirements_checklist?.length>0&&(
-                <Card style={{padding:18}}>
-                  <CardLabel color={T.purple}>RFP Requirements Checklist</CardLabel>
-                  <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:8}}>
-                    {proposal.requirements_checklist.map((item,i)=>(
-                      <div key={i} style={{display:"flex",gap:10,padding:"10px 12px",background:item.addressed?"#F0FDF4":"#FFF7F5",borderRadius:8,border:`1px solid ${item.addressed?T.green+"33":T.red+"33"}`}}>
-                        <span style={{fontSize:16,flexShrink:0}}>{item.addressed?"✅":"❌"}</span>
-                        <div>
-                          <div style={{fontSize:12,fontWeight:700,color:T.darkGray}}>{item.requirement}</div>
-                          {item.how&&<div style={{fontSize:11,color:T.grayLight,marginTop:2}}>{item.how}</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
+
+              {/* Branded preview */}
+              <BrandedProposal proposal={{...proposal, full_proposal_text: editedProposalText}} rfp={selected} />
+
+              {/* Edit toggle */}
               <Card style={{padding:18}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <CardLabel color={T.orange}>Full Proposal</CardLabel>
-                  <div style={{display:"flex",gap:8}}>
-                    <CopyBtn text={editedProposalText} />
-                    <button onClick={()=>setEditingProposal(!editingProposal)}
-                      style={{background:editingProposal?T.orange:T.bg,color:editingProposal?"#fff":T.gray,border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
-                      {editingProposal?"DONE":"✏️ EDIT"}
-                    </button>
-                  </div>
+                  <CardLabel color={T.orange}>Edit Proposal Text</CardLabel>
+                  <button onClick={()=>setEditingProposal(!editingProposal)}
+                    style={{background:editingProposal?T.orange:T.bg,color:editingProposal?"#fff":T.gray,border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
+                    {editingProposal?"✓ DONE EDITING":"✏️ EDIT"}
+                  </button>
                 </div>
-                {editingProposal?(
+                {editingProposal&&(
                   <textarea value={editedProposalText} onChange={e=>setEditedProposalText(e.target.value)}
-                    style={{width:"100%",minHeight:400,background:T.bg,border:`1.5px solid ${T.orange}`,borderRadius:8,color:T.black,fontSize:13,padding:14,outline:"none",fontFamily:T.body,lineHeight:1.8,resize:"vertical"}} />
-                ):(
-                  <div style={{fontSize:13,color:T.darkGray,lineHeight:1.8,whiteSpace:"pre-wrap",background:T.bg,borderRadius:8,padding:14}}>{editedProposalText}</div>
+                    style={{width:"100%",minHeight:400,background:T.bg,border:`1.5px solid ${T.orange}`,borderRadius:8,color:T.black,fontSize:12,padding:14,outline:"none",fontFamily:T.mono,lineHeight:1.8,resize:"vertical"}} />
                 )}
               </Card>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <Bullets label="Why BWL Wins" items={proposal.why_bwl} color={T.green} />
-                <Bullets label="Relevant Results" items={proposal.relevant_results} color={T.purple} />
-              </div>
+
               <div style={{display:"flex",gap:10}}>
                 <button onClick={rerunProposal} disabled={loading.proposal}
                   style={{flex:1,padding:12,borderRadius:8,background:loading.proposal?T.border:T.darkGray,color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
@@ -1033,14 +1201,14 @@ Return ONLY valid JSON: {"subject_line":"...","why_bwl":["specific reason using 
               {[["Total",tracker.length,T.orange],["Pending",tracker.filter(t=>t.status==="submitted").length,T.yellow],["Won",won.length,T.green],["Lost",tracker.filter(t=>t.status==="lost").length,T.red],["Win Rate",`${winRate}%`,winRate>=50?T.green:winRate>=30?T.yellow:T.red]].map(([l,v,c])=>(
                 <div key={l} style={{textAlign:"center",background:"#ffffff0d",borderRadius:8,padding:"12px 6px"}}>
                   <div style={{fontSize:22,fontWeight:900,color:c,fontFamily:T.font}}>{v}</div>
-                  <div style={{fontSize:9,color:"#999",fontWeight:700,marginTop:2,fontFamily:T.font,letterSpacing:1}}>{l.toUpperCase()}</div>
+                  <div style={{fontSize:9,color:"#999",fontWeight:700,marginTop:2,fontFamily:T.mono,letterSpacing:1}}>{l.toUpperCase()}</div>
                 </div>
               ))}
             </div>
             {(totalRev>0||pipelineRev>0)&&(
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:14}}>
-                {totalRev>0&&<div style={{background:"#10b98118",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:9,color:T.green,fontWeight:900,fontFamily:T.font}}>REVENUE WON</div><div style={{fontSize:20,fontWeight:800,color:T.green,fontFamily:T.font}}>${totalRev.toLocaleString()}</div></div>}
-                {pipelineRev>0&&<div style={{background:"#f59e0b18",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:9,color:T.yellow,fontWeight:900,fontFamily:T.font}}>PIPELINE VALUE</div><div style={{fontSize:20,fontWeight:800,color:T.yellow,fontFamily:T.font}}>${pipelineRev.toLocaleString()}</div></div>}
+                {totalRev>0&&<div style={{background:"#10b98118",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:9,color:T.green,fontWeight:900,fontFamily:T.mono}}>REVENUE WON</div><div style={{fontSize:20,fontWeight:800,color:T.green,fontFamily:T.font}}>${totalRev.toLocaleString()}</div></div>}
+                {pipelineRev>0&&<div style={{background:"#f59e0b18",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:9,color:T.yellow,fontWeight:900,fontFamily:T.mono}}>PIPELINE VALUE</div><div style={{fontSize:20,fontWeight:800,color:T.yellow,fontFamily:T.font}}>${pipelineRev.toLocaleString()}</div></div>}
               </div>
             )}
           </Card>
@@ -1073,7 +1241,7 @@ Return ONLY valid JSON: {"subject_line":"...","why_bwl":["specific reason using 
                       )}
                     </div>
                     <div style={{marginBottom:12}}>
-                      <div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>NOTES</div>
+                      <div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>NOTES</div>
                       {editNote[t.id]?(
                         <textarea autoFocus value={t.notes||""} onChange={e=>updateField(t.id,"notes",e.target.value)} onBlur={()=>setEditNote(p=>({...p,[t.id]:false}))}
                           style={{width:"100%",minHeight:60,background:T.bg,border:`1.5px solid ${T.orange}`,borderRadius:8,color:T.black,fontSize:12,padding:"8px 10px",outline:"none",fontFamily:T.body,resize:"vertical"}} />
@@ -1102,20 +1270,20 @@ Return ONLY valid JSON: {"subject_line":"...","why_bwl":["specific reason using 
 function WeeklyReport() {
   const [updates,setUpdates]=useState("");const [slack,setSlack]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Generate weekly status report for Kristine Mirabueno (CoS/EA) at BuildWithLeverage to send to David (CEO). Updates: ${updates}. Slack/Notes: ${slack||"none"}. Return ONLY valid JSON: {"executive_summary":"TL;DR 2-3 sentences","wins":["w1"],"in_progress":[{"item":"...","status":"...","owner":"..."}],"blockers":["b1"],"next_week":["p1"],"david_needs_to_know":["item"],"full_report":"complete formatted report"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Your Updates This Week" value={updates} onChange={setUpdates} placeholder={`Type your updates for ${weekLabel()}…`} /><Textarea label="Slack / Notes (Optional)" value={slack} onChange={setSlack} placeholder="Paste relevant Slack messages…" minHeight={80} /><Btn onClick={gen} disabled={!updates.trim()} loading={loading} label={`GENERATE WEEKLY REPORT — ${weekLabel()}`} icon="📄" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:20}}><CardLabel color={T.orange}>TL;DR FOR DAVID</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.executive_summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Wins" items={result.wins} color={T.green} /><Bullets label="Blockers" items={result.blockers?.length?result.blockers:["None"]} color={T.red} /></div><Bullets label="Next Week" items={result.next_week} color={T.purple} /><Bullets label="David Needs to Know" items={result.david_needs_to_know?.length?result.david_needs_to_know:["Nothing urgent"]} color={T.orange} /><ResultBlock label="Full Report" content={result.full_report} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Your Updates This Week" value={updates} onChange={setUpdates} placeholder={`Type your updates for ${weekLabel()}…`} /><Textarea label="Slack / Notes (Optional)" value={slack} onChange={setSlack} placeholder="Paste relevant Slack messages…" minHeight={80} /><Btn onClick={gen} disabled={!updates.trim()} loading={loading} label={`GENERATE WEEKLY REPORT — ${weekLabel()}`} icon="📄" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:20}}><CardLabel color={T.orange}>TL;DR FOR DAVID</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.executive_summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Wins" items={result.wins} color={T.green} /><Bullets label="Blockers" items={result.blockers?.length?result.blockers:["None"]} color={T.red} /></div><Bullets label="Next Week" items={result.next_week} color={T.purple} /><Bullets label="David Needs to Know" items={result.david_needs_to_know?.length?result.david_needs_to_know:["Nothing urgent"]} color={T.orange} /></>}</div>);
 }
 
 function ExecComms() {
   const TYPES=[{key:"announcement",label:"ANNOUNCEMENT"},{key:"followup",label:"FOLLOW-UP"},{key:"recap",label:"MEETING RECAP"},{key:"slack",label:"SLACK MESSAGE"}];
   const [type,setType]=useState("announcement");const [context,setContext]=useState("");const [tone,setTone]=useState("professional");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`CoS at BuildWithLeverage drafting a ${type}. Tone: ${tone}. Context: ${context}. Return ONLY valid JSON: {"subject":"subject or header","draft":"complete message","alt_version":"alternative version","tips":["tip 1"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{TYPES.map(t=><button key={t.key} onClick={()=>{setType(t.key);setResult(null);}} style={{padding:"12px 14px",borderRadius:8,fontSize:12,fontWeight:700,background:type===t.key?T.black:T.surface,color:type===t.key?"#fff":T.gray,border:type===t.key?`2px solid ${T.black}`:`1px solid ${T.border}`,cursor:"pointer",textAlign:"left",fontFamily:T.font,letterSpacing:1}}>{t.label}</button>)}</div><div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}><span style={{fontSize:11,color:T.gray,fontWeight:600}}>TONE</span>{["professional","friendly","direct","urgent"].map(t=><Pill key={t} label={t.toUpperCase()} active={tone===t} color={T.orange} onClick={()=>setTone(t)} />)}</div><Textarea label="Context" value={context} onChange={setContext} placeholder="What do you need to communicate?" /><Btn onClick={gen} disabled={!context.trim()} loading={loading} label="DRAFT COMMS" icon="✏️" /><Err msg={error} />{result&&<>{result.subject&&<Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:15,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card>}<ResultBlock label="Main Draft" content={result.draft} copyable /><ResultBlock label="Alternative Version" content={result.alt_version} color={T.gray} copyable /><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{TYPES.map(t=><button key={t.key} onClick={()=>{setType(t.key);setResult(null);}} style={{padding:"12px 14px",borderRadius:8,fontSize:12,fontWeight:700,background:type===t.key?T.black:T.surface,color:type===t.key?"#fff":T.gray,border:type===t.key?`2px solid ${T.black}`:`1px solid ${T.border}`,cursor:"pointer",textAlign:"left",fontFamily:T.font,letterSpacing:1}}>{t.label}</button>)}</div><div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}><span style={{fontSize:11,color:T.gray,fontWeight:600}}>TONE</span>{["professional","friendly","direct","urgent"].map(t=><Pill key={t} label={t.toUpperCase()} active={tone===t} color={T.orange} onClick={()=>setTone(t)} />)}</div><Textarea label="Context" value={context} onChange={setContext} placeholder="What do you need to communicate?" /><Btn onClick={gen} disabled={!context.trim()} loading={loading} label="DRAFT COMMS" icon="✏️" /><Err msg={error} />{result&&<>{result.subject&&<Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:15,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card>}<div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Main Draft</CardLabel><CopyBtn text={result.draft} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.draft}</div></div><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel color={T.gray}>Alternative Version</CardLabel><CopyBtn text={result.alt_version} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",color:T.darkGray}}>{result.alt_version}</div></div><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
 }
 
 function DailyBriefing() {
   const [input,setInput]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`You are AI Chief of Staff for David Perlov, CEO of BuildWithLeverage. Generate a concise daily briefing based on: ${input}. Return ONLY valid JSON: {"summary":"2-3 sentence TL;DR","urgent_items":["item1"],"fyi_items":["item1"],"decisions_needed":["decision1"],"full_briefing":"complete formatted briefing"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Updates, Reports, Slack Messages" value={input} onChange={setInput} placeholder="Paste anything that needs to be briefed on today…" /><Btn onClick={gen} disabled={!input.trim()} loading={loading} label="GENERATE DAILY BRIEFING" icon="☀️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>TL;DR</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Urgent" items={result.urgent_items} color={T.red} /><Bullets label="Decisions Needed" items={result.decisions_needed} color={T.purple} /></div><Bullets label="FYI" items={result.fyi_items} color={T.yellow} /><ResultBlock label="Full Briefing" content={result.full_briefing} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Updates, Reports, Slack Messages" value={input} onChange={setInput} placeholder="Paste anything that needs to be briefed on today…" /><Btn onClick={gen} disabled={!input.trim()} loading={loading} label="GENERATE DAILY BRIEFING" icon="☀️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>TL;DR</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Urgent" items={result.urgent_items} color={T.red} /><Bullets label="Decisions Needed" items={result.decisions_needed} color={T.purple} /></div><Bullets label="FYI" items={result.fyi_items} color={T.yellow} /></>}</div>);
 }
 
 function TeamPerformance() {
@@ -1129,7 +1297,7 @@ function StrategicDecision() {
   const [situation,setSituation]=useState("");const [options,setOptions]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Strategic advisor for David Perlov, CEO of BuildWithLeverage. Situation: ${situation}. Options: ${options||"not specified"}. Return ONLY valid JSON: {"recommendation":"recommended path in 2-3 sentences","confidence":"high|medium|low","pros_cons":[{"option":"name","pros":["p1"],"cons":["c1"]}],"risks":"key risk","next_steps":["step1"],"decision_log":"1 paragraph decision log"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   const confColor=c=>({high:T.green,medium:T.yellow,low:T.red}[c]||T.gray);
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Situation / Decision" value={situation} onChange={setSituation} placeholder="Describe the strategic decision or situation…" /><Textarea label="Options Being Considered (Optional)" value={options} onChange={setOptions} placeholder="List the options…" minHeight={80} /><Btn onClick={gen} disabled={!situation.trim()} loading={loading} label="ANALYZE DECISION" icon="🧠" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}><CardLabel color={T.orange}>Recommendation</CardLabel>{result.confidence&&<Badge label={`${result.confidence} confidence`} color={confColor(result.confidence)} />}</div><p style={{margin:0,color:"#fff",fontSize:14,lineHeight:1.7}}>{result.recommendation}</p></Card>{result.pros_cons?.map((o,i)=>(<Card key={i} style={{padding:16}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>{o.option}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pros" items={o.pros} color={T.green} /><Bullets label="Cons" items={o.cons} color={T.red} /></div></Card>))}<Bullets label="Next Steps" items={result.next_steps} color={T.purple} /><ResultBlock label="Decision Log" content={result.decision_log} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Situation / Decision" value={situation} onChange={setSituation} placeholder="Describe the strategic decision or situation…" /><Textarea label="Options Being Considered (Optional)" value={options} onChange={setOptions} placeholder="List the options…" minHeight={80} /><Btn onClick={gen} disabled={!situation.trim()} loading={loading} label="ANALYZE DECISION" icon="🧠" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}><CardLabel color={T.orange}>Recommendation</CardLabel>{result.confidence&&<Badge label={`${result.confidence} confidence`} color={confColor(result.confidence)} />}</div><p style={{margin:0,color:"#fff",fontSize:14,lineHeight:1.7}}>{result.recommendation}</p></Card>{result.pros_cons?.map((o,i)=>(<Card key={i} style={{padding:16}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>{o.option}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pros" items={o.pros} color={T.green} /><Bullets label="Cons" items={o.cons} color={T.red} /></div></Card>))}<Bullets label="Next Steps" items={result.next_steps} color={T.purple} /></>}</div>);
 }
 
 // ─── OUTBOUND ─────────────────────────────────────────────────────────────────
@@ -1142,39 +1310,39 @@ function SequenceBuilder() {
 function LeadResearch() {
   const [target,setTarget]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Lead research specialist for BuildWithLeverage. Research: ${target}. Return ONLY valid JSON: {"company_summary":"2-3 sentences","pain_points":["p1"],"why_bwl_fits":"reason","recommended_angle":"best angle","talking_points":["t1"],"estimated_fit_score":85,"research_summary":"complete research summary"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Company / Lead to Research" value={target} onChange={setTarget} placeholder="Company name, website, or any lead details…" minHeight={90} /><Btn onClick={gen} disabled={!target.trim()} loading={loading} label="RESEARCH LEAD" icon="🔍" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{flex:1}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.company_summary}</p></div><div style={{textAlign:"center",marginLeft:20}}><div style={{fontSize:34,fontWeight:900,color:result.estimated_fit_score>=80?T.green:result.estimated_fit_score>=60?T.yellow:T.red,fontFamily:T.font,lineHeight:1}}>{result.estimated_fit_score}</div><div style={{fontSize:9,color:T.gray,fontWeight:700,fontFamily:T.mono}}>FIT SCORE</div></div></div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pain Points" items={result.pain_points} color={T.red} /><Bullets label="Talking Points" items={result.talking_points} color={T.purple} /></div><Card style={{padding:16}}><CardLabel color={T.green}>Why BWL Fits</CardLabel><p style={{margin:"8px 0 12px",fontSize:13,lineHeight:1.6}}>{result.why_bwl_fits}</p><CardLabel color={T.orange}>Recommended Angle</CardLabel><p style={{margin:"8px 0 0",fontSize:13,lineHeight:1.6}}>{result.recommended_angle}</p></Card><ResultBlock label="Research Summary" content={result.research_summary} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Company / Lead to Research" value={target} onChange={setTarget} placeholder="Company name, website, or any lead details…" minHeight={90} /><Btn onClick={gen} disabled={!target.trim()} loading={loading} label="RESEARCH LEAD" icon="🔍" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{flex:1}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.company_summary}</p></div><div style={{textAlign:"center",marginLeft:20}}><div style={{fontSize:34,fontWeight:900,color:result.estimated_fit_score>=80?T.green:result.estimated_fit_score>=60?T.yellow:T.red,fontFamily:T.font,lineHeight:1}}>{result.estimated_fit_score}</div><div style={{fontSize:9,color:T.gray,fontWeight:700,fontFamily:T.mono}}>FIT SCORE</div></div></div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pain Points" items={result.pain_points} color={T.red} /><Bullets label="Talking Points" items={result.talking_points} color={T.purple} /></div><Card style={{padding:16}}><CardLabel color={T.green}>Why BWL Fits</CardLabel><p style={{margin:"8px 0 12px",fontSize:13,lineHeight:1.6}}>{result.why_bwl_fits}</p><CardLabel color={T.orange}>Recommended Angle</CardLabel><p style={{margin:"8px 0 0",fontSize:13,lineHeight:1.6}}>{result.recommended_angle}</p></Card></>}</div>);
 }
 
 function ColdEmailWriter() {
   const [lead,setLead]=useState("");const [offer,setOffer]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Top SDR at BuildWithLeverage. Write cold email. Lead: ${lead}. Offer: ${offer||"BWL growth services"}. Return ONLY valid JSON: {"subject_line":"s","email_body":"complete cold email under 150 words","alt_subject":"alt","follow_up":"2-sentence day-3 follow-up","tips":["t1"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead Info" value={lead} onChange={setLead} placeholder="Company, contact, role, pain points…" minHeight={90} /><Textarea label="Offer / Angle (Optional)" value={offer} onChange={setOffer} placeholder="What are you pitching?" minHeight={70} /><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="WRITE COLD EMAIL" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject Lines</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:8}}>{result.subject_line}</div><div style={{fontSize:13,color:"#777",marginTop:6}}>Alt: {result.alt_subject}</div></Card><ResultBlock label="Cold Email" content={result.email_body} copyable /><ResultBlock label="Follow-up (Day 3)" content={result.follow_up} color={T.gray} copyable /><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead Info" value={lead} onChange={setLead} placeholder="Company, contact, role, pain points…" minHeight={90} /><Textarea label="Offer / Angle (Optional)" value={offer} onChange={setOffer} placeholder="What are you pitching?" minHeight={70} /><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="WRITE COLD EMAIL" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject Lines</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:8}}>{result.subject_line}</div><div style={{fontSize:13,color:"#777",marginTop:6}}>Alt: {result.alt_subject}</div></Card><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Cold Email</CardLabel><CopyBtn text={result.email_body} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.email_body}</div></div><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel color={T.gray}>Follow-up (Day 3)</CardLabel><CopyBtn text={result.follow_up} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",color:T.darkGray}}>{result.follow_up}</div></div><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
 }
 
 function CallScript() {
   const [lead,setLead]=useState("");const [goal,setGoal]=useState("book a discovery call");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Top SDR at BuildWithLeverage. Build cold call script. Lead: ${lead}. Goal: ${goal}. Return ONLY valid JSON: {"opener":"1-2 sentence opener","value_prop":"2-3 sentence value prop","discovery_questions":["q1","q2","q3"],"objection_handling":[{"objection":"o","response":"r"}],"cta":"closing CTA","full_script":"complete word-for-word script"}`;try{const r=await callClaude(prompt,2500);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead / Company Info" value={lead} onChange={setLead} placeholder="Who are you calling?" minHeight={90} /><Card><SectionHeader label="Call Goal" /><input value={goal} onChange={e=>setGoal(e.target.value)} style={{width:"100%",background:"transparent",border:"none",color:T.black,fontSize:13,padding:"12px 18px",outline:"none",fontFamily:T.body,display:"block"}} /></Card><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="GENERATE CALL SCRIPT" icon="📞" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Opener</CardLabel><p style={{margin:"8px 0 14px",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.opener}</p><CardLabel color={T.orange}>Value Prop</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.value_prop}</p></Card><Bullets label="Discovery Questions" items={result.discovery_questions} color={T.purple} /><Card style={{padding:16}}><CardLabel color={T.yellow}>Objection Handling</CardLabel><div style={{marginTop:10}}>{result.objection_handling?.map((o,i)=><div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i<result.objection_handling.length-1?`1px solid ${T.border}`:"none"}}><div style={{fontSize:12,fontWeight:700,color:T.red,marginBottom:4}}>"{o.objection}"</div><div style={{fontSize:12,lineHeight:1.5,color:T.darkGray}}>→ {o.response}</div></div>)}</div></Card><ResultBlock label="Full Script" content={result.full_script} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead / Company Info" value={lead} onChange={setLead} placeholder="Who are you calling?" minHeight={90} /><Card><SectionHeader label="Call Goal" /><input value={goal} onChange={e=>setGoal(e.target.value)} style={{width:"100%",background:"transparent",border:"none",color:T.black,fontSize:13,padding:"12px 18px",outline:"none",fontFamily:T.body,display:"block"}} /></Card><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="GENERATE CALL SCRIPT" icon="📞" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Opener</CardLabel><p style={{margin:"8px 0 14px",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.opener}</p><CardLabel color={T.orange}>Value Prop</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.value_prop}</p></Card><Bullets label="Discovery Questions" items={result.discovery_questions} color={T.purple} /><Card style={{padding:16}}><CardLabel color={T.yellow}>Objection Handling</CardLabel><div style={{marginTop:10}}>{result.objection_handling?.map((o,i)=><div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i<result.objection_handling.length-1?`1px solid ${T.border}`:"none"}}><div style={{fontSize:12,fontWeight:700,color:T.red,marginBottom:4}}>"{o.objection}"</div><div style={{fontSize:12,lineHeight:1.5,color:T.darkGray}}>→ {o.response}</div></div>)}</div></Card><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Full Script</CardLabel><CopyBtn text={result.full_script} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.full_script}</div></div></>}</div>);
 }
 
 function AfterCallAutomation() {
   const [callNotes,setCallNotes]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`SDR at BuildWithLeverage. Generate after-call automations: ${callNotes}. Return ONLY valid JSON: {"call_summary":"2-3 sentence summary","outcome":"connected|no_answer|left_voicemail|not_interested|interested|meeting_booked","crm_notes":"complete CRM note","follow_up_email":{"subject":"s","body":"complete follow-up email"},"next_action":"recommended next action","slack_update":"1-2 sentence Slack update"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   const outColor=o=>({connected:T.green,interested:T.green,meeting_booked:T.green,no_answer:T.yellow,left_voicemail:T.yellow,not_interested:T.red}[o]||T.gray);
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Call Notes" value={callNotes} onChange={setCallNotes} placeholder="What happened on the call? Messy notes are fine." /><Btn onClick={gen} disabled={!callNotes.trim()} loading={loading} label="GENERATE AFTER-CALL PACK" icon="🗒️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><CardLabel color={T.orange}>Call Summary</CardLabel>{result.outcome&&<Badge label={result.outcome.replace("_"," ")} color={outColor(result.outcome)} />}</div><p style={{margin:0,color:"#fff",fontSize:13,lineHeight:1.7}}>{result.call_summary}</p></Card><ResultBlock label="CRM Notes" content={result.crm_notes} copyable />{result.follow_up_email&&<Card style={{padding:18}}><CardLabel color={T.orange}>Follow-up Email</CardLabel><div style={{background:T.black,borderRadius:8,padding:"10px 14px",margin:"10px 0"}}><div style={{fontSize:9,color:T.gray,fontWeight:700,marginBottom:3,fontFamily:T.mono}}>SUBJECT</div><div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{result.follow_up_email.subject}</div></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",background:T.bg,borderRadius:8,padding:14}}>{result.follow_up_email.body}</div><div style={{marginTop:10}}><CopyBtn text={result.follow_up_email.body} /></div></Card>}<Card style={{padding:16,border:`1px solid ${T.orange}33`,background:T.orangeSoft}}><CardLabel color={T.orange}>Next Action</CardLabel><p style={{margin:"8px 0 0",fontSize:13,color:T.black,lineHeight:1.6}}>{result.next_action}</p></Card><ResultBlock label="Slack Update" content={result.slack_update} color={T.purple} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Call Notes" value={callNotes} onChange={setCallNotes} placeholder="What happened on the call? Messy notes are fine." /><Btn onClick={gen} disabled={!callNotes.trim()} loading={loading} label="GENERATE AFTER-CALL PACK" icon="🗒️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><CardLabel color={T.orange}>Call Summary</CardLabel>{result.outcome&&<Badge label={result.outcome.replace("_"," ")} color={outColor(result.outcome)} />}</div><p style={{margin:0,color:"#fff",fontSize:13,lineHeight:1.7}}>{result.call_summary}</p></Card><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>CRM Notes</CardLabel><CopyBtn text={result.crm_notes} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.crm_notes}</div></div>{result.follow_up_email&&<Card style={{padding:18}}><CardLabel color={T.orange}>Follow-up Email</CardLabel><div style={{background:T.black,borderRadius:8,padding:"10px 14px",margin:"10px 0"}}><div style={{fontSize:9,color:T.gray,fontWeight:700,marginBottom:3,fontFamily:T.mono}}>SUBJECT</div><div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{result.follow_up_email.subject}</div></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",background:T.bg,borderRadius:8,padding:14}}>{result.follow_up_email.body}</div><div style={{marginTop:10}}><CopyBtn text={result.follow_up_email.body} /></div></Card>}<Card style={{padding:16,border:`1px solid ${T.orange}33`,background:T.orangeSoft}}><CardLabel color={T.orange}>Next Action</CardLabel><p style={{margin:"8px 0 0",fontSize:13,color:T.black,lineHeight:1.6}}>{result.next_action}</p></Card></>}</div>);
 }
 
 // ─── INFLUENCER ───────────────────────────────────────────────────────────────
 function InfluencerOutreach() {
   const [influencer,setInfluencer]=useState("");const [campaign,setCampaign]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Influencer outreach specialist at BuildWithLeverage. Influencer: ${influencer}. Campaign: ${campaign}. Return ONLY valid JSON: {"subject":"DM/email subject","outreach_message":"complete personalized outreach","follow_up":"follow-up for day 3","collaboration_brief":"brief collab overview","tips":["t1"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Influencer Info" value={influencer} onChange={setInfluencer} placeholder="Name, niche, platform, followers…" minHeight={80} /><Textarea label="Campaign / Brand" value={campaign} onChange={setCampaign} placeholder="What brand or campaign are you pitching?" minHeight={80} /><Btn onClick={gen} disabled={!influencer.trim()||!campaign.trim()} loading={loading} label="GENERATE OUTREACH" icon="📲" /><Err msg={error} />{result&&<>{result.subject&&<Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card>}<ResultBlock label="Outreach Message" content={result.outreach_message} copyable /><ResultBlock label="Follow-up (Day 3)" content={result.follow_up} color={T.gray} copyable /><ResultBlock label="Collab Brief" content={result.collaboration_brief} color={T.purple} copyable /><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Influencer Info" value={influencer} onChange={setInfluencer} placeholder="Name, niche, platform, followers…" minHeight={80} /><Textarea label="Campaign / Brand" value={campaign} onChange={setCampaign} placeholder="What brand or campaign are you pitching?" minHeight={80} /><Btn onClick={gen} disabled={!influencer.trim()||!campaign.trim()} loading={loading} label="GENERATE OUTREACH" icon="📲" /><Err msg={error} />{result&&<>{result.subject&&<Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card>}<div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Outreach Message</CardLabel><CopyBtn text={result.outreach_message} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.outreach_message}</div></div><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel color={T.gray}>Follow-up (Day 3)</CardLabel><CopyBtn text={result.follow_up} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",color:T.darkGray}}>{result.follow_up}</div></div><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
 }
 
 function CampaignBrief() {
   const [details,setDetails]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Campaign manager at BuildWithLeverage. Build influencer campaign brief: ${details}. Return ONLY valid JSON: {"campaign_name":"n","objective":"o","target_audience":"a","key_message":"m","deliverables":["d1"],"timeline":"t","kpis":["k1"],"dos":["do1"],"donts":["dont1"],"full_brief":"complete formatted brief"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Campaign Details" value={details} onChange={setDetails} placeholder="Brand, product, goal, audience, budget…" /><Btn onClick={gen} disabled={!details.trim()} loading={loading} label="BUILD CAMPAIGN BRIEF" icon="📋" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Campaign</CardLabel><div style={{fontSize:20,fontWeight:900,color:"#fff",fontFamily:T.font,margin:"6px 0 10px"}}>{result.campaign_name}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.7}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="KPIs" items={result.kpis} color={T.green} /><Bullets label="Do's" items={result.dos} color={T.green} /><Bullets label="Don'ts" items={result.donts} color={T.red} /></div><ResultBlock label="Full Brief" content={result.full_brief} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Campaign Details" value={details} onChange={setDetails} placeholder="Brand, product, goal, audience, budget…" /><Btn onClick={gen} disabled={!details.trim()} loading={loading} label="BUILD CAMPAIGN BRIEF" icon="📋" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Campaign</CardLabel><div style={{fontSize:20,fontWeight:900,color:"#fff",fontFamily:T.font,margin:"6px 0 10px"}}>{result.campaign_name}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.7}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="KPIs" items={result.kpis} color={T.green} /><Bullets label="Do's" items={result.dos} color={T.green} /><Bullets label="Don'ts" items={result.donts} color={T.red} /></div><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Full Brief</CardLabel><CopyBtn text={result.full_brief} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.full_brief}</div></div></>}</div>);
 }
 
 function InfluencerTracker() {
@@ -1231,10 +1399,10 @@ function InfluencerTracker() {
           <SectionHeader label="Add Influencer" />
           <div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             {[["name","NAME *"],["handle","HANDLE"],["niche","NICHE"],["followers","FOLLOWERS"],["rate","RATE"],["email","EMAIL"],["contact","CONTACT #"]].map(([k,l])=>(
-              <div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>
+              <div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>
             ))}
-            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook","LinkedIn"].map(p=><option key={p}>{p}</option>)}</select></div>
-            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
+            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook","LinkedIn"].map(p=><option key={p}>{p}</option>)}</select></div>
+            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
           </div>
           <div style={{padding:"0 16px 16px"}}><textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Notes…" style={{width:"100%",minHeight:60,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.body,resize:"vertical"}} /></div>
           <div style={{padding:"0 16px 16px",display:"flex",gap:8}}>
@@ -1303,13 +1471,13 @@ function ContentTracker() {
           <SectionHeader label="Add Content" />
           <div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             {[["influencer","INFLUENCER *"],["link","POST LINK"]].map(([k,l])=>(
-              <div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>
+              <div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>
             ))}
             {[["platform",["Instagram","TikTok","YouTube","Twitter/X","Facebook"]],["content_type",["Post","Reel","Story","Video","TikTok","Tweet"]]].map(([k,opts])=>(
-              <div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>{k==="platform"?"PLATFORM":"TYPE"}</div><select value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{opts.map(o=><option key={o}>{o}</option>)}</select></div>
+              <div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{k==="platform"?"PLATFORM":"TYPE"}</div><select value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{opts.map(o=><option key={o}>{o}</option>)}</select></div>
             ))}
-            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>POST DATE</div><input type="date" value={form.post_date} onChange={e=>setForm(p=>({...p,post_date:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.body}} /></div>
-            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.font}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
+            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>POST DATE</div><input type="date" value={form.post_date} onChange={e=>setForm(p=>({...p,post_date:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.body}} /></div>
+            <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
           </div>
           <div style={{padding:"0 16px 16px"}}><textarea value={form.caption} onChange={e=>setForm(p=>({...p,caption:e.target.value}))} placeholder="Caption / notes…" style={{width:"100%",minHeight:70,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.body,resize:"vertical"}} /></div>
           <div style={{padding:"0 16px 16px",display:"flex",gap:8}}>
@@ -1349,13 +1517,13 @@ function ContentTracker() {
 function DesignBrief() {
   const [request,setRequest]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Creative director at BuildWithLeverage. Build design brief: ${request}. Return ONLY valid JSON: {"project_title":"t","objective":"o","deliverables":["d1"],"dimensions":"dim","brand_guidelines":["g1"],"mood":["v1"],"references":"inspiration","deadline_suggestion":"turnaround","full_brief":"complete formatted design brief"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Design Request" value={request} onChange={setRequest} placeholder="What needs to be designed?" /><Btn onClick={gen} disabled={!request.trim()} loading={loading} label="GENERATE DESIGN BRIEF" icon="🎨" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Project</CardLabel><div style={{fontSize:18,fontWeight:900,color:"#fff",fontFamily:T.font,margin:"6px 0 10px"}}>{result.project_title}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.6}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="Mood / Vibe" items={result.mood} color="#a855f7" /></div><Bullets label="Brand Guidelines" items={result.brand_guidelines} color={T.orange} /><ResultBlock label="Full Design Brief" content={result.full_brief} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Design Request" value={request} onChange={setRequest} placeholder="What needs to be designed?" /><Btn onClick={gen} disabled={!request.trim()} loading={loading} label="GENERATE DESIGN BRIEF" icon="🎨" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Project</CardLabel><div style={{fontSize:18,fontWeight:900,color:"#fff",fontFamily:T.font,margin:"6px 0 10px"}}>{result.project_title}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.6}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="Mood / Vibe" items={result.mood} color="#a855f7" /></div><Bullets label="Brand Guidelines" items={result.brand_guidelines} color={T.orange} /></>}</div>);
 }
 
 function FeedbackSummary() {
   const [feedback,setFeedback]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Project manager at BuildWithLeverage. Summarize design feedback: ${feedback}. Return ONLY valid JSON: {"summary":"1-2 sentence overview","required_changes":["c1"],"nice_to_have":["n1"],"keep_as_is":["k1"],"tone":"positive|mixed|critical","designer_message":"complete actionable message to designer"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Feedback" value={feedback} onChange={setFeedback} placeholder="Paste raw feedback — messy is fine…" /><Btn onClick={gen} disabled={!feedback.trim()} loading={loading} label="SUMMARIZE FEEDBACK" icon="🖊" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Required Changes" items={result.required_changes} color={T.red} /><Bullets label="Nice to Have" items={result.nice_to_have} color={T.yellow} /></div><Bullets label="Keep As Is" items={result.keep_as_is} color={T.green} /><ResultBlock label="Message for Designer" content={result.designer_message} copyable /></>}</div>);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Feedback" value={feedback} onChange={setFeedback} placeholder="Paste raw feedback — messy is fine…" /><Btn onClick={gen} disabled={!feedback.trim()} loading={loading} label="SUMMARIZE FEEDBACK" icon="🖊" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Required Changes" items={result.required_changes} color={T.red} /><Bullets label="Nice to Have" items={result.nice_to_have} color={T.yellow} /></div><Bullets label="Keep As Is" items={result.keep_as_is} color={T.green} /></>}</div>);
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
@@ -1435,9 +1603,9 @@ function TopNav({page,navigate,isMobile}) {
   const closeMenu=()=>{closeTimer.current=setTimeout(()=>setOpenGroup(null),120);};
 
   return (
-    <header style={{background:T.black,height:58,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",position:"sticky",top:0,zIndex:200,borderBottom:`2px solid ${T.orange}`,boxShadow:"0 2px 20px rgba(0,0,0,0.3)"}}>
+    <header style={{background:T.black,height:58,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",position:"sticky",top:0,zIndex:200,borderBottom:`3px solid ${T.orange}`,boxShadow:"0 2px 20px rgba(0,0,0,0.3)"}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <div style={{fontSize:20,fontWeight:900,color:"#fff",letterSpacing:2,fontFamily:T.font,cursor:"pointer"}} onClick={()=>navigate("dashboard")}>
+        <div style={{fontSize:20,fontWeight:700,color:"#fff",letterSpacing:3,fontFamily:T.font,cursor:"pointer"}} onClick={()=>navigate("dashboard")}>
           LEVERAGE<span style={{color:T.orange}}>.</span>
         </div>
         <div style={{height:20,width:1,background:"#333"}} />
@@ -1460,7 +1628,7 @@ function TopNav({page,navigate,isMobile}) {
                   {n.label.toUpperCase()}{n.children&&<span style={{fontSize:8,opacity:0.7}}>▾</span>}
                 </button>
                 {n.children&&openGroup===n.key&&(
-                  <div style={{position:"absolute",top:"100%",left:0,background:T.black,border:`1px solid #2a2a2a`,borderTop:`2px solid ${T.orange}`,minWidth:200,boxShadow:"0 12px 40px rgba(0,0,0,0.4)",zIndex:300,padding:"6px 0"}}
+                  <div style={{position:"absolute",top:"100%",left:0,background:T.black,border:`1px solid #2a2a2a`,borderTop:`3px solid ${T.orange}`,minWidth:200,boxShadow:"0 12px 40px rgba(0,0,0,0.4)",zIndex:300,padding:"6px 0"}}
                     onMouseEnter={()=>clearTimeout(closeTimer.current)} onMouseLeave={closeMenu}>
                     {n.children.map(c=>(
                       <button key={c.key} onClick={()=>{navigate(c.key);setOpenGroup(null);}}
@@ -1481,7 +1649,7 @@ function TopNav({page,navigate,isMobile}) {
         <div style={{position:"fixed",top:58,left:0,right:0,bottom:0,background:T.black,zIndex:199,overflowY:"auto",padding:16}}>
           {NAV.map(n=>n.children?(
             <div key={n.key} style={{marginBottom:16}}>
-              <div style={{fontSize:10,color:"#555",fontWeight:700,letterSpacing:3,padding:"6px 10px 4px",fontFamily:T.font}}>{n.label.toUpperCase()}</div>
+              <div style={{fontSize:10,color:"#555",fontWeight:700,letterSpacing:3,padding:"6px 10px 4px",fontFamily:T.mono}}>{n.label.toUpperCase()}</div>
               {n.children.map(c=>(
                 <button key={c.key} onClick={()=>{navigate(c.key);setMenuOpen(false);}}
                   style={{display:"block",width:"100%",padding:"10px 16px",background:page===c.key?T.orange:"transparent",color:"#fff",border:"none",fontSize:13,fontWeight:600,cursor:"pointer",borderRadius:6,textAlign:"left",marginBottom:2,fontFamily:T.body}}>
