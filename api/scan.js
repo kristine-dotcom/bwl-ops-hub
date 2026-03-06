@@ -26,7 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function callGemini(apiKey, prompt, maxTokens = 2000) {
   const res = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=" + apiKey,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -124,8 +124,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "No high-fit RFPs", date: today });
     }
 
-    // Step 3: Auto-generate proposals (max 3)
-    for (const rfp of highFit.slice(0, 3)) {
+    // Step 3: Auto-generate proposals (max 1 only to avoid rate limit)
+    for (const rfp of highFit.slice(0, 1)) {
       try {
         const metaPrompt =
           "You are a proposal writer for LEVERAGE. " +
