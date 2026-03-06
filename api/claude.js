@@ -3,6 +3,16 @@ export const config = {
 }
 
 export default async function handler(req, res) {
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } })
   }
@@ -26,7 +36,6 @@ export default async function handler(req, res) {
 
     const contentType = response.headers.get('content-type') || ''
     let data
-
     if (contentType.includes('application/json')) {
       data = await response.json()
     } else {
@@ -34,7 +43,6 @@ export default async function handler(req, res) {
       console.error('Non-JSON response from Anthropic:', text)
       data = { error: { message: text || 'Unknown error from Anthropic' } }
     }
-
     return res.status(response.status).json(data)
   } catch (err) {
     console.error('Claude API error:', err)
