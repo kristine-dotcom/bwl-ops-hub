@@ -24,30 +24,22 @@ const SLACK_USER_ID = "U09QJGY27JP"; // Kristine
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function callClaude(apiKey, prompt, maxTokens = 2000, useSearch = false) {
-  const body = {
-    model: "claude-sonnet-4-20250514",
-    max_tokens: maxTokens,
-    messages: [{ role: "user", content: prompt }],
-  };
-  if (useSearch) {
-    body.tools = [{ type: "web_search_20250305", name: "web_search" }];
-  }
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      ...(useSearch ? { "anthropic-beta": "web-search-2025-03-05" } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+async function callGemini(apiKey, prompt, maxTokens = 2000) {
+  const res = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens },
+      }),
+    }
+  );
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  const text = data.content?.find((b) => b.type === "text")?.text || "";
-  const clean = text.replace(/```json|```/g, "").trim();
-  return clean;
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return text.replace(/```json|```/g, "").trim();
 }
 
 async function kvGet(key) {
@@ -90,9 +82,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   const slackToken = process.env.SLACK_BOT_TOKEN;
-  if (!apiKey) return res.status(500).json({ error: "Missing ANTHROPIC_API_KEY" });
+  if (!apiKey) return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
 
   const today = new Date().toISOString().split("T")[0];
   const results = [];
@@ -101,13 +93,13 @@ export default async function handler(req, res) {
     // Step 1: Search RFPs
     const keywordBatch = KEYWORDS.slice(0, 5).join(", ");
     const searchPrompt =
-      "RFP research for BuildWithLeverage (growth/marketing agency). Find active RFPs for: " +
-      keywordBatch +
-      ". Today: " + today +
-      ". Only include RFPs with deadlines in the future. Return ONLY valid JSON: " +
-      '{"rfps":[{"title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD","description":"2 sentences","relevance_score":85,"services_needed":["Outbound"],"source_url":"url or empty","source":"platform name"}]}';
+      "You are an RFP researcher for BuildWithLeverage, a growth/marketing agency. " +
+      "Search and find active RFPs for these services: " + keywordBatch +
+      ". Today is " + today + ". Only include RFPs with deadlines in the future. " +
+      "Return ONLY valid JSON, no other text: " +
+      '{"rfps":[{"title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD","description":"2 sentences about the RFP","relevance_score":85,"services_needed":["Outbound"],"source_url":"url or empty","source":"platform name"}]}';
 
-    const searchRaw = await callClaude(apiKey, searchPrompt, 3000, true);
+    const searchRaw = await callGemini(apiKey, searchPrompt, 3000);
 
     const firstBrace = searchRaw.indexOf("{");
     const lastBrace = searchRaw.lastIndexOf("}");
@@ -132,11 +124,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "No high-fit RFPs", date: today });
     }
 
-    // Step 3: Auto-generate proposals (max 3, 30s delay between each to avoid rate limit)
+    // Step 3: Auto-generate proposals (max 3)
     for (const rfp of highFit.slice(0, 3)) {
       try {
         const metaPrompt =
-          "Proposal writer for LEVERAGE. RFP: " + rfp.title +
+          "You are a proposal writer for LEVERAGE. " +
+          "RFP: " + rfp.title +
           " | Org: " + rfp.organization +
           " | Type: " + rfp.type +
           " | Budget: " + rfp.budget +
@@ -144,22 +137,22 @@ export default async function handler(req, res) {
           ". Return ONLY compact JSON (no newlines in values): " +
           '{"subject_line":"A NEW X FOR ORG","why_bwl":["reason"],"requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}';
 
-        const metaRaw = await callClaude(apiKey, metaPrompt, 1000);
+        const metaRaw = await callGemini(apiKey, metaPrompt, 800);
         const metaClean = metaRaw.slice(metaRaw.indexOf("{"), metaRaw.lastIndexOf("}") + 1);
         let meta = {};
         try { meta = JSON.parse(metaClean); } catch { meta = { subject_line: rfp.title, why_bwl: [], requirements_checklist: [] }; }
 
         const textPrompt =
-          "Senior proposal writer for LEVERAGE. (BuildWithLeverage). " +
+          "You are a senior proposal writer for LEVERAGE. (BuildWithLeverage). " +
           BWL_CONTEXT +
           "\nRFP: " + rfp.title +
           " | Org: " + rfp.organization +
           " | Type: " + rfp.type +
           " | Budget: " + rfp.budget +
           " | Services: " + (rfp.services_needed || []).join(", ") +
-          "\nWrite full proposal. Format: personal opening, 01 // THE OPPORTUNITY, 02 // WHAT WE BUILD, 03 // THE PILOT, 04 // THE MATH (pipe table Conservative/Moderate/Aggressive), 05 // INVESTMENT (pipe table ITEM|COST|NOTES, 20% profit share), 06 // NEXT STEPS. Use // KEY INSIGHT for standout points. Price HIGH for " + rfp.type + ". End: David Perlov // FOUNDER // LEVERAGE. // david@buildwithleverage.com // (201) 290-1536 // buildwithleverage.com\nPlain text only. No JSON. No markdown.";
+          "\nWrite a full proposal. Format: personal opening, 01 // THE OPPORTUNITY, 02 // WHAT WE BUILD, 03 // THE PILOT, 04 // THE MATH (pipe table Conservative/Moderate/Aggressive), 05 // INVESTMENT (pipe table ITEM|COST|NOTES, 20% profit share), 06 // NEXT STEPS. Use // KEY INSIGHT for standout points. Price HIGH for " + rfp.type + ". End with: David Perlov // FOUNDER // LEVERAGE. // david@buildwithleverage.com // (201) 290-1536 // buildwithleverage.com\nPlain text only. No JSON. No markdown.";
 
-        const proposalText = await callClaude(apiKey, textPrompt, 4000);
+        const proposalText = await callGemini(apiKey, textPrompt, 3000);
 
         results.push({
           id: Date.now() + Math.random(),
@@ -181,8 +174,7 @@ export default async function handler(req, res) {
           auto_generated: true,
         });
 
-        // 30s delay between proposals to stay under 30k tokens/min rate limit
-        await sleep(30000);
+        await sleep(2000); // short delay between proposals
 
       } catch (e) {
         results.push({ error: e.message, title: rfp.title });
