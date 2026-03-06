@@ -264,6 +264,73 @@ const TEAM_OPS=["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Cal
 const DEFAULT_SLACK_IDS={"David Perlov":"U08BQH5JJDD","Cyril Butanas":"U09HHPVSSUQ","Caleb Bentil":"U0AE1T4N7A8","Darlene Mae Malolos":"U0A8GV25V0A","Suki Santos":"U093GFVM7D1","Kristine Miel Zulaybar":"U093GFXPK3M","Kristine Mirabueno":"U09QJGY27JP"};
 const INPUT_TYPES=[{key:"transcript",label:"Meeting Transcript"},{key:"sod",label:"SOD Report"},{key:"email",label:"Emails"},{key:"slack",label:"Slack"}];
 
+const KPI_DATA = {
+  "Caleb Bentil": {
+    color:"#6366f1", emoji:"📞", role:"Outbound Specialist",
+    categories:[
+      { name:"Activity", metrics:[
+        {name:"Calls Dialed",target:"80/day",stretch:"100+/day",notes:"Total dials incl. voicemails"},
+        {name:"Live Connect Rate",target:"10%",stretch:"15%+",notes:"Conversations / total dials"},
+        {name:"Voicemail Drop Rate",target:"≤60%",stretch:"≤50%",notes:"Track voicemail script effectiveness"},
+      ]},
+      { name:"Pipeline", metrics:[
+        {name:"Qualified Conversations",target:"8/day",stretch:"12+/day",notes:"Prospect showed interest"},
+        {name:"Meetings Booked",target:"3/week",stretch:"5+/week",notes:"Confirmed calendar invites sent"},
+        {name:"Follow-ups Sent",target:"100% of convos",stretch:"Same day",notes:"Email or message after every live connect"},
+      ]},
+    ],
+    eod:["Calls dialed: __","Live connects: __ (__% connect rate)","Meetings booked: __","Notable conversations: [brief summary]","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
+  },
+  "Darlene Mae Malolos": {
+    color:"#ec4899", emoji:"🎨", role:"Graphic Designer",
+    categories:[
+      { name:"Output", metrics:[
+        {name:"Designs Delivered",target:"Per agreed scope/week",stretch:"Ahead of deadline",notes:"Defined each week in SOD"},
+        {name:"On-Brief Accuracy",target:"90%",stretch:"95%+",notes:"Designs meeting brief without major revisions"},
+        {name:"Revision Rounds",target:"≤2 per asset",stretch:"≤1 per asset",notes:"Tracks brief clarity and execution"},
+      ]},
+      { name:"Quality & Timeliness", metrics:[
+        {name:"Turnaround Time",target:"24–48hrs",stretch:"Same day (simple assets)",notes:"From brief received to first draft"},
+        {name:"Brand Consistency",target:"100%",stretch:"100%",notes:"Fonts, colors, tone vs brand guide"},
+        {name:"Stakeholder Satisfaction",target:"Approved w/o major rework",stretch:"Praised / reused",notes:"Reviewed weekly by Kristine or David"},
+      ]},
+    ],
+    eod:["Assets completed today: __ (list titles)","In progress: [asset name + % complete]","Revision requests received: __","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
+  },
+  "Cyril Butanas": {
+    color:"#10b981", emoji:"🌟", role:"Influencer Outreach Specialist",
+    categories:[
+      { name:"Sourcing & Outreach", metrics:[
+        {name:"Influencers Sourced",target:"20/week",stretch:"30+/week",notes:"Qualified profiles added to pipeline"},
+        {name:"Outreach Messages Sent",target:"30/week",stretch:"50+/week",notes:"Initial DMs or emails sent"},
+        {name:"Response Rate",target:"20%",stretch:"30%+",notes:"Replies received / messages sent"},
+      ]},
+      { name:"Relationships & Campaign", metrics:[
+        {name:"Influencers Onboarded",target:"3/week",stretch:"5+/week",notes:"Confirmed partnerships ready for activation"},
+        {name:"Follow-up Rate",target:"100% of non-replies",stretch:"Within 48hrs",notes:"Every unanswered outreach gets 1 follow-up"},
+        {name:"Campaign Tracking Accuracy",target:"100%",stretch:"100%",notes:"Pipeline tracker updated daily"},
+      ]},
+    ],
+    eod:["Influencers sourced today: __","Outreach sent: __ | Responses received: __","New partnerships confirmed: __","Relationship updates: [name + status + next step]","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
+  },
+  "Suki Santos": {
+    color:"#f59e0b", emoji:"🔍", role:"Research & Sourcing Specialist",
+    categories:[
+      { name:"Sourcing", metrics:[
+        {name:"Leads Sourced",target:"30/week",stretch:"50+/week",notes:"Contacts added to outreach list"},
+        {name:"Lead Qualification Rate",target:"80%",stretch:"90%+",notes:"Leads that meet ICP criteria"},
+        {name:"Data Completeness",target:"90%",stretch:"95%+",notes:"Name, title, company, email/phone, LinkedIn"},
+      ]},
+      { name:"Research", metrics:[
+        {name:"Research Tasks Completed",target:"Per agreed scope",stretch:"Ahead of deadline",notes:"Defined at start of each week"},
+        {name:"Research Accuracy",target:"95%",stretch:"99%+",notes:"Verified against source; spot-checked weekly"},
+        {name:"Turnaround Time",target:"Within 24hrs",stretch:"Same day",notes:"Time from request to delivery"},
+      ]},
+    ],
+    eod:["Leads sourced today: __ (__ qualify)","Research task status: [task name + % complete]","Data quality flag (if any): [issue + fix]","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
+  },
+};
+
 // ─── ATTENDANCE TRACKER ───────────────────────────────────────────────────────
 function AttendanceTracker() {
   const [logs,setLogs]=useState([]);
@@ -605,6 +672,8 @@ function OpsPulse({slackIds}) {
   const [showDmContext,setShowDmContext]=useState({});
   const [editingTask,setEditingTask]=useState(null);
   const [editingTaskText,setEditingTaskText]=useState("");
+  const [showKpi,setShowKpi]=useState(true);
+  const [showEod,setShowEod]=useState(false);
 
   useEffect(()=>{
     Promise.all([storage.get("ops-pulse-current"),storage.get("ops-pulse-checked"),storage.get("ops-pulse-history")])
@@ -876,6 +945,69 @@ function OpsPulse({slackIds}) {
                         </div>
                       </div>
                     )}
+
+                    {/* ── KPI PANEL ── */}
+                    {KPI_DATA[selectedMember]&&(()=>{
+                      const kpi=KPI_DATA[selectedMember];
+                      return (
+                        <div style={{marginTop:14}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.black,padding:"10px 14px",cursor:"pointer"}} onClick={()=>setShowKpi(!showKpi)}>
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{fontSize:14}}>{kpi.emoji}</span>
+                              <span style={{fontSize:10,fontWeight:700,letterSpacing:2,color:kpi.color,fontFamily:T.mono}}>KPI TARGETS</span>
+                              <span style={{fontSize:10,color:"#555",fontFamily:T.mono}}>{kpi.role}</span>
+                            </div>
+                            <span style={{fontSize:10,color:"#555",fontFamily:T.mono}}>{showKpi?"▲ HIDE":"▼ SHOW"}</span>
+                          </div>
+                          {showKpi&&(
+                            <div style={{border:`2px solid ${T.black}`,borderTop:"none",padding:14,display:"flex",flexDirection:"column",gap:12}}>
+                              {kpi.categories.map((cat,ci)=>(
+                                <div key={ci}>
+                                  <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:T.grayLight,fontFamily:T.mono,marginBottom:8}}>{cat.name.toUpperCase()}</div>
+                                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                                    {cat.metrics.map((m,mi)=>(
+                                      <div key={mi} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 12px",background:T.bg,borderLeft:`3px solid ${kpi.color}`}}>
+                                        <div style={{flex:1}}>
+                                          <div style={{fontSize:12,fontWeight:700,color:T.black}}>{m.name}</div>
+                                          <div style={{fontSize:10,color:T.grayLight,marginTop:2,fontFamily:T.mono}}>{m.notes}</div>
+                                        </div>
+                                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                                          <span style={{fontSize:10,fontWeight:700,color:kpi.color,fontFamily:T.mono,background:kpi.color+"18",padding:"2px 6px",letterSpacing:1}}>TARGET: {m.target}</span>
+                                          <span style={{fontSize:9,color:T.yellow,fontFamily:T.mono,background:T.yellow+"18",padding:"2px 6px",letterSpacing:1}}>STRETCH: {m.stretch}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:10}}>
+                                <button onClick={e=>{e.stopPropagation();setShowEod(!showEod);}}
+                                  style={{background:"transparent",border:`2px solid ${T.black}`,borderRadius:0,padding:"6px 14px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,color:T.darkGray}}>
+                                  📝 {showEod?"HIDE":"VIEW"} EOD TEMPLATE
+                                </button>
+                                {showEod&&(
+                                  <div style={{marginTop:10,background:"#1a1a1a",padding:14}}>
+                                    <div style={{fontSize:9,color:kpi.color,fontWeight:700,letterSpacing:2,fontFamily:T.mono,marginBottom:10}}>END-OF-DAY UPDATE FORMAT</div>
+                                    {kpi.eod.map((line,li)=>(
+                                      <div key={li} style={{fontSize:12,color:"#ccc",fontFamily:T.mono,marginBottom:8,lineHeight:1.6}}>
+                                        <span style={{color:kpi.color,marginRight:6}}>·</span>{line}
+                                      </div>
+                                    ))}
+                                    <div style={{marginTop:10,padding:"8px 12px",background:"#2a1a1a",borderLeft:`3px solid ${T.orange}`}}>
+                                      <div style={{fontSize:10,color:T.orange,fontFamily:T.mono,lineHeight:1.6}}>📌 If there's a blocker: name the issue → 3 solutions → 1 recommendation.</div>
+                                    </div>
+                                    <button onClick={()=>navigator.clipboard.writeText(kpi.eod.join("\n"))}
+                                      style={{marginTop:10,background:T.black,color:"#fff",border:`1px solid #333`,borderRadius:0,padding:"5px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
+                                      COPY TEMPLATE
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </Card>
                 );
               })()}
