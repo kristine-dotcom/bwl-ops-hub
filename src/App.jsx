@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useRef } from "react";
 // ─── PASSWORD GATE ────────────────────────────────────────────────────────────
 const SITE_PASSWORD = "leverage2026"; // ← palitan ng gusto mong password
 
