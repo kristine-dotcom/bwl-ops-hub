@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-// v3 - removed Outbound and Design sections
+// v2 - using /api/claude proxy
 
 const T = {
   bg:"#F5F5F0", surface:"#FFFFFF", border:"#E5E0D8", borderDark:"#C8C2B8",
@@ -31,6 +31,65 @@ const GlobalStyle = () => (
     @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
   `}</style>
 );
+
+// ─── PASSWORD GATE ─────────────────────────────────────────────────────────────
+function PasswordGate({ onUnlock }) {
+  const [pw, setPw] = useState("");
+  const [error, setError] = useState(false);
+  const [shaking, setShaking] = useState(false);
+
+  const attempt = () => {
+    if (pw === CORRECT_PASSWORD) {
+      onUnlock();
+    } else {
+      setError(true);
+      setShaking(true);
+      setPw("");
+      setTimeout(() => setShaking(false), 500);
+      setTimeout(() => setError(false), 2000);
+    }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:T.black,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{width:"100%",maxWidth:400,textAlign:"center"}}>
+        <div style={{marginBottom:40}}>
+          <div style={{fontSize:36,fontWeight:700,color:"#fff",letterSpacing:4,fontFamily:T.font,lineHeight:1}}>
+            LEVERAGE<span style={{color:T.orange}}>.</span>
+          </div>
+          <div style={{fontSize:10,color:"#444",fontFamily:T.mono,marginTop:8,letterSpacing:3}}>OPERATIONS HUB</div>
+        </div>
+        <div style={{fontSize:40,marginBottom:24}}>🔐</div>
+        <div style={{
+          background:"#111",
+          border:`2px solid ${error ? T.red : "#222"}`,
+          borderRadius:12,
+          padding:"32px 28px",
+          animation: shaking ? "shake 0.4s ease" : "none",
+          transition:"border-color 0.2s"
+        }}>
+          <div style={{fontSize:14,fontWeight:700,color:"#fff",fontFamily:T.font,marginBottom:6,letterSpacing:1}}>RESTRICTED ACCESS</div>
+          <div style={{fontSize:12,color:"#555",fontFamily:T.mono,marginBottom:24}}>Enter password to continue</div>
+          <input
+            type="password"
+            value={pw}
+            onChange={e => setPw(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && pw && attempt()}
+            placeholder="Password"
+            autoFocus
+            style={{width:"100%",background:"#1a1a1a",border:`1.5px solid ${error ? T.red : "#333"}`,borderRadius:8,color:"#fff",fontSize:15,padding:"12px 16px",outline:"none",fontFamily:T.mono,letterSpacing:3,textAlign:"center",marginBottom:16,transition:"border-color 0.2s"}}
+          />
+          {error && <div style={{fontSize:12,color:T.red,fontFamily:T.mono,marginBottom:12,letterSpacing:1}}>✗ INCORRECT PASSWORD</div>}
+          <button onClick={attempt} disabled={!pw}
+            style={{width:"100%",padding:"12px",borderRadius:8,background:pw?T.orange:"#222",color:pw?"#fff":"#444",border:"none",fontSize:13,fontWeight:700,cursor:pw?"pointer":"not-allowed",letterSpacing:2,fontFamily:T.font,transition:"all 0.15s"}}>
+            UNLOCK →
+          </button>
+        </div>
+        <div style={{fontSize:10,color:"#333",fontFamily:T.mono,marginTop:20,letterSpacing:2}}>BUILDWITHLEVERAGE.COM</div>
+      </div>
+    </div>
+  );
+}
 
 const storage = {
   get: async (key) => {
@@ -202,7 +261,10 @@ const parseSectionHeader = (line) => {
 };
 const isKeyInsight = (line) => line.toUpperCase().indexOf("KEY INSIGHT") !== -1 && line.indexOf("//") !== -1;
 const isTableRow = (line) => line.includes("|") && line.split("|").length >= 3;
-const isDividerRow = (line) => { const stripped = line.replace(/[\|\s\-]/g, ""); return stripped.length === 0; };
+const isDividerRow = (line) => {
+  const stripped = line.replace(/[\|\s\-]/g, "");
+  return stripped.length === 0;
+};
 const isAllCapsSubtitle = (line) => {
   if (line.length < 4 || line.length > 60) return false;
   if (line[0] >= "0" && line[0] <= "9") return false;
@@ -224,23 +286,39 @@ const parseProposalText = (text) => {
       const insightLines = [];
       i++;
       while (i < lines.length && lines[i].trim() !== "" && !isSectionHeader(lines[i].trim())) {
-        insightLines.push(lines[i].trim()); i++;
+        insightLines.push(lines[i].trim());
+        i++;
       }
       blocks.push({ type: "insight", content: insightLines.join(" ") });
       continue;
     }
     if (isTableRow(line)) {
       const tableLines = [];
-      while (i < lines.length && lines[i].includes("|")) { tableLines.push(lines[i].trim()); i++; }
-      const trows = tableLines.filter((l) => !isDividerRow(l)).map((l) => l.split("|").map((c) => c.trim()).filter((c) => c.length > 0));
+      while (i < lines.length && lines[i].includes("|")) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+      const trows = tableLines
+        .filter((l) => !isDividerRow(l))
+        .map((l) => l.split("|").map((c) => c.trim()).filter((c) => c.length > 0));
       if (trows.length > 0) blocks.push({ type: "table", rows: trows });
       continue;
     }
     if (line === "") { blocks.push({ type: "spacer" }); i++; continue; }
-    if (isAllCapsSubtitle(line)) { blocks.push({ type: "subtitle", content: line }); i++; continue; }
+    if (isAllCapsSubtitle(line)) {
+      blocks.push({ type: "subtitle", content: line });
+      i++; continue;
+    }
     const paraLines = [];
-    while (i < lines.length && lines[i].trim() !== "" && !isSectionHeader(lines[i].trim()) && !isTableRow(lines[i].trim()) && !isKeyInsight(lines[i].trim())) {
-      paraLines.push(lines[i].trim()); i++;
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !isSectionHeader(lines[i].trim()) &&
+      !isTableRow(lines[i].trim()) &&
+      !isKeyInsight(lines[i].trim())
+    ) {
+      paraLines.push(lines[i].trim());
+      i++;
     }
     if (paraLines.length > 0) blocks.push({ type: "para", content: paraLines.join(" ") });
   }
@@ -249,13 +327,24 @@ const parseProposalText = (text) => {
 
 const ProposalTable = ({rows}) => {
   if (!rows || rows.length === 0) return null;
-  const header = rows[0]; const body = rows.slice(1);
+  const header = rows[0];
+  const body = rows.slice(1);
   const thStyle = {padding:"10px 14px",color:"#fff",textAlign:"left",fontWeight:700,letterSpacing:1,fontSize:10};
   const tdStyle = {padding:"9px 14px",color:T.black,fontSize:12};
   return (
     <table style={{width:"100%",borderCollapse:"collapse",margin:"16px 0",fontFamily:T.mono,fontSize:12}}>
-      <thead><tr style={{background:T.black}}>{header.map((h,hi) => <th key={hi} style={thStyle}>{h}</th>)}</tr></thead>
-      <tbody>{body.map((row,ri) => (<tr key={ri} style={{background:ri%2===0?T.cream:"#EBEBDF",borderBottom:"1px solid "+T.border}}>{row.map((cell,ci) => <td key={ci} style={tdStyle}>{cell}</td>)}</tr>))}</tbody>
+      <thead>
+        <tr style={{background:T.black}}>
+          {header.map((h,hi) => <th key={hi} style={thStyle}>{h}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {body.map((row,ri) => (
+          <tr key={ri} style={{background:ri%2===0?T.cream:"#EBEBDF",borderBottom:"1px solid "+T.border}}>
+            {row.map((cell,ci) => <td key={ci} style={tdStyle}>{cell}</td>)}
+          </tr>
+        ))}
+      </tbody>
     </table>
   );
 };
@@ -265,14 +354,21 @@ const BrandedProposal = ({proposal, rfp}) => {
   const monthYear = now.toLocaleDateString("en-US",{month:"long",year:"numeric"}).toUpperCase();
   const text = proposal.full_proposal_text || "";
   const blocks = parseProposalText(text);
+
   return (
     <div style={{fontFamily:T.body,background:T.cream,border:`2px solid ${T.black}`,overflow:"hidden"}}>
       <div style={{background:T.black,padding:"32px 40px",borderBottom:`4px solid ${T.orange}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:28}}>
           <div>
-            <div style={{fontSize:32,fontWeight:700,color:"#fff",letterSpacing:4,fontFamily:T.font,lineHeight:1}}>LEVERAGE<span style={{color:T.orange}}>.</span></div>
-            <div style={{fontSize:10,color:"#555",fontFamily:T.mono,marginTop:6,letterSpacing:3}}>CLIENT PROPOSAL // {rfp?.organization?.toUpperCase() || "CLIENT"}</div>
-            <div style={{fontSize:10,color:"#444",fontFamily:T.mono,marginTop:2,letterSpacing:2}}>PREPARED {monthYear}</div>
+            <div style={{fontSize:32,fontWeight:700,color:"#fff",letterSpacing:4,fontFamily:T.font,lineHeight:1}}>
+              LEVERAGE<span style={{color:T.orange}}>.</span>
+            </div>
+            <div style={{fontSize:10,color:"#555",fontFamily:T.mono,marginTop:6,letterSpacing:3}}>
+              CLIENT PROPOSAL // {rfp?.organization?.toUpperCase() || "CLIENT"}
+            </div>
+            <div style={{fontSize:10,color:"#444",fontFamily:T.mono,marginTop:2,letterSpacing:2}}>
+              PREPARED {monthYear}
+            </div>
           </div>
           <div style={{width:48,height:48,position:"relative",flexShrink:0}}>
             <div style={{position:"absolute",bottom:6,left:6,width:4,height:42,background:"#fff",transform:"rotate(32deg)",transformOrigin:"bottom left",borderRadius:2}} />
@@ -280,33 +376,43 @@ const BrandedProposal = ({proposal, rfp}) => {
           </div>
         </div>
         <div style={{borderTop:"1px solid #2a2a2a",paddingTop:24}}>
-          <div style={{fontSize:36,fontWeight:700,color:"#fff",lineHeight:1.1,letterSpacing:1,textTransform:"uppercase",maxWidth:520,fontFamily:T.font}}>{proposal.subject_line || `A NEW REVENUE CHANNEL FOR ${rfp?.organization?.toUpperCase()}`}</div>
-          <div style={{fontSize:10,color:"#555",fontFamily:T.mono,marginTop:12,letterSpacing:4}}>P R E P A R E D &nbsp; F O R &nbsp; // &nbsp; {rfp?.organization?.toUpperCase()}</div>
+          <div style={{fontSize:36,fontWeight:700,color:"#fff",lineHeight:1.1,letterSpacing:1,textTransform:"uppercase",maxWidth:520,fontFamily:T.font}}>
+            {proposal.subject_line || `A NEW REVENUE CHANNEL FOR ${rfp?.organization?.toUpperCase()}`}
+          </div>
+          <div style={{fontSize:10,color:"#555",fontFamily:T.mono,marginTop:12,letterSpacing:4}}>
+            P R E P A R E D &nbsp; F O R &nbsp; // &nbsp; {rfp?.organization?.toUpperCase()}
+          </div>
         </div>
       </div>
+
       <div style={{padding:"36px 40px",background:T.cream}}>
         {blocks.map((block, i) => {
           if (block.type === "section") return (
-            <div key={i} style={{marginTop:i===0?0:32,marginBottom:16,borderTop:i===0?"none":`1px solid ${T.black}`,paddingTop:i===0?0:24}}>
+            <div key={i} style={{marginTop: i===0?0:32,marginBottom:16,borderTop:i===0?"none":`1px solid ${T.black}`,paddingTop:i===0?0:24}}>
               <div style={{display:"flex",alignItems:"baseline",gap:10}}>
                 <span style={{fontSize:11,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>{block.num} //</span>
                 <span style={{fontSize:16,fontWeight:700,color:T.black,fontFamily:T.font,letterSpacing:1,textTransform:"uppercase"}}>{block.title}</span>
               </div>
             </div>
           );
-          if (block.type === "subtitle") return <div key={i} style={{fontSize:11,fontWeight:700,color:T.black,fontFamily:T.mono,letterSpacing:2,marginTop:20,marginBottom:8,textTransform:"uppercase"}}>{block.content}</div>;
+          if (block.type === "subtitle") return (
+            <div key={i} style={{fontSize:11,fontWeight:700,color:T.black,fontFamily:T.mono,letterSpacing:2,marginTop:20,marginBottom:8,textTransform:"uppercase"}}>{block.content}</div>
+          );
           if (block.type === "insight") return (
-            <div key={i} style={{background:T.black,border:`2px solid ${T.orange}`,padding:"16px 20px",margin:"20px 0"}}>
+            <div key={i} style={{background:T.black,border:`2px solid ${T.orange}`,padding:"16px 20px",margin:"20px 0",position:"relative"}}>
               <div style={{fontSize:9,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:3,marginBottom:8}}>// KEY INSIGHT</div>
               <div style={{fontSize:13,color:"#fff",lineHeight:1.7,fontFamily:T.body}}>{block.content}</div>
             </div>
           );
           if (block.type === "table") return <ProposalTable key={i} rows={block.rows} />;
           if (block.type === "spacer") return <div key={i} style={{height:8}} />;
-          if (block.type === "para") return <p key={i} style={{fontSize:13,color:T.black,lineHeight:1.8,margin:"0 0 12px",fontFamily:T.body}}>{block.content}</p>;
+          if (block.type === "para") return (
+            <p key={i} style={{fontSize:13,color:T.black,lineHeight:1.8,margin:"0 0 12px",fontFamily:T.body}}>{block.content}</p>
+          );
           return null;
         })}
       </div>
+
       {proposal.requirements_checklist?.length > 0 && (
         <div style={{padding:"0 40px 32px"}}>
           <div style={{borderTop:`2px solid ${T.black}`,paddingTop:24}}>
@@ -325,6 +431,7 @@ const BrandedProposal = ({proposal, rfp}) => {
           </div>
         </div>
       )}
+
       <div style={{background:T.black,padding:"24px 40px",display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:`4px solid ${T.orange}`}}>
         <div>
           <div style={{fontSize:15,fontWeight:700,color:"#fff",fontFamily:T.font,letterSpacing:1}}>David Perlov</div>
@@ -332,9 +439,14 @@ const BrandedProposal = ({proposal, rfp}) => {
           <div style={{fontSize:11,fontWeight:700,color:"#fff",fontFamily:T.font,letterSpacing:2,marginTop:2}}>LEVERAGE<span style={{color:T.orange}}>.</span></div>
         </div>
         <div style={{textAlign:"right"}}>
-          <div style={{fontSize:11,color:"#888",fontFamily:T.mono,lineHeight:2}}>david@buildwithleverage.com<br/>(201) 290-1536<br/>buildwithleverage.com</div>
+          <div style={{fontSize:11,color:"#888",fontFamily:T.mono,lineHeight:2}}>
+            david@buildwithleverage.com<br/>
+            (201) 290-1536<br/>
+            buildwithleverage.com
+          </div>
         </div>
       </div>
+
       <div style={{padding:"14px 40px",background:T.cream,borderTop:`1px solid ${T.border}`,display:"flex",gap:8,justifyContent:"flex-end"}}>
         <CopyBtn text={text} />
       </div>
@@ -454,7 +566,8 @@ function OpsPulse({slackIds}) {
     const tasks=[...result.team_tasks[member].tasks];
     tasks[idx]={...tasks[idx],task:editingTaskText};
     const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks}}};
-    setResult(updated);setEditingTask(null);
+    setResult(updated);
+    setEditingTask(null);
     await storage.set("ops-pulse-current",JSON.stringify(updated));
   };
 
@@ -730,44 +843,46 @@ function OpsPulse({slackIds}) {
                   <div style={{fontSize:14,fontWeight:600,color:T.black,marginBottom:6}}>No history yet</div>
                   <div style={{fontSize:13,color:T.grayLight}}>History is saved automatically when you start a new week.</div>
                 </Card>
-              ):history.map((h,hi)=>(
-                <Card key={hi}>
-                  <div style={{background:T.black,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                      <div style={{fontSize:16,fontWeight:800,color:"#fff",fontFamily:T.font}}>{h.weekLabel.toUpperCase()}</div>
-                      <div style={{fontSize:11,color:T.gray,fontFamily:T.mono,marginTop:2}}>{new Date(h.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+              ):history.map((h,hi)=>{
+                return (
+                  <Card key={hi}>
+                    <div style={{background:T.black,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontSize:16,fontWeight:800,color:"#fff",fontFamily:T.font}}>{h.weekLabel.toUpperCase()}</div>
+                        <div style={{fontSize:11,color:T.gray,fontFamily:T.mono,marginTop:2}}>{new Date(h.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:30,fontWeight:900,color:h.teamCompletion===100?T.green:T.orange,fontFamily:T.font,lineHeight:1}}>{h.teamCompletion}%</div>
+                        <div style={{fontSize:10,color:T.gray,fontFamily:T.mono}}>{h.doneTasks}/{h.totalTasks} DONE</div>
+                      </div>
                     </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:30,fontWeight:900,color:h.teamCompletion===100?T.green:T.orange,fontFamily:T.font,lineHeight:1}}>{h.teamCompletion}%</div>
-                      <div style={{fontSize:10,color:T.gray,fontFamily:T.mono}}>{h.doneTasks}/{h.totalTasks} DONE</div>
-                    </div>
-                  </div>
-                  <div style={{padding:16}}>
-                    <ProgressBar value={h.teamCompletion} height={5} />
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:14}}>
-                      {[["TASKS",`${h.doneTasks}/${h.totalTasks}`,T.orange],["OVERDUE",h.overdueCount,h.overdueCount>0?T.red:T.green],["BLOCKERS",h.blockers.length,h.blockers.length>0?T.yellow:T.green]].map(([l,v,c])=>(
-                        <div key={l} style={{background:T.bg,borderRadius:8,padding:"10px 12px"}}>
-                          <div style={{fontSize:9,color:T.grayLight,fontFamily:T.mono,letterSpacing:2,marginBottom:4}}>{l}</div>
-                          <div style={{fontSize:20,fontWeight:900,color:c,fontFamily:T.font}}>{v}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:5}}>
-                      {h.memberStats.filter(m=>m.total>0).map(m=>{
-                        const pct=Math.round((m.done/m.total)*100);
-                        return (
-                          <div key={m.name} style={{display:"flex",alignItems:"center",gap:10}}>
-                            <div style={{width:76,fontSize:11,fontWeight:600,color:T.darkGray,flexShrink:0}}>{m.name.split(" ")[0]}</div>
-                            <div style={{flex:1}}><ProgressBar value={pct} height={4} /></div>
-                            <div style={{width:34,fontSize:11,fontWeight:800,color:pct===100?T.green:T.orange,textAlign:"right",fontFamily:T.font}}>{pct}%</div>
-                            {m.overdue>0&&<Badge label={`${m.overdue} late`} color={T.red} />}
+                    <div style={{padding:16}}>
+                      <ProgressBar value={h.teamCompletion} height={5} />
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:14}}>
+                        {[["TASKS",`${h.doneTasks}/${h.totalTasks}`,T.orange],["OVERDUE",h.overdueCount,h.overdueCount>0?T.red:T.green],["BLOCKERS",h.blockers.length,h.blockers.length>0?T.yellow:T.green]].map(([l,v,c])=>(
+                          <div key={l} style={{background:T.bg,borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{fontSize:9,color:T.grayLight,fontFamily:T.mono,letterSpacing:2,marginBottom:4}}>{l}</div>
+                            <div style={{fontSize:20,fontWeight:900,color:c,fontFamily:T.font}}>{v}</div>
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
+                      <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:5}}>
+                        {h.memberStats.filter(m=>m.total>0).map(m=>{
+                          const pct=Math.round((m.done/m.total)*100);
+                          return (
+                            <div key={m.name} style={{display:"flex",alignItems:"center",gap:10}}>
+                              <div style={{width:76,fontSize:11,fontWeight:600,color:T.darkGray,flexShrink:0}}>{m.name.split(" ")[0]}</div>
+                              <div style={{flex:1}}><ProgressBar value={pct} height={4} /></div>
+                              <div style={{width:34,fontSize:11,fontWeight:800,color:pct===100?T.green:T.orange,textAlign:"right",fontFamily:T.font}}>{pct}%</div>
+                              {m.overdue>0&&<Badge label={`${m.overdue} late`} color={T.red} />}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -778,100 +893,234 @@ function OpsPulse({slackIds}) {
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard() {
-  const [tasks,setTasks] = useState(null);
-  const [checked,setChecked] = useState({});
-  const [rfpTracker,setRfpTracker] = useState([]);
-  const [influencers,setInfluencers] = useState([]);
-  const [loading,setLoading] = useState(true);
+  const date = new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}).toUpperCase();
+  const values = [
+    ["01","Proactivity","Don't wait to be told. If you see a gap, fill it."],
+    ["02","Independent Thinking","Think before you ask. Come with a point of view."],
+    ["03","Performance Mindedness","Know your numbers. Track your progress."],
+    ["04","Collaboration","We grow together, not at each other's expense."],
+    ["05","Ownership","Your work is your name. Take pride in it."],
+    ["06","Growth Mindset","Get better every week than you were before."],
+  ];
+  return (
+    <div style={{background:"#F5F5F0",border:"2px solid #000",fontFamily:T.body}}>
 
-  useEffect(()=>{
-    Promise.all([storage.get("ops-pulse-current"),storage.get("ops-pulse-checked"),storage.get("rfp-tracker"),storage.get("influencer-tracker")])
-      .then(([t,c,r,inf])=>{
-        if(t) setTasks(JSON.parse(t.value));
-        if(c) setChecked(JSON.parse(c.value));
-        if(r) setRfpTracker(JSON.parse(r.value));
-        if(inf) setInfluencers(JSON.parse(inf.value));
-        setLoading(false);
-      });
-  },[]);
+      {/* Masthead */}
+      <div style={{padding:"0 32px",borderBottom:"3px solid #000"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0 12px",borderBottom:"1px solid #C8C2B8"}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:12}}>
+            <span style={{fontSize:11,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.mono}}>LEVERAGE.</span>
+            <span style={{fontSize:11,color:"#9CA3AF",letterSpacing:2,fontFamily:T.mono}}>OPERATIONS HUB</span>
+          </div>
+          <span style={{fontSize:10,color:"#9CA3AF",letterSpacing:2,fontFamily:T.mono}}>{date}</span>
+        </div>
+        <div style={{padding:"24px 0 0"}}>
+          <div style={{fontSize:"clamp(40px,6vw,64px)",fontWeight:700,lineHeight:0.88,letterSpacing:-3,textTransform:"uppercase",color:"#000"}}>
+            GOOD<br/>
+            <span style={{WebkitTextStroke:"2px #000",color:"transparent",letterSpacing:-2}}>MORNING.</span>
+          </div>
+          <p style={{fontSize:13,color:"#9CA3AF",fontFamily:T.mono,letterSpacing:1,marginTop:14,marginBottom:20}}>
+            HERE'S YOUR DAILY REMINDER OF WHY WE'RE HERE.
+          </p>
+        </div>
+      </div>
 
-  if(loading) return <LoadingScreen />;
+      {/* Mission + Belief */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}>
+        <div style={{padding:"36px 32px",borderRight:"1px solid #C8C2B8",position:"relative"}}>
+          <div style={{width:32,height:3,background:T.orange,marginBottom:20}} />
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.mono,marginBottom:14}}>OUR MISSION</div>
+          <p style={{fontSize:18,fontWeight:700,lineHeight:1.5,color:"#000"}}>
+            We exist to deliver best-in-class results — with speed, precision, and genuine care.
+          </p>
+          <p style={{fontSize:13,color:"#6B7280",lineHeight:1.8,marginTop:14}}>
+            We're not here to be average. We're here to make success an inevitability.
+          </p>
+        </div>
+        <div style={{padding:"36px 32px",background:"#000"}}>
+          <div style={{width:32,height:3,background:T.orange,marginBottom:20}} />
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.mono,marginBottom:14}}>WHAT WE BELIEVE</div>
+          <p style={{fontSize:14,lineHeight:1.9,color:"#E5E0D8"}}>
+            Great work comes from people who think independently, act proactively, and hold themselves to a high standard — not because they're told to, but because they genuinely care about the outcome.
+          </p>
+        </div>
+      </div>
 
-  const getProgress=m=>{const t=tasks?.team_tasks?.[m]?.tasks||[];if(!t.length) return null;return Math.round((t.filter((_,i)=>checked[`${m}-${i}`]).length/t.length)*100);};
-  const teamProgress=()=>{if(!tasks) return null;let total=0,done=0;TEAM_OPS.forEach(m=>{const t=tasks.team_tasks?.[m]?.tasks||[];total+=t.length;done+=t.filter((_,i)=>checked[`${m}-${i}`]).length;});return total?{pct:Math.round((done/total)*100),total,done}:null;};
-  const tp=teamProgress();
-  const won=rfpTracker.filter(t=>t.status==="won");
-  const submitted=rfpTracker.filter(t=>["submitted","won","lost"].includes(t.status));
-  const winRate=submitted.length?Math.round((won.length/submitted.length)*100):0;
-  const totalRev=won.filter(t=>t.revenue).reduce((a,t)=>a+parseFloat(t.revenue.replace(/[^0-9.]/g,""))||0,0);
-  const activeInf=influencers.filter(i=>i.status==="active").length;
-  const negoInf=influencers.filter(i=>i.status==="under_nego").length;
+      {/* Values header */}
+      <div style={{borderTop:"3px solid #000",padding:"22px 32px 0"}}>
+        <div style={{fontSize:10,fontWeight:700,letterSpacing:4,color:"#9CA3AF",fontFamily:T.mono}}>SIX PRINCIPLES WE LIVE BY</div>
+      </div>
+
+      {/* Values rows */}
+      {values.map(([num,title,desc],i)=>(
+        <div key={num} style={{display:"grid",gridTemplateColumns:"56px 1fr 1.6fr",borderTop:"1px solid #C8C2B8",alignItems:"stretch",background:i%2===0?"#F5F5F0":"#EFEFEA"}}>
+          <div style={{padding:"22px 0 22px 32px",display:"flex",alignItems:"center"}}>
+            <span style={{fontSize:11,fontWeight:700,fontFamily:T.mono,color:T.orange,letterSpacing:1}}>{num}</span>
+          </div>
+          <div style={{padding:"22px 20px",display:"flex",alignItems:"center",borderLeft:"1px solid #C8C2B8"}}>
+            <span style={{fontSize:14,fontWeight:700,color:"#000"}}>{title}</span>
+          </div>
+          <div style={{padding:"22px 28px",display:"flex",alignItems:"center",borderLeft:"1px solid #C8C2B8"}}>
+            <span style={{fontSize:12,color:"#6B7280",lineHeight:1.7}}>{desc}</span>
+          </div>
+        </div>
+      ))}
+
+      {/* Footer */}
+      <div style={{borderTop:"3px solid #000",padding:"14px 32px",background:"#000",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:10,color:"#444",fontFamily:T.mono,letterSpacing:2}}>BUILDWITHLEVERAGE.COM</span>
+        <span style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:3}}>LEVERAGE.</span>
+      </div>
+
+    </div>
+  );
+}
+
+// ─── CULTURE DASHBOARD ────────────────────────────────────────────────────────
+function CultureDashboard() {
+  const [activeTab, setActiveTab] = useState('ethos');
+  const now = new Date();
+  const monthYear = now.toLocaleDateString('en-US',{month:'long',year:'numeric'}).toUpperCase();
+
+  const tabs = [
+    { key:'ethos', label:'WHO WE ARE' },
+    { key:'values', label:'VALUES' },
+    { key:'behaviors', label:'IN PRACTICE' },
+    { key:'standard', label:'STANDARD' },
+  ];
+
+  const s = {
+    sectionLabel: { fontSize:10, fontWeight:700, letterSpacing:3, color:'#FF3300', marginBottom:20, fontFamily:T.mono, display:'block' },
+  };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:24}}>
-      <div style={{borderBottom:`2px solid ${T.black}`,paddingBottom:20}}>
-        <div style={{fontSize:11,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.mono,marginBottom:6}}>BWL OPERATIONS HUB</div>
-        <div style={{fontSize:48,fontWeight:700,fontFamily:T.font,textTransform:"uppercase",lineHeight:1,letterSpacing:1}}>{new Date().toLocaleDateString("en-US",{weekday:"long"}).toUpperCase()}</div>
-        <div style={{fontSize:13,color:T.gray,fontFamily:T.mono,marginTop:6}}>{new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · {weekLabel()}</div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
-        <StatBlock label="Team Progress" value={tp?`${tp.pct}%`:"—"} sub={tp?`${tp.done}/${tp.total} tasks done`:"No tasks yet"} color={tp?.pct===100?T.green:T.orange} />
-        <StatBlock label="RFP Win Rate" value={`${winRate}%`} sub={`${won.length} won · ${rfpTracker.filter(t=>t.status==="submitted").length} pending`} color={winRate>=50?T.green:T.yellow} />
-        <StatBlock label="Influencers" value={`${influencers.length}`} sub={`${activeInf} active · ${negoInf} negotiating`} color={T.purple} />
-      </div>
-      {tasks?(
-        <Card>
-          <SectionHeader label="Team Task Progress" />
-          <div style={{padding:20,display:"flex",flexDirection:"column",gap:12}}>
-            {TEAM_OPS.map(member=>{
-              const p=getProgress(member);if(p===null) return null;
-              const memberTasks=tasks?.team_tasks?.[member]?.tasks||[];
-              const overdue=memberTasks.filter((t,i)=>!checked[`${member}-${i}`]&&(()=>{if(!t.due_day) return false;const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];return days.indexOf(t.due_day)<new Date().getDay();})()).length;
-              return (
-                <div key={member} style={{display:"flex",alignItems:"center",gap:12}}>
-                  <Avatar name={member} size={28} />
-                  <div style={{width:110,fontSize:12,fontWeight:600,flexShrink:0,color:T.darkGray}}>{member.split(" ")[0]}</div>
-                  <div style={{flex:1}}><ProgressBar value={p} height={6} /></div>
-                  <div style={{width:36,fontSize:13,fontWeight:800,color:p===100?T.green:T.orange,textAlign:"right",fontFamily:T.font}}>{p}%</div>
-                  {overdue>0&&<Badge label={`${overdue} late`} color={T.red} />}
-                </div>
-              );
-            })}
+    <div style={{background:"#FAFAF8",border:"2px solid #0A0A0A",fontFamily:T.body}}>
+      {/* Masthead */}
+      <div style={{borderBottom:"3px solid #0A0A0A",padding:"0 40px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 0 12px",borderBottom:"1px solid #E0DDD8"}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:12}}>
+            <span style={{fontSize:11,fontWeight:700,letterSpacing:3,color:'#FF3300',fontFamily:T.mono}}>LEVERAGE.</span>
+            <span style={{fontSize:11,color:"#6B7280",letterSpacing:2,fontFamily:T.mono}}>INTERNAL</span>
           </div>
-        </Card>
-      ):(
-        <Card style={{padding:32,textAlign:"center"}}>
-          <div style={{fontSize:32,marginBottom:12}}>⚡</div>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>No tasks generated yet</div>
-          <div style={{fontSize:13,color:T.grayLight}}>Go to OPS PULSE to generate this week's tasks.</div>
-        </Card>
-      )}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <Card>
-          <SectionHeader label="RFP Pipeline" />
-          <div style={{padding:16,display:"flex",flexDirection:"column",gap:8}}>
-            {rfpTracker.length===0?<div style={{fontSize:13,color:T.grayLight,padding:"8px 0"}}>No proposals saved yet.</div>:
-              [["Total",rfpTracker.length,T.black],["Submitted",rfpTracker.filter(t=>t.status==="submitted").length,T.yellow],["Won",won.length,T.green],["Lost",rfpTracker.filter(t=>t.status==="lost").length,T.red]].map(([l,v,c])=>(
-                <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
-                  <div style={{fontSize:12,color:T.gray}}>{l}</div>
-                  <div style={{fontSize:18,fontWeight:800,color:c,fontFamily:T.font}}>{v}</div>
+          <span style={{fontSize:10,color:"#6B7280",letterSpacing:2,fontFamily:T.mono}}>VOL. 01 — {monthYear}</span>
+        </div>
+        <div style={{fontSize:"clamp(40px,6vw,64px)",fontWeight:700,lineHeight:0.9,letterSpacing:-2,textTransform:"uppercase",padding:"24px 0 0"}}>
+          COMPANY<br/><span style={{WebkitTextStroke:"2px #0A0A0A",color:"transparent"}}>ETHOS</span>
+        </div>
+        <div style={{display:"flex",marginTop:20,borderTop:"1px solid #E0DDD8"}}>
+          {tabs.map((t,i)=>(
+            <button key={t.key} onClick={()=>setActiveTab(t.key)}
+              style={{flex:1,padding:"12px 8px",background:activeTab===t.key?"#0A0A0A":"#FAFAF8",color:activeTab===t.key?"#fff":"#6B7280",border:"none",borderRight:i===tabs.length-1?"none":"1px solid #E0DDD8",cursor:"pointer",fontSize:10,fontWeight:700,fontFamily:T.mono,letterSpacing:2,textTransform:"uppercase",transition:"all 0.15s"}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{padding:"0 40px 60px"}}>
+        {activeTab==='ethos'&&(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",borderBottom:"1px solid #E0DDD8"}}>
+              <div style={{padding:"40px 40px 40px 0",borderRight:"1px solid #E0DDD8"}}>
+                <span style={s.sectionLabel}>OUR MISSION</span>
+                <p style={{fontSize:22,fontWeight:700,lineHeight:1.3}}>We exist to deliver best-in-class results — with speed, precision, and genuine care.</p>
+                <p style={{fontSize:13,color:"#6B7280",lineHeight:1.8,marginTop:16}}>We're not here to be average. We're here to make success an inevitability.</p>
+              </div>
+              <div style={{padding:"40px 0 40px 40px"}}>
+                <span style={s.sectionLabel}>WHAT WE BELIEVE</span>
+                <p style={{fontSize:15,lineHeight:1.8,color:"#0A0A0A"}}>Great work comes from people who think independently, act proactively, and hold themselves to a high standard — not because they're told to, but because they genuinely care about the outcome.</p>
+                <div style={{marginTop:24,padding:"16px 20px",background:"#0A0A0A",borderLeft:"4px solid #FF3300"}}>
+                  <p style={{fontSize:13,color:"#fff",fontFamily:T.mono,lineHeight:1.7}}>"Success is not a question.<br/>It's an inevitability."</p>
+                  <p style={{fontSize:10,color:"#FF3300",marginTop:8,fontFamily:T.mono,letterSpacing:2}}>— DAVID PERLOV, FOUNDER</p>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",borderBottom:"1px solid #E0DDD8"}}>
+              {[["$125M+","Revenue Generated"],["11X","Average ROAS"],["20+","Companies Served"]].map(([v,l],i)=>(
+                <div key={i} style={{padding:"28px 24px",borderRight:i<2?"1px solid #E0DDD8":"none",textAlign:"center"}}>
+                  <div style={{fontSize:40,fontWeight:700,color:"#FF3300",lineHeight:1}}>{v}</div>
+                  <div style={{fontSize:10,fontFamily:T.mono,color:"#6B7280",letterSpacing:2,marginTop:6}}>{l}</div>
                 </div>
               ))}
-            {totalRev>0&&<div style={{background:"#F0FDF4",borderRadius:8,padding:"10px 12px",marginTop:4}}><div style={{fontSize:9,color:T.green,fontWeight:800,letterSpacing:2,fontFamily:T.mono,marginBottom:4}}>REVENUE WON</div><div style={{fontSize:20,fontWeight:900,color:T.green,fontFamily:T.font}}>${totalRev.toLocaleString()}</div></div>}
-          </div>
-        </Card>
-        <Card>
-          <SectionHeader label="Influencer Tracker" />
-          <div style={{padding:16,display:"flex",flexDirection:"column",gap:8}}>
-            {influencers.length===0?<div style={{fontSize:13,color:T.grayLight,padding:"8px 0"}}>No influencers tracked yet.</div>:
-              [["Total",influencers.length,T.black],["Active",activeInf,T.green],["Negotiating",negoInf,T.yellow],["Paid",influencers.filter(i=>i.status==="paid").length,T.purple],["Completed",influencers.filter(i=>i.status==="completed").length,T.gray]].map(([l,v,c])=>(
-                <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
-                  <div style={{fontSize:12,color:T.gray}}>{l}</div>
-                  <div style={{fontSize:18,fontWeight:800,color:c,fontFamily:T.font}}>{v}</div>
+            </div>
+          </>
+        )}
+
+        {activeTab==='values'&&(
+          <>
+            <div style={{padding:"32px 0 24px",borderBottom:"1px solid #E0DDD8"}}>
+              <span style={{fontSize:11,color:"#6B7280",letterSpacing:3,fontFamily:T.mono}}>SIX PRINCIPLES WE LIVE BY</span>
+            </div>
+            {[
+              ["01","Proactivity","Don't wait to be told. If you see a gap, fill it. If you see a problem, bring a solution. Never let someone else be your blocker."],
+              ["02","Independent Thinking","Think before you ask. Research before you escalate. Come with a point of view, not just a question."],
+              ["03","Performance Mindedness","Know your numbers. Set your goals. Track your progress. Celebrate wins — and learn from misses."],
+              ["04","Collaboration","We push each other to be better — with respect. We grow together, not at each other's expense."],
+              ["05","Ownership","Your work is your name. Take pride in it. If something breaks, own it and fix it. If something succeeds, own that too."],
+              ["06","Growth Mindset","Every role is a learning opportunity. Ask questions. Experiment. Get better every week than you were the week before."],
+            ].map(([num,title,desc])=>(
+              <div key={num} style={{display:"grid",gridTemplateColumns:"80px 1fr 2fr",borderBottom:"1px solid #E0DDD8",alignItems:"center"}}>
+                <div style={{padding:"24px 0",borderRight:"1px solid #E0DDD8",textAlign:"center",fontSize:11,fontWeight:700,fontFamily:T.mono,color:"#6B7280",letterSpacing:2}}>{num}</div>
+                <div style={{padding:"24px 32px",borderRight:"1px solid #E0DDD8",fontSize:22,fontWeight:700,letterSpacing:-0.5}}>{title}</div>
+                <div style={{padding:"24px 32px",fontSize:13,color:"#6B7280",lineHeight:1.7}}>{desc}</div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {activeTab==='behaviors'&&(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",borderBottom:"1px solid #E0DDD8"}}>
+              <div style={{padding:"20px 32px 16px 0",borderRight:"1px solid #E0DDD8",fontSize:10,fontWeight:700,fontFamily:T.mono,color:"#16a34a",letterSpacing:3}}>✅ WE DO THIS</div>
+              <div style={{padding:"20px 0 16px 32px",fontSize:10,fontWeight:700,fontFamily:T.mono,color:"#FF3300",letterSpacing:3}}>✗ NOT THIS</div>
+            </div>
+            {[
+              ["Start each day with a clear, specific goal — not just a task list","Clock in with a vague 'working on things today'"],
+              ["End each day with a real recap: numbers, progress, blockers","Send the same update copy-pasted from yesterday"],
+              ["Spot a recurring problem? Bring 3 solutions + your recommendation","Drop the problem on someone else's lap without thinking it through"],
+              ["Ask for help after you've already tried something","Ask immediately before attempting to figure it out yourself"],
+              ["Flag risks early, before they become crises","Stay quiet and hope it resolves itself"],
+            ].map(([doIt,dontIt],i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr",borderBottom:"1px solid #E0DDD8"}}>
+                <div style={{padding:"22px 32px 22px 0",borderRight:"1px solid #E0DDD8",display:"flex",alignItems:"flex-start",gap:12}}>
+                  <div style={{width:20,height:20,borderRadius:"50%",background:"#16a34a",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,fontSize:11,fontWeight:900,color:"#fff"}}>✓</div>
+                  <p style={{fontSize:14,fontWeight:600,lineHeight:1.5}}>{doIt}</p>
                 </div>
-              ))}
-          </div>
-        </Card>
+                <div style={{padding:"22px 0 22px 32px",display:"flex",alignItems:"flex-start",gap:12}}>
+                  <div style={{width:20,height:20,borderRadius:"50%",background:"#F0EFEB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,fontSize:11,fontWeight:900,color:"#6B7280"}}>✗</div>
+                  <p style={{fontSize:14,fontWeight:400,lineHeight:1.5,color:"#6B7280",textDecoration:"line-through",textDecorationColor:"#E0DDD8"}}>{dontIt}</p>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {activeTab==='standard'&&(
+          <>
+            <div style={{padding:"40px 0 32px",borderBottom:"1px solid #E0DDD8"}}>
+              <div style={{fontSize:"clamp(28px,4vw,48px)",fontWeight:700,lineHeight:0.95,letterSpacing:-1,textTransform:"uppercase",maxWidth:500}}>THE PROBLEM-SOLVING STANDARD</div>
+              <p style={{fontSize:13,color:"#6B7280",marginTop:16,maxWidth:480,lineHeight:1.7}}>Every problem brought to the team must follow this format. No exceptions.</p>
+            </div>
+            {[
+              ["01","DIAGNOSE","Name the Problem Clearly","What exactly is happening? When did it start? What's the business impact? Be specific — vague problems get vague solutions."],
+              ["02","THINK","Propose 3 Solutions","Think broadly. There's never just one way. List at least 3 options with honest pros and cons. If you can only think of one, you haven't thought hard enough."],
+              ["03","DECIDE","Give Your Recommendation","Pick one. Tell us why. Be willing to defend it — and be open to being wrong. We side with the recommendation 99% of the time."],
+            ].map(([num,tag,name,desc])=>(
+              <div key={num} style={{display:"grid",gridTemplateColumns:"80px 160px 1fr",borderBottom:"1px solid #E0DDD8",alignItems:"stretch"}}>
+                <div style={{borderRight:"1px solid #E0DDD8",display:"flex",alignItems:"center",justifyContent:"center",padding:"32px 0",fontSize:28,fontWeight:700,color:"#FF3300"}}>{num}</div>
+                <div style={{borderRight:"1px solid #E0DDD8",padding:"32px 20px",display:"flex",flexDirection:"column",justifyContent:"center",gap:8}}>
+                  <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:"#FF3300",letterSpacing:3}}>{tag}</span>
+                  <span style={{fontSize:15,fontWeight:700,lineHeight:1.3}}>{name}</span>
+                </div>
+                <div style={{padding:32,display:"flex",alignItems:"center",fontSize:13,color:"#6B7280",lineHeight:1.8}}>{desc}</div>
+              </div>
+            ))}
+            <div style={{background:"#0A0A0A",padding:"28px 32px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:24}}>
+              <p style={{fontSize:13,color:"#fff",fontFamily:T.mono,maxWidth:420,lineHeight:1.7}}>"If you come with just a problem and no solutions, you're not ready for the conversation yet."</p>
+              <span style={{fontSize:10,color:"#FF3300",fontFamily:T.mono,letterSpacing:3,flexShrink:0}}>THE STANDARD //</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -879,7 +1128,7 @@ function Dashboard() {
 
 // ─── RFP ENGINE ───────────────────────────────────────────────────────────────
 const PROPOSAL_TEMPLATES = {
-  Government:"formal, compliance-focused, emphasize track record, certifications, reporting. Price HIGH.",
+  Government:"formal, compliance-focused, emphasize track record, certifications, reporting. Price HIGH — government budgets are large.",
   Corporate:"ROI-driven, scalable, data-backed, executive-friendly. Price competitively high.",
   Nonprofit:"mission-aligned, cost-efficient, impact-focused, community-driven",
   Other:"flexible, value-driven, relationship-focused"
@@ -896,24 +1145,24 @@ const urgencyTag = (deadline) => {
 };
 
 function RFPEngine() {
-  const [keywords,setKeywords]=useState("");
-  const [rfps,setRfps]=useState([]);
-  const [selected,setSelected]=useState(null);
-  const [proposal,setProposal]=useState(null);
-  const [loading,setLoading]=useState({search:false,proposal:false});
-  const [error,setError]=useState(null);
-  const [view,setView]=useState("search");
-  const [tracker,setTracker]=useState([]);
-  const [expandedScore,setExpandedScore]=useState(null);
-  const [editNote,setEditNote]=useState({});
-  const [editRev,setEditRev]=useState({});
-  const [viewingProposal,setViewingProposal]=useState(null);
-  const [hideExpired,setHideExpired]=useState(true);
-  const [sortByDeadline,setSortByDeadline]=useState(true);
-  const [editingProposal,setEditingProposal]=useState(false);
-  const [editedProposalText,setEditedProposalText]=useState("");
+  const [keywords,setKeywords] = useState("");
+  const [rfps,setRfps] = useState([]);
+  const [selected,setSelected] = useState(null);
+  const [proposal,setProposal] = useState(null);
+  const [loading,setLoading] = useState({search:false,proposal:false});
+  const [error,setError] = useState(null);
+  const [view,setView] = useState("search");
+  const [tracker,setTracker] = useState([]);
+  const [expandedScore,setExpandedScore] = useState(null);
+  const [editNote,setEditNote] = useState({});
+  const [editRev,setEditRev] = useState({});
+  const [viewingProposal,setViewingProposal] = useState(null);
+  const [hideExpired,setHideExpired] = useState(true);
+  const [sortByDeadline,setSortByDeadline] = useState(true);
+  const [editingProposal,setEditingProposal] = useState(false);
+  const [editedProposalText,setEditedProposalText] = useState("");
 
-  useEffect(()=>{storage.get("rfp-tracker").then(s=>{if(s) setTracker(JSON.parse(s.value));});},[]);
+  useEffect(()=>{ storage.get("rfp-tracker").then(s=>{if(s) setTracker(JSON.parse(s.value));}); },[]);
 
   const setLoad=(k,v)=>setLoading(p=>({...p,[k]:v}));
   const persist=async(list)=>{setTracker(list);await storage.set("rfp-tracker",JSON.stringify(list));};
@@ -922,9 +1171,9 @@ function RFPEngine() {
   const updateField=(id,field,val)=>persist(tracker.map(t=>t.id===id?{...t,[field]:val}:t));
   const del=(id)=>persist(tracker.filter(t=>t.id!==id));
 
-  const search=async()=>{
+  const search = async () => {
     setLoad("search",true);setError(null);setRfps([]);setSelected(null);setProposal(null);
-    const prompt=`RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound"],"source_url":"direct URL or empty string","source":"org or platform name"}]}`;
+    const prompt=`RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string if unknown","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1","s2"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound","Paid Media"],"source_url":"direct URL to RFP page or empty string","source":"organization or platform name"}]}`;
     try {
       const data=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]});
       if(data.error) throw new Error(data.error.message);
@@ -935,22 +1184,46 @@ function RFPEngine() {
     setLoad("search",false);
   };
 
-  const genProposal=async(rfp,customText)=>{
+  const genProposal = async (rfp, customText) => {
     setSelected(rfp);setProposal(null);setLoad("proposal",true);setEditingProposal(false);setError(null);
     try {
-      const metaPrompt=`Senior proposal writer for BuildWithLeverage (LEVERAGE.). RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")} ${customText?"Extra context: "+customText:""} Return ONLY valid compact JSON: {"subject_line":"A NEW [X] FOR [ORG]","why_bwl":["reason"],"relevant_results":["result"],"investment":"price range","timeline":"timeline","requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}`;
+      const metaPrompt=`You are a senior proposal writer for BuildWithLeverage (LEVERAGE.).
+RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")}
+${customText?"Extra context: "+customText:""}
+Return ONLY valid compact JSON (no newlines inside string values):
+{"subject_line":"A NEW [X] FOR [ORG]","why_bwl":["reason with real stat"],"relevant_results":["result with numbers"],"investment":"price range","timeline":"timeline","requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}`;
       const d1=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:metaPrompt}]});
       if(d1.error) throw new Error(d1.error.message);
       const t1=(d1.content?.find(b=>b.type==="text")?.text||"").replace(/```json|```/g,"").trim();
       const meta=JSON.parse(t1.slice(t1.indexOf("{"),t1.lastIndexOf("}")+1));
 
-      const textPrompt=`Senior proposal writer for LEVERAGE. (BuildWithLeverage). Stats: $125M revenue generated, 11X ROAS, 20+ companies, 20% profit share on closed deals. RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")} ${customText?"Context: "+customText:""}\n\nWrite the full proposal. Format:\n- Personal opening paragraph\n- 01 // THE OPPORTUNITY\n- 02 // WHAT WE BUILD\n- 03 // THE PILOT\n- 04 // THE MATH (pipe table: Conservative/Moderate/Aggressive)\n- 05 // INVESTMENT (pipe table: ITEM | COST | NOTES, include 20% profit share)\n- 06 // NEXT STEPS\n- Use // KEY INSIGHT before standout points\n- Price HIGH for ${rfp.type}\n- End: David Perlov // FOUNDER // LEVERAGE. // david@buildwithleverage.com // (201) 290-1536 // buildwithleverage.com\n\nPlain text only. No JSON. No markdown.`;
+      const textPrompt=`Senior proposal writer for LEVERAGE. (BuildWithLeverage).
+Stats: $125M revenue generated, 11X ROAS, 20+ companies, 20% profit share on closed deals.
+RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")}
+${customText?"Context: "+customText:""}
+
+Write the full proposal. Format:
+- Personal opening paragraph
+- 01 // THE OPPORTUNITY
+- 02 // WHAT WE BUILD
+- 03 // THE PILOT
+- 04 // THE MATH (pipe table: Conservative/Moderate/Aggressive scenarios)
+- 05 // INVESTMENT (pipe table: ITEM | COST | NOTES, include 20% profit share)
+- 06 // NEXT STEPS
+- Use // KEY INSIGHT before standout points
+- Price HIGH for ${rfp.type}
+- End: David Perlov // FOUNDER // LEVERAGE. // david@buildwithleverage.com // (201) 290-1536 // buildwithleverage.com
+
+Plain text only. No JSON. No markdown.`;
+
       const d2=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:textPrompt}]});
       if(d2.error) throw new Error(d2.error.message);
       const proposalText=d2.content?.find(b=>b.type==="text")?.text||"";
       if(!proposalText) throw new Error("Empty proposal response");
+
       const full={...meta,full_proposal_text:proposalText};
-      setProposal(full);setEditedProposalText(proposalText);
+      setProposal(full);
+      setEditedProposalText(proposalText);
     } catch(e){setError(e.message);}
     setLoad("proposal",false);
   };
@@ -976,7 +1249,8 @@ function RFPEngine() {
           <Card>
             <SectionHeader label="Search RFPs" />
             <div style={{padding:16,display:"flex",gap:10}}>
-              <Input value={keywords} onChange={setKeywords} placeholder="e.g. marketing services, digital advertising…" style={{flex:1}} onKeyDown={e=>e.key==="Enter"&&keywords.trim()&&search()} />
+              <Input value={keywords} onChange={setKeywords} placeholder="e.g. marketing services, digital advertising…" style={{flex:1}}
+                onKeyDown={e=>e.key==="Enter"&&keywords.trim()&&search()} />
               <button onClick={search} disabled={!keywords.trim()||loading.search}
                 style={{background:keywords.trim()?T.black:T.border,color:keywords.trim()?"#fff":T.gray,border:"none",borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:keywords.trim()?"pointer":"not-allowed",whiteSpace:"nowrap",fontFamily:T.font}}>
                 {loading.search?"SEARCHING…":"SEARCH"}
@@ -1032,8 +1306,14 @@ function RFPEngine() {
                       <p style={{margin:"0 0 10px",fontSize:13,color:T.darkGray,lineHeight:1.6}}>{rfp.description}</p>
                       {rfp.services_needed?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>{rfp.services_needed.map((s,j)=><Badge key={j} label={s} color={T.orange} />)}</div>}
                       <div style={{fontSize:12,color:T.green,marginBottom:10}}>✓ {rfp.why_bwl_can_win}</div>
-                      {rfp.source_url&&<a href={rfp.source_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:T.orange,marginBottom:12,fontWeight:600}}>🔗 View Original RFP — {rfp.source} ↗</a>}
-                      <button onClick={()=>genProposal(rfp)} style={{width:"100%",padding:"10px 0",borderRadius:8,background:loading.proposal&&selected?.id===rfp.id?T.border:T.black,color:"#fff",border:"none",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
+                      {rfp.source_url&&(
+                        <a href={rfp.source_url} target="_blank" rel="noreferrer"
+                          style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:T.orange,marginBottom:12,fontWeight:600}}>
+                          🔗 View Original RFP — {rfp.source} ↗
+                        </a>
+                      )}
+                      <button onClick={()=>genProposal(rfp)}
+                        style={{width:"100%",padding:"10px 0",borderRadius:8,background:loading.proposal&&selected?.id===rfp.id?T.border:T.black,color:"#fff",border:"none",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
                         {loading.proposal&&selected?.id===rfp.id?"GENERATING…":"GENERATE PROPOSAL"}
                       </button>
                     </Card>
@@ -1055,7 +1335,7 @@ function RFPEngine() {
                   <Pill label="← BACK" onClick={()=>{setProposal(null);setSelected(null);setEditingProposal(false);}} />
                 </div>
               </div>
-              <BrandedProposal proposal={{...proposal,full_proposal_text:editedProposalText}} rfp={selected} />
+              <BrandedProposal proposal={{...proposal, full_proposal_text: editedProposalText}} rfp={selected} />
               <Card style={{padding:18}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <CardLabel color={T.orange}>Edit Proposal Text</CardLabel>
@@ -1092,8 +1372,16 @@ function RFPEngine() {
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
                   <div style={{fontSize:14,fontWeight:700,color:"#fff",fontFamily:T.font}}>{viewingProposal.title}</div>
                   <div style={{display:"flex",gap:8}}>
-                    {viewingProposal.source_url&&<a href={viewingProposal.source_url} target="_blank" rel="noreferrer" style={{background:T.orange,color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,fontFamily:T.font,textDecoration:"none"}}>🔗 VIEW RFP</a>}
-                    <button onClick={()=>navigator.clipboard.writeText(viewingProposal.proposal)} style={{background:"#333",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>COPY TEXT</button>
+                    {viewingProposal.source_url&&(
+                      <a href={viewingProposal.source_url} target="_blank" rel="noreferrer"
+                        style={{background:T.orange,color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,fontFamily:T.font,textDecoration:"none"}}>
+                        🔗 VIEW RFP
+                      </a>
+                    )}
+                    <button onClick={()=>navigator.clipboard.writeText(viewingProposal.proposal)}
+                      style={{background:"#333",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>
+                      COPY TEXT
+                    </button>
                     <button onClick={()=>setViewingProposal(null)} style={{background:T.red,color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>✕ CLOSE</button>
                   </div>
                 </div>
@@ -1101,6 +1389,7 @@ function RFPEngine() {
               </div>
             </div>
           )}
+
           <Card style={{background:T.black,padding:20}}>
             <CardLabel color={T.orange}>Win Rate Dashboard</CardLabel>
             <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginTop:14}}>
@@ -1140,15 +1429,20 @@ function RFPEngine() {
                     {t.source_url&&<a href={t.source_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:T.orange,marginBottom:10,fontWeight:600}}>🔗 View Original RFP ↗</a>}
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,background:T.bg,borderRadius:8,padding:"8px 12px"}}>
                       <span style={{fontSize:11,color:T.gray,fontWeight:600,whiteSpace:"nowrap"}}>EST. REVENUE</span>
-                      {editRev[t.id]?<Input value={t.revenue||""} onChange={v=>updateField(t.id,"revenue",v)} placeholder="e.g. $5,000" style={{flex:1}} />:
-                        <span onClick={()=>setEditRev(p=>({...p,[t.id]:true}))} style={{flex:1,fontSize:12,color:t.revenue?T.black:T.grayLight,cursor:"pointer"}}>{t.revenue||"Click to add…"}</span>}
+                      {editRev[t.id]?(
+                        <Input value={t.revenue||""} onChange={v=>updateField(t.id,"revenue",v)} placeholder="e.g. $5,000" style={{flex:1}} />
+                      ):(
+                        <span onClick={()=>setEditRev(p=>({...p,[t.id]:true}))} style={{flex:1,fontSize:12,color:t.revenue?T.black:T.grayLight,cursor:"pointer"}}>{t.revenue||"Click to add…"}</span>
+                      )}
                     </div>
                     <div style={{marginBottom:12}}>
                       <div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>NOTES</div>
-                      {editNote[t.id]?
+                      {editNote[t.id]?(
                         <textarea autoFocus value={t.notes||""} onChange={e=>updateField(t.id,"notes",e.target.value)} onBlur={()=>setEditNote(p=>({...p,[t.id]:false}))}
-                          style={{width:"100%",minHeight:60,background:T.bg,border:`1.5px solid ${T.orange}`,borderRadius:8,color:T.black,fontSize:12,padding:"8px 10px",outline:"none",fontFamily:T.body,resize:"vertical"}} />:
-                        <div onClick={()=>setEditNote(p=>({...p,[t.id]:true}))} style={{background:T.bg,borderRadius:8,padding:"8px 10px",fontSize:12,color:t.notes?T.black:T.grayLight,cursor:"pointer",minHeight:32,lineHeight:1.5}}>{t.notes||"Click to add notes…"}</div>}
+                          style={{width:"100%",minHeight:60,background:T.bg,border:`1.5px solid ${T.orange}`,borderRadius:8,color:T.black,fontSize:12,padding:"8px 10px",outline:"none",fontFamily:T.body,resize:"vertical"}} />
+                      ):(
+                        <div onClick={()=>setEditNote(p=>({...p,[t.id]:true}))} style={{background:T.bg,borderRadius:8,padding:"8px 10px",fontSize:12,color:t.notes?T.black:T.grayLight,cursor:"pointer",minHeight:32,lineHeight:1.5}}>{t.notes||"Click to add notes…"}</div>
+                      )}
                     </div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       <button onClick={()=>setViewingProposal(t)} style={{background:T.black,color:"#fff",border:"none",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.font}}>👁 VIEW</button>
@@ -1200,6 +1494,38 @@ function StrategicDecision() {
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Strategic advisor for David Perlov, CEO of BuildWithLeverage. Situation: ${situation}. Options: ${options||"not specified"}. Return ONLY valid JSON: {"recommendation":"recommended path in 2-3 sentences","confidence":"high|medium|low","pros_cons":[{"option":"name","pros":["p1"],"cons":["c1"]}],"risks":"key risk","next_steps":["step1"],"decision_log":"1 paragraph decision log"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   const confColor=c=>({high:T.green,medium:T.yellow,low:T.red}[c]||T.gray);
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Situation / Decision" value={situation} onChange={setSituation} placeholder="Describe the strategic decision or situation…" /><Textarea label="Options Being Considered (Optional)" value={options} onChange={setOptions} placeholder="List the options…" minHeight={80} /><Btn onClick={gen} disabled={!situation.trim()} loading={loading} label="ANALYZE DECISION" icon="🧠" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}><CardLabel color={T.orange}>Recommendation</CardLabel>{result.confidence&&<Badge label={`${result.confidence} confidence`} color={confColor(result.confidence)} />}</div><p style={{margin:0,color:"#fff",fontSize:14,lineHeight:1.7}}>{result.recommendation}</p></Card>{result.pros_cons?.map((o,i)=>(<Card key={i} style={{padding:16}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>{o.option}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pros" items={o.pros} color={T.green} /><Bullets label="Cons" items={o.cons} color={T.red} /></div></Card>))}<Bullets label="Next Steps" items={result.next_steps} color={T.purple} /></>}</div>);
+}
+
+// ─── OUTBOUND ─────────────────────────────────────────────────────────────────
+function SequenceBuilder() {
+  const [icp,setIcp]=useState("");const [goal,setGoal]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Outbound marketing specialist at BuildWithLeverage. Build 3-email cold sequence. ICP: ${icp}. Goal: ${goal}. Return ONLY valid JSON: {"sequence_name":"name","emails":[{"step":1,"subject":"s","body":"full email","send_day":"Day 1","goal":"g"},{"step":2,"subject":"s","body":"full email","send_day":"Day 3","goal":"g"},{"step":3,"subject":"s","body":"full email","send_day":"Day 7","goal":"g"}],"tips":["t1"]}`;try{const r=await callClaude(prompt,3000);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Target Audience / ICP" value={icp} onChange={setIcp} placeholder="Who are you targeting?" minHeight={80} /><Textarea label="Campaign Goal" value={goal} onChange={setGoal} placeholder="e.g. Book discovery call…" minHeight={70} /><Btn onClick={gen} disabled={!icp.trim()||!goal.trim()} loading={loading} label="BUILD EMAIL SEQUENCE" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Sequence</CardLabel><div style={{fontSize:16,fontWeight:800,color:"#fff",marginTop:6}}>{result.sequence_name}</div></Card>{result.emails?.map((e,i)=>(<Card key={i} style={{padding:18}}><div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}><Badge label={`EMAIL ${e.step}`} color={T.black} bg={T.black} /><span style={{fontSize:11,color:T.gray}}>{e.send_day}</span><span style={{fontSize:11,color:T.purple,marginLeft:"auto"}}>{e.goal}</span></div><div style={{fontSize:12,fontWeight:600,marginBottom:8,color:T.darkGray}}>Subject: {e.subject}</div><div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",background:T.bg,borderRadius:8,padding:14}}>{e.body}</div></Card>))}<Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
+}
+
+function LeadResearch() {
+  const [target,setTarget]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Lead research specialist for BuildWithLeverage. Research: ${target}. Return ONLY valid JSON: {"company_summary":"2-3 sentences","pain_points":["p1"],"why_bwl_fits":"reason","recommended_angle":"best angle","talking_points":["t1"],"estimated_fit_score":85,"research_summary":"complete research summary"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Company / Lead to Research" value={target} onChange={setTarget} placeholder="Company name, website, or any lead details…" minHeight={90} /><Btn onClick={gen} disabled={!target.trim()} loading={loading} label="RESEARCH LEAD" icon="🔍" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div style={{flex:1}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.company_summary}</p></div><div style={{textAlign:"center",marginLeft:20}}><div style={{fontSize:34,fontWeight:900,color:result.estimated_fit_score>=80?T.green:result.estimated_fit_score>=60?T.yellow:T.red,fontFamily:T.font,lineHeight:1}}>{result.estimated_fit_score}</div><div style={{fontSize:9,color:T.gray,fontWeight:700,fontFamily:T.mono}}>FIT SCORE</div></div></div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pain Points" items={result.pain_points} color={T.red} /><Bullets label="Talking Points" items={result.talking_points} color={T.purple} /></div><Card style={{padding:16}}><CardLabel color={T.green}>Why BWL Fits</CardLabel><p style={{margin:"8px 0 12px",fontSize:13,lineHeight:1.6}}>{result.why_bwl_fits}</p><CardLabel color={T.orange}>Recommended Angle</CardLabel><p style={{margin:"8px 0 0",fontSize:13,lineHeight:1.6}}>{result.recommended_angle}</p></Card></>}</div>);
+}
+
+function ColdEmailWriter() {
+  const [lead,setLead]=useState("");const [offer,setOffer]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Top SDR at BuildWithLeverage. Write cold email. Lead: ${lead}. Offer: ${offer||"BWL growth services"}. Return ONLY valid JSON: {"subject_line":"s","email_body":"complete cold email under 150 words","alt_subject":"alt","follow_up":"2-sentence day-3 follow-up","tips":["t1"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead Info" value={lead} onChange={setLead} placeholder="Company, contact, role, pain points…" minHeight={90} /><Textarea label="Offer / Angle (Optional)" value={offer} onChange={setOffer} placeholder="What are you pitching?" minHeight={70} /><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="WRITE COLD EMAIL" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject Lines</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:8}}>{result.subject_line}</div><div style={{fontSize:13,color:"#777",marginTop:6}}>Alt: {result.alt_subject}</div></Card><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Cold Email</CardLabel><CopyBtn text={result.email_body} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.email_body}</div></div><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel color={T.gray}>Follow-up (Day 3)</CardLabel><CopyBtn text={result.follow_up} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",color:T.darkGray}}>{result.follow_up}</div></div><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
+}
+
+function CallScript() {
+  const [lead,setLead]=useState("");const [goal,setGoal]=useState("book a discovery call");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Top SDR at BuildWithLeverage. Build cold call script. Lead: ${lead}. Goal: ${goal}. Return ONLY valid JSON: {"opener":"1-2 sentence opener","value_prop":"2-3 sentence value prop","discovery_questions":["q1","q2","q3"],"objection_handling":[{"objection":"o","response":"r"}],"cta":"closing CTA","full_script":"complete word-for-word script"}`;try{const r=await callClaude(prompt,2500);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead / Company Info" value={lead} onChange={setLead} placeholder="Who are you calling?" minHeight={90} /><Card><SectionHeader label="Call Goal" /><input value={goal} onChange={e=>setGoal(e.target.value)} style={{width:"100%",background:"transparent",border:"none",color:T.black,fontSize:13,padding:"12px 18px",outline:"none",fontFamily:T.body,display:"block"}} /></Card><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="GENERATE CALL SCRIPT" icon="📞" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Opener</CardLabel><p style={{margin:"8px 0 14px",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.opener}</p><CardLabel color={T.orange}>Value Prop</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.value_prop}</p></Card><Bullets label="Discovery Questions" items={result.discovery_questions} color={T.purple} /><Card style={{padding:16}}><CardLabel color={T.yellow}>Objection Handling</CardLabel><div style={{marginTop:10}}>{result.objection_handling?.map((o,i)=><div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i<result.objection_handling.length-1?`1px solid ${T.border}`:"none"}}><div style={{fontSize:12,fontWeight:700,color:T.red,marginBottom:4}}>"{o.objection}"</div><div style={{fontSize:12,lineHeight:1.5,color:T.darkGray}}>→ {o.response}</div></div>)}</div></Card><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Full Script</CardLabel><CopyBtn text={result.full_script} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.full_script}</div></div></>}</div>);
+}
+
+function AfterCallAutomation() {
+  const [callNotes,setCallNotes]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`SDR at BuildWithLeverage. Generate after-call automations: ${callNotes}. Return ONLY valid JSON: {"call_summary":"2-3 sentence summary","outcome":"connected|no_answer|left_voicemail|not_interested|interested|meeting_booked","crm_notes":"complete CRM note","follow_up_email":{"subject":"s","body":"complete follow-up email"},"next_action":"recommended next action","slack_update":"1-2 sentence Slack update"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
+  const outColor=o=>({connected:T.green,interested:T.green,meeting_booked:T.green,no_answer:T.yellow,left_voicemail:T.yellow,not_interested:T.red}[o]||T.gray);
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Call Notes" value={callNotes} onChange={setCallNotes} placeholder="What happened on the call? Messy notes are fine." /><Btn onClick={gen} disabled={!callNotes.trim()} loading={loading} label="GENERATE AFTER-CALL PACK" icon="🗒️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><CardLabel color={T.orange}>Call Summary</CardLabel>{result.outcome&&<Badge label={result.outcome.replace("_"," ")} color={outColor(result.outcome)} />}</div><p style={{margin:0,color:"#fff",fontSize:13,lineHeight:1.7}}>{result.call_summary}</p></Card><div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>CRM Notes</CardLabel><CopyBtn text={result.crm_notes} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.crm_notes}</div></div>{result.follow_up_email&&<Card style={{padding:18}}><CardLabel color={T.orange}>Follow-up Email</CardLabel><div style={{background:T.black,borderRadius:8,padding:"10px 14px",margin:"10px 0"}}><div style={{fontSize:9,color:T.gray,fontWeight:700,marginBottom:3,fontFamily:T.mono}}>SUBJECT</div><div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{result.follow_up_email.subject}</div></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",background:T.bg,borderRadius:8,padding:14}}>{result.follow_up_email.body}</div><div style={{marginTop:10}}><CopyBtn text={result.follow_up_email.body} /></div></Card>}<Card style={{padding:16,border:`1px solid ${T.orange}33`,background:T.orangeSoft}}><CardLabel color={T.orange}>Next Action</CardLabel><p style={{margin:"8px 0 0",fontSize:13,color:T.black,lineHeight:1.6}}>{result.next_action}</p></Card></>}</div>);
 }
 
 // ─── INFLUENCER ───────────────────────────────────────────────────────────────
@@ -1383,6 +1709,19 @@ function ContentTracker() {
   );
 }
 
+// ─── DESIGN ───────────────────────────────────────────────────────────────────
+function DesignBrief() {
+  const [request,setRequest]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Creative director at BuildWithLeverage. Build design brief: ${request}. Return ONLY valid JSON: {"project_title":"t","objective":"o","deliverables":["d1"],"dimensions":"dim","brand_guidelines":["g1"],"mood":["v1"],"references":"inspiration","deadline_suggestion":"turnaround","full_brief":"complete formatted design brief"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Design Request" value={request} onChange={setRequest} placeholder="What needs to be designed?" /><Btn onClick={gen} disabled={!request.trim()} loading={loading} label="GENERATE DESIGN BRIEF" icon="🎨" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Project</CardLabel><div style={{fontSize:18,fontWeight:900,color:"#fff",fontFamily:T.font,margin:"6px 0 10px"}}>{result.project_title}</div><div style={{fontSize:13,color:"#ccc",lineHeight:1.6}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="Mood / Vibe" items={result.mood} color="#a855f7" /></div><Bullets label="Brand Guidelines" items={result.brand_guidelines} color={T.orange} /></>}</div>);
+}
+
+function FeedbackSummary() {
+  const [feedback,setFeedback]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Project manager at BuildWithLeverage. Summarize design feedback: ${feedback}. Return ONLY valid JSON: {"summary":"1-2 sentence overview","required_changes":["c1"],"nice_to_have":["n1"],"keep_as_is":["k1"],"tone":"positive|mixed|critical","designer_message":"complete actionable message to designer"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
+  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Feedback" value={feedback} onChange={setFeedback} placeholder="Paste raw feedback — messy is fine…" /><Btn onClick={gen} disabled={!feedback.trim()} loading={loading} label="SUMMARIZE FEEDBACK" icon="🖊" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Required Changes" items={result.required_changes} color={T.red} /><Bullets label="Nice to Have" items={result.nice_to_have} color={T.yellow} /></div><Bullets label="Keep As Is" items={result.keep_as_is} color={T.green} /></>}</div>);
+}
+
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
 function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePassword}) {
   const [token,setToken]=useState(slackToken||"");
@@ -1393,6 +1732,7 @@ function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePasswor
   const [pwMsg,setPwMsg]=useState(null);
 
   const save=async()=>{setSlackToken(token);setSlackIds(ids);await storage.set("slack-token",token);await storage.set("slack-ids",JSON.stringify(ids));setSaved(true);setTimeout(()=>setSaved(false),2000);};
+
   const changePw=async()=>{
     if(!newPw||newPw.length<6){setPwMsg({type:"error",text:"Password must be at least 6 characters"});return;}
     if(newPw!==confirmPw){setPwMsg({type:"error",text:"Passwords do not match"});return;}
@@ -1467,20 +1807,34 @@ const NAV = [
     {key:"team-performance",label:"Team Performance"},
     {key:"strategic-decision",label:"Strategic Decision"},
   ]},
+  {key:"outbound",label:"Outbound",children:[
+    {key:"sequence-builder",label:"Sequence Builder"},
+    {key:"lead-research",label:"Lead Research"},
+    {key:"cold-email",label:"Cold Email"},
+    {key:"call-script",label:"Call Script"},
+    {key:"after-call",label:"After Call"},
+  ]},
   {key:"influencer",label:"Influencer",children:[
     {key:"influencer-outreach",label:"Outreach"},
     {key:"campaign-brief",label:"Campaign Brief"},
     {key:"influencer-tracker",label:"Tracker"},
     {key:"content-tracker",label:"Content Tracker"},
   ]},
+  {key:"design",label:"Design",children:[
+    {key:"design-brief",label:"Design Brief"},
+    {key:"feedback-summary",label:"Feedback Summary"},
+  ]},
+  {key:"culture",label:"Culture"},
   {key:"settings",label:"Settings"},
 ];
 
 const PAGE_ICONS = {
-  dashboard:"⚡","ops-pulse":"📋",rfp:"📊",
-  "weekly-report":"📄","exec-comms":"✏️","daily-briefing":"☀️","team-performance":"👥","strategic-decision":"🧠",
-  "influencer-outreach":"📲","campaign-brief":"📋","influencer-tracker":"👥","content-tracker":"📅",
-  settings:"⚙️"
+  dashboard:"⚡","ops-pulse":"📋",rfp:"📊","weekly-report":"📄","exec-comms":"✏️",
+  "daily-briefing":"☀️","team-performance":"👥","strategic-decision":"🧠",
+  "sequence-builder":"✉️","lead-research":"🔍","cold-email":"📧","call-script":"📞",
+  "after-call":"🗒️","influencer-outreach":"📲","campaign-brief":"📋",
+  "influencer-tracker":"👥","content-tracker":"📅","design-brief":"🎨",
+  "feedback-summary":"🖊",settings:"⚙️",culture:"🏛️",
 };
 
 function TopNav({page,navigate,isMobile,onLock}) {
@@ -1571,6 +1925,7 @@ function PageWrapper({page,children}) {
   const allPages=NAV.flatMap(n=>n.children?n.children:[n]);
   const current=allPages.find(n=>n.key===page);
   const parent=NAV.find(n=>n.children?.some(c=>c.key===page));
+  if(page==="dashboard"||page==="culture") return <main style={{maxWidth:960,margin:"0 auto",padding:"32px 24px 60px"}}>{children}</main>;
   return (
     <main style={{maxWidth:920,margin:"0 auto",padding:"32px 24px 60px"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:20}}>
@@ -1583,8 +1938,8 @@ function PageWrapper({page,children}) {
 }
 
 export default function App() {
-  const [unlocked,setUnlocked]=useState(false);
-  const [currentPassword,setCurrentPassword]=useState(CORRECT_PASSWORD);
+  const [unlocked,setUnlocked] = useState(false);
+  const [currentPassword,setCurrentPassword] = useState(CORRECT_PASSWORD);
   const [page,setPage]=useState("dashboard");
   const [slackToken,setSlackToken]=useState("");
   const [slackIds,setSlackIds]=useState(DEFAULT_SLACK_IDS);
@@ -1598,13 +1953,16 @@ export default function App() {
     });
   },[]);
 
-  const PasswordGateWithDynamic=()=>{
-    const [pw,setPw]=useState("");
-    const [error,setError]=useState(false);
-    const [shaking,setShaking]=useState(false);
-    const attempt=()=>{
-      if(pw===currentPassword){setUnlocked(true);}
-      else{setError(true);setShaking(true);setPw("");setTimeout(()=>setShaking(false),500);setTimeout(()=>setError(false),2000);}
+  const handleUnlock = () => setUnlocked(true);
+  const handleLock = () => setUnlocked(false);
+
+  const PasswordGateWithDynamic = () => {
+    const [pw, setPw] = useState("");
+    const [error, setError] = useState(false);
+    const [shaking, setShaking] = useState(false);
+    const attempt = () => {
+      if (pw === currentPassword) { handleUnlock(); }
+      else { setError(true);setShaking(true);setPw("");setTimeout(()=>setShaking(false),500);setTimeout(()=>setError(false),2000); }
     };
     return (
       <div style={{minHeight:"100vh",background:T.black,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
@@ -1645,10 +2003,18 @@ export default function App() {
       case "daily-briefing": return <DailyBriefing />;
       case "team-performance": return <TeamPerformance />;
       case "strategic-decision": return <StrategicDecision />;
+      case "sequence-builder": return <SequenceBuilder />;
+      case "lead-research": return <LeadResearch />;
+      case "cold-email": return <ColdEmailWriter />;
+      case "call-script": return <CallScript />;
+      case "after-call": return <AfterCallAutomation />;
       case "influencer-outreach": return <InfluencerOutreach />;
       case "campaign-brief": return <CampaignBrief />;
       case "influencer-tracker": return <InfluencerTracker />;
       case "content-tracker": return <ContentTracker />;
+      case "design-brief": return <DesignBrief />;
+      case "feedback-summary": return <FeedbackSummary />;
+      case "culture": return <CultureDashboard />;
       case "settings": return <Settings slackToken={slackToken} setSlackToken={setSlackToken} slackIds={slackIds} setSlackIds={setSlackIds} onChangePassword={setCurrentPassword} />;
       default: return <Dashboard />;
     }
@@ -1658,7 +2024,7 @@ export default function App() {
     <>
       <GlobalStyle />
       <div style={{minHeight:"100vh",background:T.bg}}>
-        <TopNav page={page} navigate={navigate} isMobile={isMobile} onLock={()=>setUnlocked(false)} />
+        <TopNav page={page} navigate={navigate} isMobile={isMobile} onLock={handleLock} />
         <PageWrapper page={page}>{renderPage()}</PageWrapper>
       </div>
     </>
