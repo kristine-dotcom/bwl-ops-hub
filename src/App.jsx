@@ -96,9 +96,11 @@ const showNotification = (title, body, icon = "🔔") => {
 
 
 // ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
-const sendToSlack = async (message) => {
+// ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
+const sendToSlack = async (message, userId = null) => {
   console.log("🔵 Sending to Slack via API route");
   console.log("📝 Message:", message);
+  console.log("👤 Target:", userId ? `DM to ${userId}` : "Channel");
   
   try {
     const response = await fetch("/api/slack", {
@@ -106,7 +108,7 @@ const sendToSlack = async (message) => {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ message })
+      body: JSON.stringify({ message, userId })
     });
     
     const data = await response.json();
@@ -1930,8 +1932,16 @@ function AttendanceTracker() {
     
     // Slack notifications
     const sodCount = Object.keys(updated).length;
-    sendToSlack(`🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`);
-    sendToSlack(`✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
+    const userSlackId = DEFAULT_SLACK_IDS[sod.member];
+    
+    // Personal DM to user
+    if (userSlackId) {
+      sendToSlack(`🟢 *You logged in at ${time}*`, userSlackId);
+      sendToSlack(`✅ *Your SOD was submitted!*\n\n*Tasks for today:*\n${sod.tasks.map((t,i)=>`${i+1}. ${t.task} [${t.priority}]`).join("\n")}\n\n*Metrics:* ${sod.metrics || "None specified"}`, userSlackId);
+    }
+    
+    // Admin summary to channel
+    sendToSlack(`📋 *SOD Update:* ${sod.member} submitted SOD (${sodCount}/${TEAM_OPS.length} complete)`);
   };
 
 
@@ -1950,8 +1960,16 @@ function AttendanceTracker() {
     // Slack notifications
     const eodCount = Object.keys(updated).length;
     const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
-    sendToSlack(`🔴 *LOGGED OUT*\n*${eod.member}* has logged out at ${time}`);
-    sendToSlack(`📊 *EOD Submitted*\n*${eod.member}* - ${eodCount} EODs today\n\n*Metrics:*\n${metricsText}`);
+    const userSlackId = DEFAULT_SLACK_IDS[eod.member];
+    
+    // Personal DM to user
+    if (userSlackId) {
+      sendToSlack(`🔴 *You logged out at ${time}*`, userSlackId);
+      sendToSlack(`📊 *Your EOD was submitted!*\n\n*Today's Metrics:*\n${metricsText}\n\nGreat work today! 🎉`, userSlackId);
+    }
+    
+    // Admin summary to channel
+    sendToSlack(`📊 *EOD Update:* ${eod.member} submitted EOD (${eodCount} today)`);
   };
 
 
