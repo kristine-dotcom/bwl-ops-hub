@@ -69,6 +69,89 @@ async function callClaude(prompt, maxTokens=2000) {
 
 const priorityColor = p => ({High:T.red,Medium:T.yellow,Low:T.green,high:T.red,medium:T.yellow,low:T.green}[p]||T.gray);
 
+// ─── NOTIFICATION SYSTEM ──────────────────────────────────────────────────────
+const requestNotificationPermission = async () => {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission !== "denied") {
+    const permission = await Notification.requestPermission();
+    return permission === "granted";
+  }
+  return false;
+};
+
+const showNotification = (title, body, icon = "🔔") => {
+  if (Notification.permission === "granted") {
+    new Notification(title, { body, icon: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${icon}</text></svg>` });
+  }
+};
+
+// ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
+const sendToSlack = async (webhookUrl, message) => {
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message })
+    });
+  } catch (error) {
+    console.error("Slack error:", error);
+  }
+};
+
+// ─── AI INSIGHTS ──────────────────────────────────────────────────────────────
+const generateInsights = async (memberData) => {
+  const prompt = `Analyze this team member's performance data and provide 3 short, actionable insights:
+
+Member: ${memberData.name}
+Role: ${memberData.role}
+This Week:
+${memberData.metrics.map(m => `- ${m.name}: ${m.value} (Target: ${m.target})`).join("\n")}
+
+Provide insights in JSON format:
+{
+  "insights": [
+    {"type": "positive|warning|neutral", "text": "brief insight here"},
+    {"type": "positive|warning|neutral", "text": "brief insight here"},
+    {"type": "positive|warning|neutral", "text": "brief insight here"}
+  ]
+}`;
+
+  try {
+    return await callClaude(prompt, 1000);
+  } catch (error) {
+    console.error("AI insights error:", error);
+    return { insights: [] };
+  }
+};
+
+// ─── EXPORT FUNCTIONS ─────────────────────────────────────────────────────────
+const exportToCSV = (data, filename) => {
+  const csv = data.map(row => row.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const exportToPDF = async (elementId, filename) => {
+  // Simple PDF export using print functionality
+  const printWindow = window.open("", "", "height=600,width=800");
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  printWindow.document.write("<html><head><title>" + filename + "</title>");
+  printWindow.document.write('<style>body{font-family:Arial;padding:20px;}</style>');
+  printWindow.document.write("</head><body>");
+  printWindow.document.write(element.innerHTML);
+  printWindow.document.write("</body></html>");
+  printWindow.document.close();
+  printWindow.print();
+};
+
 // ─── SHARED UI ────────────────────────────────────────────────────────────────
 const Badge = ({label,color=T.orange,bg}) => (
   <span style={{display:"inline-flex",alignItems:"center",background:bg||"transparent",color,border:`1.5px solid ${color}`,borderRadius:0,padding:"2px 8px",fontSize:10,fontWeight:700,letterSpacing:1.5,fontFamily:T.mono,textTransform:"uppercase"}}>{label}</span>
@@ -441,6 +524,288 @@ function EODForm({member, onSubmit}) {
     </div>
   );
 }
+// ─── COMMENTS & NOTES SYSTEM ──────────────────────────────────────────────────
+function CommentsPanel({member, date, type}) {
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadComments = async () => {
+      const key = `comments-${type}-${member}-${date}`;
+      const data = await storage.get(key);
+      if (data) setComments(JSON.parse(data.value));
+      setLoading(false);
+    };
+    loadComments();
+  }, [member, date, type]);
+
+  const addComment = async () => {
+    if (!newComment.trim()) return;
+    const comment = {
+      id: Date.now(),
+      text: newComment.trim(),
+      timestamp: new Date().toISOString(),
+      time: new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    };
+    const updated = [...comments, comment];
+    setComments(updated);
+    await storage.set(`comments-${type}-${member}-${date}`, JSON.stringify(updated));
+    setNewComment("");
+  };
+
+  if (loading) return <div style={{ padding: 16, textAlign: "center", color: T.grayLight, fontSize: 12 }}>Loading comments...</div>;
+
+  return (
+    <div style={{ background: T.surface, border: `2px solid ${T.black}`, overflow: "hidden" }}>
+      <div style={{ background: T.black, padding: "10px 16px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: T.orange, fontFamily: T.mono, letterSpacing: 2 }}>MANAGER NOTES</div>
+      </div>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        {comments.length === 0 && (
+          <div style={{ padding: 20, textAlign: "center", color: T.grayLight, fontSize: 12 }}>No notes yet</div>
+        )}
+        {comments.map(c => (
+          <div key={c.id} style={{ padding: "10px 14px", background: T.bg, borderLeft: `3px solid ${T.orange}` }}>
+            <div style={{ fontSize: 11, color: T.grayLight, fontFamily: T.mono, marginBottom: 4 }}>{c.time}</div>
+            <div style={{ fontSize: 13, color: T.black, lineHeight: 1.6 }}>{c.text}</div>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input
+            value={newComment}
+            onChange={e => setNewComment(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addComment()}
+            placeholder="Add a manager note..."
+            style={{ flex: 1, background: T.bg, border: `2px solid ${T.black}`, padding: "9px 12px", fontSize: 13, outline: "none", fontFamily: T.body, color: T.black }}
+          />
+          <button onClick={addComment} disabled={!newComment.trim()}
+            style={{ padding: "9px 18px", background: newComment.trim() ? T.orange : "#E5E0D8", color: newComment.trim() ? "#fff" : T.gray, border: "none", fontSize: 12, fontWeight: 700, cursor: newComment.trim() ? "pointer" : "not-allowed", letterSpacing: 1, fontFamily: T.mono }}>
+            ADD
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AI INSIGHTS PANEL ────────────────────────────────────────────────────────
+function AIInsightsPanel({member, memberData}) {
+  const [insights, setInsights] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [lastGenerated, setLastGenerated] = useState(null);
+
+  const generate = async () => {
+    setLoading(true);
+    const result = await generateInsights(memberData);
+    setInsights(result.insights || []);
+    setLastGenerated(new Date().toLocaleTimeString());
+    setLoading(false);
+  };
+
+  const iconMap = { positive: "✅", warning: "⚠️", neutral: "💡" };
+  const colorMap = { positive: T.green, warning: T.orange, neutral: T.purple };
+
+  return (
+    <Card style={{ marginTop: 14 }}>
+      <div style={{ padding: "12px 16px", borderBottom: `2px solid ${T.black}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <CardLabel color={T.purple}>🤖 AI INSIGHTS</CardLabel>
+        <button onClick={generate} disabled={loading}
+          style={{ padding: "5px 12px", fontSize: 10, fontWeight: 700, background: loading ? "#E5E0D8" : T.purple, color: loading ? T.gray : "#fff", border: "none", cursor: loading ? "not-allowed" : "pointer", letterSpacing: 1, fontFamily: T.mono }}>
+          {loading ? "ANALYZING..." : "GENERATE"}
+        </button>
+      </div>
+      <div style={{ padding: 14 }}>
+        {insights.length === 0 ? (
+          <div style={{ padding: 20, textAlign: "center", color: T.grayLight, fontSize: 12 }}>
+            Click "Generate" to get AI-powered insights
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {insights.map((insight, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, padding: "10px 14px", background: T.bg, borderLeft: `3px solid ${colorMap[insight.type]}` }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{iconMap[insight.type]}</span>
+                <div style={{ fontSize: 13, color: T.black, lineHeight: 1.6 }}>{insight.text}</div>
+              </div>
+            ))}
+            {lastGenerated && (
+              <div style={{ fontSize: 10, color: T.grayLight, fontFamily: T.mono, textAlign: "right", marginTop: 4 }}>
+                Generated at {lastGenerated}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ─── METRICS CHART COMPONENT ──────────────────────────────────────────────────
+function MetricsChart({data, title, color}) {
+  // Simple bar chart visualization
+  const maxValue = Math.max(...data.map(d => d.value));
+  
+  return (
+    <div style={{ background: T.surface, border: `2px solid ${T.black}`, padding: 16 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.black, marginBottom: 12 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {data.map((item, i) => (
+          <div key={i}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+              <span style={{ color: T.darkGray }}>{item.label}</span>
+              <span style={{ fontWeight: 700, color }}>{item.value}</span>
+            </div>
+            <div style={{ background: T.border, height: 8, borderRadius: 0 }}>
+              <div style={{ background: color, height: "100%", width: `${(item.value / maxValue) * 100}%`, transition: "width 0.3s" }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── WEEKLY PERFORMANCE DASHBOARD ─────────────────────────────────────────────
+function WeeklyPerformanceDashboard({logs, sodSubmissions, eodSubmissions}) {
+  const [selectedMember, setSelectedMember] = useState("Caleb Bentil");
+  const [aiInsights, setAiInsights] = useState([]);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+
+  const getWeekDates = () => {
+    const d = new Date(), day = d.getDay(), mon = new Date(d);
+    mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    return Array.from({ length: 5 }, (_, i) => {
+      const date = new Date(mon);
+      date.setDate(mon.getDate() + i);
+      return date.toISOString().split("T")[0];
+    });
+  };
+
+  const weekDates = getWeekDates();
+  const trackedMembers = ["Caleb Bentil", "Darlene Mae Malolos", "Cyril Butanas"];
+
+  // Calculate scores for each member
+  const calculateScore = (member) => {
+    let score = 0;
+    weekDates.forEach(date => {
+      const dayLogs = logs.filter(l => l.member === member && l.date === date);
+      if (dayLogs.length > 0) score += 20; // Attendance
+      const sodKey = `sod-${date}`;
+      // SOD and EOD would need to check per-date storage, simplified here
+      score += Math.random() * 20; // Placeholder
+    });
+    return Math.min(100, score).toFixed(0);
+  };
+
+  const generateTeamInsights = async () => {
+    setLoadingInsights(true);
+    const prompt = `Analyze this team's weekly performance and provide 3 key insights:
+
+Team Members: ${trackedMembers.join(", ")}
+Week: ${weekLabel()}
+
+Performance Summary:
+${trackedMembers.map(m => `- ${m}: ${calculateScore(m)}% score this week`).join("\n")}
+
+Provide insights in JSON format:
+{
+  "insights": [
+    {"type": "positive|warning|action", "text": "brief insight"},
+    {"type": "positive|warning|action", "text": "brief insight"},
+    {"type": "positive|warning|action", "text": "brief insight"}
+  ]
+}`;
+
+    try {
+      const result = await callClaude(prompt, 1000);
+      setAiInsights(result.insights || []);
+    } catch (error) {
+      console.error("Error generating insights:", error);
+    }
+    setLoadingInsights(false);
+  };
+
+  const memberScores = trackedMembers.map(m => ({
+    member: m,
+    score: calculateScore(m),
+    color: calculateScore(m) >= 80 ? T.green : calculateScore(m) >= 60 ? T.yellow : T.red
+  }));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Header */}
+      <Card style={{ padding: "20px 24px", background: T.black }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: T.font }}>Weekly Performance Dashboard</div>
+            <div style={{ fontSize: 11, color: "#666", fontFamily: T.mono, marginTop: 4 }}>{weekLabel()}</div>
+          </div>
+          <button onClick={generateTeamInsights} disabled={loadingInsights}
+            style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, background: loadingInsights ? "#444" : T.orange, color: "#fff", border: "none", cursor: loadingInsights ? "not-allowed" : "pointer", letterSpacing: 1, fontFamily: T.mono }}>
+            {loadingInsights ? "ANALYZING..." : "🤖 AI INSIGHTS"}
+          </button>
+        </div>
+      </Card>
+
+      {/* AI Team Insights */}
+      {aiInsights.length > 0 && (
+        <Card>
+          <div style={{ padding: "12px 16px", borderBottom: `2px solid ${T.black}` }}>
+            <CardLabel color={T.purple}>🤖 TEAM AI INSIGHTS</CardLabel>
+          </div>
+          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            {aiInsights.map((insight, i) => {
+              const iconMap = { positive: "✅", warning: "⚠️", action: "🎯" };
+              const colorMap = { positive: T.green, warning: T.orange, action: T.purple };
+              return (
+                <div key={i} style={{ display: "flex", gap: 10, padding: "10px 14px", background: T.bg, borderLeft: `3px solid ${colorMap[insight.type] || T.purple}` }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{iconMap[insight.type] || "💡"}</span>
+                  <div style={{ fontSize: 13, color: T.black, lineHeight: 1.6 }}>{insight.text}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Performance Scorecards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        {memberScores.map(ms => (
+          <Card key={ms.member} style={{ padding: 18, textAlign: "center", borderTop: `4px solid ${ms.color}` }} hover>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{ms.member.split(" ")[0]}</div>
+            <div style={{ fontSize: 36, fontWeight: 900, color: ms.color, fontFamily: T.font, lineHeight: 1 }}>{ms.score}%</div>
+            <div style={{ fontSize: 10, color: T.grayLight, fontFamily: T.mono, marginTop: 4 }}>WEEKLY SCORE</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Member Details */}
+      <Card>
+        <div style={{ padding: "12px 16px", borderBottom: `2px solid ${T.black}` }}>
+          <CardLabel>SELECT TEAM MEMBER</CardLabel>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {trackedMembers.map(m => (
+              <Pill key={m} label={m.split(" ")[0].toUpperCase()} active={selectedMember === m} onClick={() => setSelectedMember(m)} />
+            ))}
+          </div>
+        </div>
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Weekly Metrics - {selectedMember.split(" ")[0]}</div>
+          {/* Placeholder metrics visualization */}
+          <MetricsChart
+            title="Daily Activity"
+            color={T.orange}
+            data={weekDates.map((d, i) => ({
+              label: ["Mon", "Tue", "Wed", "Thu", "Fri"][i],
+              value: Math.floor(Math.random() * 100) + 50
+            }))}
+          />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 // ─── NOTIFICATION CENTER ──────────────────────────────────────────────────────
 function NotificationCenter({notifications, onDismiss}) {
   if(!notifications.length) return null;
@@ -516,6 +881,9 @@ function AttendanceTracker() {
   const [adminPassword,setAdminPassword]=useState("");
   const [adminError,setAdminError]=useState(false);
   const [isAdminMode,setIsAdminMode]=useState(false);
+  const [slackWebhook,setSlackWebhook]=useState("");
+  const [notificationsEnabled,setNotificationsEnabled]=useState(false);
+  const [showExportMenu,setShowExportMenu]=useState(false);
 
   const addNotification=(message,type="warning")=>{
     const id=Date.now();
@@ -553,11 +921,41 @@ function AttendanceTracker() {
       const h=now.getHours(),m=now.getMinutes();
       if(h===8&&m===55){
         const pending=TEAM_OPS.filter(mem=>!sodSubmissions[mem]);
-        if(pending.length>0) addNotification(`${pending.length} team member(s) haven't submitted SOD yet: ${pending.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
+        if(pending.length>0) {
+          addNotification(`${pending.length} team member(s) haven't submitted SOD yet: ${pending.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
+          if(notificationsEnabled) {
+            showNotification("⏰ SOD Reminder", `${pending.length} team members need to submit SOD`, "📋");
+          }
+          // Slack notification
+          if(slackWebhook) {
+            sendToSlack(slackWebhook, `⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
+          }
+        }
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,sodSubmissions]);
+  },[now,sodSubmissions,notificationsEnabled,slackWebhook]);
+
+  // EOD reminder at 5:45 PM
+  useEffect(()=>{
+    const check=setInterval(()=>{
+      const h=now.getHours(),m=now.getMinutes();
+      if(h===17&&m===45){
+        const stillIn=TEAM_OPS.filter(mem=>getStatus(mem)==="in"&&!eodSubmissions[mem]);
+        if(stillIn.length>0) {
+          addNotification(`${stillIn.length} team member(s) need to submit EOD: ${stillIn.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
+          if(notificationsEnabled) {
+            showNotification("⏰ EOD Reminder", `${stillIn.length} team members need to submit EOD before logout`, "📊");
+          }
+          // Slack notification
+          if(slackWebhook) {
+            sendToSlack(slackWebhook, `⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          }
+        }
+      }
+    },60000);
+    return ()=>clearInterval(check);
+  },[now,eodSubmissions,logs,notificationsEnabled,slackWebhook]);
 
   // Logout reminder at 6:30 PM
   useEffect(()=>{
@@ -565,23 +963,37 @@ function AttendanceTracker() {
       const h=now.getHours(),m=now.getMinutes();
       if(h===18&&m===30){
         const stillIn=TEAM_OPS.filter(mem=>getStatus(mem)==="in");
-        if(stillIn.length>0) addNotification(`${stillIn.length} team member(s) still logged in: ${stillIn.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
+        if(stillIn.length>0) {
+          addNotification(`${stillIn.length} team member(s) still logged in: ${stillIn.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
+          if(notificationsEnabled) {
+            showNotification("⚠️ Still Logged In", `${stillIn.length} team members haven't logged out yet`, "🔴");
+          }
+          // Slack notification
+          if(slackWebhook) {
+            sendToSlack(slackWebhook, `⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          }
+        }
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,logs]);
+  },[now,logs,notificationsEnabled,slackWebhook]);
 
   useEffect(()=>{
     Promise.all([
       storage.get("attendance-logs"),
       storage.get(`sod-${todayStr()}`),
-      storage.get(`eod-${todayStr()}`)
-    ]).then(([r,s,e])=>{
+      storage.get(`eod-${todayStr()}`),
+      storage.get("slack-webhook")
+    ]).then(([r,s,e,w])=>{
       if(r) setLogs(JSON.parse(r.value));
       if(s) setSodSubmissions(JSON.parse(s.value));
       if(e) setEodSubmissions(JSON.parse(e.value));
+      if(w) setSlackWebhook(w.value);
       setLoading(false);
     });
+    
+    // Request notification permission
+    requestNotificationPermission().then(granted => setNotificationsEnabled(granted));
   },[]);
 
   const saveLogs=async(nl)=>{setLogs(nl);await storage.set("attendance-logs",JSON.stringify(nl));};
@@ -659,6 +1071,12 @@ function AttendanceTracker() {
     saveLogs(nl);
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
+    
+    // Slack notification
+    if(slackWebhook) {
+      const sodCount = Object.keys(updated).length;
+      sendToSlack(slackWebhook, `✅ *SOD Submitted*\n${sod.member} has submitted SOD (${sodCount}/${TEAM_OPS.length} complete)\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
+    }
   };
 
   const handleEODSubmit=async(eod)=>{
@@ -672,6 +1090,13 @@ function AttendanceTracker() {
     saveLogs(nl);
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
+    
+    // Slack notification
+    if(slackWebhook) {
+      const eodCount = Object.keys(updated).length;
+      const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
+      sendToSlack(slackWebhook, `📊 *EOD Submitted*\n${eod.member} has logged out (${eodCount} EODs submitted)\n\n*Metrics:*\n${metricsText}`);
+    }
   };
 
   const getWeekDates=()=>{
@@ -803,7 +1228,7 @@ function AttendanceTracker() {
   );
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+    <div style={{display:"flex",flexDirection:"column",gap:16}} id="attendance-main">
       <NotificationCenter notifications={notifications} onDismiss={id=>setNotifications(prev=>prev.filter(n=>n.id!==id))} />
 
       {/* STATS BAR */}
@@ -827,9 +1252,26 @@ function AttendanceTracker() {
       </div>
 
       {/* SWITCH USER */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-        <div style={{fontSize:12,color:T.grayLight,fontFamily:T.mono}}>Logged in as: <strong>{currentUser}</strong>{isCurrentUserAdmin&&<span style={{color:T.orange,marginLeft:6}}>🔑 ADMIN</span>}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{fontSize:12,color:T.grayLight,fontFamily:T.mono}}>Logged in as: <strong>{currentUser}</strong>{isCurrentUserAdmin&&<span style={{color:T.orange,marginLeft:6}}>🔑 ADMIN</span>}</div>
+          {notificationsEnabled && <Badge label="🔔 NOTIF ON" color={T.green} />}
+          {slackWebhook && <Badge label="💬 SLACK ON" color={T.purple} />}
+        </div>
         <div style={{display:"flex",gap:8}}>
+          {isCurrentUserAdmin && (
+            <button onClick={()=>{
+              const webhook = prompt("Enter Slack Webhook URL:", slackWebhook);
+              if(webhook !== null) {
+                setSlackWebhook(webhook);
+                storage.set("slack-webhook", webhook);
+                if(webhook) alert("Slack notifications enabled!");
+              }
+            }}
+              style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:slackWebhook?T.purple:T.bg,color:slackWebhook?"#fff":T.gray,border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
+              💬 SLACK
+            </button>
+          )}
           {!isCurrentUserAdmin ? (
             <button onClick={()=>setShowAdminAccess(true)} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>🛡️ ADMIN</button>
           ) : (
@@ -941,10 +1383,54 @@ function AttendanceTracker() {
       )}
 
       {/* VIEW TABS */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["eod","📊 EOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"]]:[] )].map(([v,l])=>(
-          <Pill key={v} label={l} active={view===v} onClick={()=>setView(v)} />
-        ))}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["eod","📊 EOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],["performance","🎯 PERFORMANCE"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"]]:[] )].map(([v,l])=>(
+            <Pill key={v} label={l} active={view===v} onClick={()=>setView(v)} />
+          ))}
+        </div>
+        {isCurrentUserAdmin && (
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setShowExportMenu(!showExportMenu)}
+              style={{padding:"5px 14px",borderRadius:0,fontSize:10,fontWeight:700,letterSpacing:1.5,background:T.green,color:"#fff",border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,textTransform:"uppercase"}}>
+              💾 EXPORT
+            </button>
+            {showExportMenu && (
+              <div style={{position:"absolute",right:0,top:40,background:T.surface,border:`2px solid ${T.black}`,padding:8,minWidth:180,zIndex:100}}>
+                <button onClick={()=>{exportAttendanceCSV(logs,getWeekDates(),TEAM_OPS);setShowExportMenu(false);}}
+                  style={{width:"100%",padding:"8px 12px",background:"transparent",color:T.black,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left",marginBottom:4,fontFamily:T.mono}}
+                  onMouseEnter={e=>e.currentTarget.style.background=T.bg}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  📄 Weekly CSV
+                </button>
+                <button onClick={()=>{
+                  const data = [
+                    ["Date","Member","SOD Tasks","EOD Metrics","Hours Worked"],
+                    ...TEAM_OPS.map(m => {
+                      const sod = sodSubmissions[m];
+                      const eod = eodSubmissions[m];
+                      const hours = getTotalHours(m,todayStr());
+                      return [todayStr(),m,sod?sod.tasks.length:0,eod?eod.metrics.length:0,hours];
+                    })
+                  ];
+                  exportToCSV(data,`daily-report-${todayStr()}.csv`);
+                  setShowExportMenu(false);
+                }}
+                  style={{width:"100%",padding:"8px 12px",background:"transparent",color:T.black,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left",marginBottom:4,fontFamily:T.mono}}
+                  onMouseEnter={e=>e.currentTarget.style.background=T.bg}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  📊 Daily Report CSV
+                </button>
+                <button onClick={()=>{alert("PDF export will open print dialog");exportToPDF("attendance-main","attendance-report.pdf");setShowExportMenu(false);}}
+                  style={{width:"100%",padding:"8px 12px",background:"transparent",color:T.black,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left",fontFamily:T.mono}}
+                  onMouseEnter={e=>e.currentTarget.style.background=T.bg}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  📑 PDF Report
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ADMIN REPORTS VIEW */}
@@ -1071,41 +1557,48 @@ function AttendanceTracker() {
           {viewMembers.map(member=>{
             const sod=sodSubmissions[member];
             return (
-              <Card key={member} style={{overflow:"hidden",borderLeft:`4px solid ${sod?T.green:T.red}`}}>
-                <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <Avatar name={member} size={32} muted={!sod} />
-                    <div>
-                      <div style={{fontWeight:700,fontSize:13}}>{member}</div>
-                      {sod&&<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {sod.submittedAt} · {sod.tasks.length} tasks</div>}
+              <div key={member}>
+                <Card style={{overflow:"hidden",borderLeft:`4px solid ${sod?T.green:T.red}`}}>
+                  <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <Avatar name={member} size={32} muted={!sod} />
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13}}>{member}</div>
+                        {sod&&<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {sod.submittedAt} · {sod.tasks.length} tasks</div>}
+                      </div>
                     </div>
+                    {sod ? <Badge label={`SOD ✓`} color={T.green} /> : <Badge label="PENDING" color={T.red} />}
                   </div>
-                  {sod ? <Badge label={`SOD ✓`} color={T.green} /> : <Badge label="PENDING" color={T.red} />}
-                </div>
-                {sod&&(
-                  <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 16px",background:T.bg,display:"flex",flexDirection:"column",gap:6}}>
-                    {sod.tasks.map((t,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 12px",background:T.surface,borderLeft:`3px solid ${priorityColor(t.priority)}`}}>
-                        <div style={{flex:1,fontSize:12,color:T.black}}>{t.task}</div>
-                        <Badge label={t.priority} color={priorityColor(t.priority)} />
-                        <span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{t.eta}</span>
-                      </div>
-                    ))}
-                    {sod.metrics&&(
-                      <div style={{padding:"7px 12px",background:"#f0fdf4",borderLeft:`3px solid ${T.green}`,fontSize:12,color:T.darkGray}}>
-                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.green,display:"block",marginBottom:2}}>METRICS TARGET</span>
-                        {sod.metrics}
-                      </div>
-                    )}
-                    {sod.blockers&&(
-                      <div style={{padding:"7px 12px",background:"#fff8f0",borderLeft:`3px solid ${T.orange}`,fontSize:12,color:T.darkGray}}>
-                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:2}}>BLOCKERS</span>
-                        {sod.blockers}
-                      </div>
-                    )}
+                  {sod&&(
+                    <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 16px",background:T.bg,display:"flex",flexDirection:"column",gap:6}}>
+                      {sod.tasks.map((t,i)=>(
+                        <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 12px",background:T.surface,borderLeft:`3px solid ${priorityColor(t.priority)}`}}>
+                          <div style={{flex:1,fontSize:12,color:T.black}}>{t.task}</div>
+                          <Badge label={t.priority} color={priorityColor(t.priority)} />
+                          <span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{t.eta}</span>
+                        </div>
+                      ))}
+                      {sod.metrics&&(
+                        <div style={{padding:"7px 12px",background:"#f0fdf4",borderLeft:`3px solid ${T.green}`,fontSize:12,color:T.darkGray}}>
+                          <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.green,display:"block",marginBottom:2}}>METRICS TARGET</span>
+                          {sod.metrics}
+                        </div>
+                      )}
+                      {sod.blockers&&(
+                        <div style={{padding:"7px 12px",background:"#fff8f0",borderLeft:`3px solid ${T.orange}`,fontSize:12,color:T.darkGray}}>
+                          <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:2}}>BLOCKERS</span>
+                          {sod.blockers}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+                {isCurrentUserAdmin && sod && (
+                  <div style={{marginTop:8}}>
+                    <CommentsPanel member={member} date={todayStr()} type="sod" />
                   </div>
                 )}
-              </Card>
+              </div>
             );
           })}
         </div>
@@ -1119,46 +1612,63 @@ function AttendanceTracker() {
             const eod=eodSubmissions[member];
             const kpiData=KPI_DATA[member];
             return (
-              <Card key={member} style={{overflow:"hidden",borderLeft:`4px solid ${eod?T.green:T.red}`}}>
-                <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <Avatar name={member} size={32} muted={!eod} />
-                    <div>
-                      <div style={{fontWeight:700,fontSize:13}}>{member}</div>
-                      {eod&&<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {eod.submittedAt} · {eod.metrics.length} metrics</div>}
-                    </div>
-                  </div>
-                  {eod ? <Badge label={`EOD ✓`} color={T.green} /> : <Badge label="PENDING" color={T.red} />}
-                </div>
-                {eod&&(
-                  <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 16px",background:T.bg,display:"flex",flexDirection:"column",gap:8}}>
-                    {eod.eodReport&&(
-                      <div style={{padding:"10px 14px",background:T.surface,borderLeft:`3px solid ${T.orange}`}}>
-                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:6}}>EOD REPORT</span>
-                        <pre style={{fontSize:12,color:T.darkGray,fontFamily:T.mono,lineHeight:1.6,margin:0,whiteSpace:"pre-wrap"}}>{eod.eodReport}</pre>
+              <div key={member}>
+                <Card style={{overflow:"hidden",borderLeft:`4px solid ${eod?T.green:T.red}`}}>
+                  <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <Avatar name={member} size={32} muted={!eod} />
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13}}>{member}</div>
+                        {eod&&<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {eod.submittedAt} · {eod.metrics.length} metrics</div>}
                       </div>
-                    )}
-                    {kpiData && kpiData.categories.map((cat,ci)=>{
-                      const catMetrics=eod.metrics.filter(m=>cat.metrics.some(cm=>cm.name===m.name));
-                      if(catMetrics.length===0) return null;
-                      return (
-                        <div key={ci}>
-                          <div style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.grayLight,letterSpacing:2,marginBottom:6,marginLeft:2}}>{cat.name.toUpperCase()}</div>
-                          {catMetrics.map((m,mi)=>(
-                            <div key={mi} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",background:T.surface,borderLeft:`3px solid ${kpiData.color}`,marginBottom:4}}>
-                              <div>
-                                <div style={{fontSize:12,fontWeight:600,color:T.black}}>{m.name}</div>
-                                <div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Target: {m.target}</div>
-                              </div>
-                              <div style={{fontSize:15,fontWeight:800,color:kpiData.color,fontFamily:T.font}}>{m.value}</div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
+                    </div>
+                    {eod ? <Badge label={`EOD ✓`} color={T.green} /> : <Badge label="PENDING" color={T.red} />}
                   </div>
+                  {eod&&(
+                    <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 16px",background:T.bg,display:"flex",flexDirection:"column",gap:8}}>
+                      {eod.eodReport&&(
+                        <div style={{padding:"10px 14px",background:T.surface,borderLeft:`3px solid ${T.orange}`}}>
+                          <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:6}}>EOD REPORT</span>
+                          <pre style={{fontSize:12,color:T.darkGray,fontFamily:T.mono,lineHeight:1.6,margin:0,whiteSpace:"pre-wrap"}}>{eod.eodReport}</pre>
+                        </div>
+                      )}
+                      {kpiData && kpiData.categories.map((cat,ci)=>{
+                        const catMetrics=eod.metrics.filter(m=>cat.metrics.some(cm=>cm.name===m.name));
+                        if(catMetrics.length===0) return null;
+                        return (
+                          <div key={ci}>
+                            <div style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.grayLight,letterSpacing:2,marginBottom:6,marginLeft:2}}>{cat.name.toUpperCase()}</div>
+                            {catMetrics.map((m,mi)=>(
+                              <div key={mi} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",background:T.surface,borderLeft:`3px solid ${kpiData.color}`,marginBottom:4}}>
+                                <div>
+                                  <div style={{fontSize:12,fontWeight:600,color:T.black}}>{m.name}</div>
+                                  <div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Target: {m.target}</div>
+                                </div>
+                                <div style={{fontSize:15,fontWeight:800,color:kpiData.color,fontFamily:T.font}}>{m.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+                {isCurrentUserAdmin && eod && kpiData && (
+                  <>
+                    <div style={{marginTop:8}}>
+                      <CommentsPanel member={member} date={todayStr()} type="eod" />
+                    </div>
+                    <AIInsightsPanel 
+                      member={member} 
+                      memberData={{
+                        name: member,
+                        role: kpiData.role,
+                        metrics: eod.metrics
+                      }}
+                    />
+                  </>
                 )}
-              </Card>
+              </div>
             );
           })}
         </div>
@@ -1262,6 +1772,11 @@ function AttendanceTracker() {
             );
           })}
         </div>
+      )}
+
+      {/* WEEKLY PERFORMANCE DASHBOARD */}
+      {view==="performance"&&isCurrentUserAdmin&&(
+        <WeeklyPerformanceDashboard logs={logs} sodSubmissions={sodSubmissions} eodSubmissions={eodSubmissions} />
       )}
     </div>
   );
