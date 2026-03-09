@@ -202,9 +202,10 @@ const BrandedProposal = ({proposal,rfp}) => {
 
 // ─── TEAM / KPI DATA ──────────────────────────────────────────────────────────
 const TEAM_OPS=["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Caleb Bentil","David Perlov","Cyril Butanas","Darlene Mae Malolos"];
+const ADMIN_USERS = ["Kristine Mirabueno", "David Perlov"];
+const isAdmin = (name) => ADMIN_USERS.includes(name);
 const DEFAULT_SLACK_IDS={"David Perlov":"U08BQH5JJDD","Cyril Butanas":"U09HHPVSSUQ","Caleb Bentil":"U0AE1T4N7A8","Darlene Mae Malolos":"U0A8GV25V0A","Suki Santos":"U093GFVM7D1","Kristine Miel Zulaybar":"U093GFXPK3M","Kristine Mirabueno":"U09QJGY27JP"};
 const INPUT_TYPES=[{key:"transcript",label:"Meeting Transcript"},{key:"sod",label:"SOD Report"},{key:"email",label:"Emails"},{key:"slack",label:"Slack"}];
-
 const KPI_DATA = {
   "Caleb Bentil": {
     color:"#6366f1",emoji:"📞",role:"Outbound Specialist",
@@ -346,22 +347,129 @@ function SODForm({member, onSubmit}) {
     </div>
   );
 }
+// ─── NOTIFICATION CENTER ──────────────────────────────────────────────────────
+function NotificationCenter({notifications, onDismiss}) {
+  if(!notifications.length) return null;
+  return (
+    <div style={{position:"fixed",top:70,right:20,zIndex:1000,display:"flex",flexDirection:"column",gap:10,maxWidth:340}}>
+      {notifications.map(n=>{
+        const bg=n.type==="warning"?"#fff8f0":n.type==="error"?"#fef2f2":"#f0fdf4";
+        const border=n.type==="warning"?T.orange:n.type==="error"?T.red:T.green;
+        const icon=n.type==="warning"?"⚠":n.type==="error"?"✗":"✓";
+        return (
+          <div key={n.id} style={{background:bg,border:`2px solid ${border}`,padding:"12px 16px",display:"flex",gap:10,alignItems:"flex-start"}}>
+            <span style={{fontSize:16}}>{icon}</span>
+            <div style={{flex:1,fontSize:12,color:T.darkGray,lineHeight:1.5}}>{n.message}</div>
+            <button onClick={()=>onDismiss(n.id)} style={{background:"none",border:"none",color:T.grayLight,fontSize:14,cursor:"pointer",padding:0}}>✕</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
+// ─── EXPORT CSV ───────────────────────────────────────────────────────────────
+function exportAttendanceCSV(logs, weekDates, TEAM_OPS) {
+  const rows=[["Member","Mon","Tue","Wed","Thu","Fri","Total Hours","Late Days","Absent Days"]];
+  TEAM_OPS.forEach(member=>{
+    const hours=weekDates.map(date=>{
+      const dl=logs.filter(l=>l.member===member&&l.date===date);
+      let total=0,inTime=null;
+      for(const log of dl){
+        if(log.type==="in") inTime=log.timestamp;
+        else if(log.type==="out"&&inTime){total+=(new Date(log.timestamp)-new Date(inTime))/3600000;inTime=null;}
+      }
+      if(inTime) total+=(new Date()-new Date(inTime))/3600000;
+      return total.toFixed(1);
+    });
+    const totalHours=hours.reduce((a,h)=>a+parseFloat(h),0).toFixed(1);
+    const lateDays=weekDates.filter(date=>{
+      const firstIn=logs.find(l=>l.member===member&&l.date===date&&l.type==="in");
+      if(!firstIn) return false;
+      const[h,m]=firstIn.time.split(":").map(Number);
+      const[sh,sm]=SHIFT_START.split(":").map(Number);
+      return h>sh||(h===sh&&m>sm);
+    }).length;
+    const absentDays=weekDates.filter(d=>!logs.some(l=>l.member===member&&l.date===d&&l.type==="in")).length;
+    rows.push([member,...hours,totalHours,lateDays,absentDays]);
+  });
+  const csv=rows.map(r=>r.join(",")).join("\n");
+  const blob=new Blob([csv],{type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=`attendance-${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 // ─── ATTENDANCE TRACKER ───────────────────────────────────────────────────────
 function AttendanceTracker() {
   const [logs,setLogs]=useState([]);
   const [sodSubmissions,setSodSubmissions]=useState({});
   const [selectedMember,setSelectedMember]=useState(null);
+  const [currentUser,setCurrentUser]=useState(null);
+  const [showUserSelect,setShowUserSelect]=useState(true);
   const [view,setView]=useState("today");
   const [loading,setLoading]=useState(true);
   const [now,setNow]=useState(new Date());
   const [confirmed,setConfirmed]=useState(false);
   const [showSodForm,setShowSodForm]=useState(false);
+  const [notifications,setNotifications]=useState([]);
+  const [autoLogoutSettings]=useState({enabled:true,maxHours:10});
+
+  const addNotification=(message,type="warning")=>{
+    const id=Date.now();
+    setNotifications(prev=>[...prev,{id,message,type}]);
+    setTimeout(()=>setNotifications(prev=>prev.filter(n=>n.id!==id)),8000);
+  };
 
   useEffect(()=>{
     const timer=setInterval(()=>setNow(new Date()),30000);
     return ()=>clearInterval(timer);
   },[]);
+
+  // Auto-logout
+  useEffect(()=>{
+    if(!autoLogoutSettings.enabled) return;
+    const check=setInterval(()=>{
+      const loggedIn=logs.filter(l=>l.type==="in"&&l.date===todayStr()&&!logs.some(o=>o.type==="out"&&o.member===l.member&&o.date===todayStr()&&o.timestamp>l.timestamp));
+      loggedIn.forEach(log=>{
+        const hours=(new Date()-new Date(log.timestamp))/3600000;
+        if(hours>=autoLogoutSettings.maxHours){
+          const ts=new Date().toISOString();
+          const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+          const nl=[...logs,{id:Date.now()+Math.random(),member:log.member,type:"out",date:todayStr(),time,timestamp:ts,auto:true}];
+          saveLogs(nl);
+          addNotification(`${log.member.split(" ")[0]} auto-logged out after ${autoLogoutSettings.maxHours} hours`,"warning");
+        }
+      });
+    },60000);
+    return ()=>clearInterval(check);
+  },[logs,autoLogoutSettings]);
+
+  // SOD reminder at 8:55 AM
+  useEffect(()=>{
+    const check=setInterval(()=>{
+      const h=now.getHours(),m=now.getMinutes();
+      if(h===8&&m===55){
+        const pending=TEAM_OPS.filter(mem=>!sodSubmissions[mem]);
+        if(pending.length>0) addNotification(`${pending.length} team member(s) haven't submitted SOD yet: ${pending.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
+      }
+    },60000);
+    return ()=>clearInterval(check);
+  },[now,sodSubmissions]);
+
+  // Logout reminder at 6:30 PM
+  useEffect(()=>{
+    const check=setInterval(()=>{
+      const h=now.getHours(),m=now.getMinutes();
+      if(h===18&&m===30){
+        const stillIn=TEAM_OPS.filter(mem=>getStatus(mem)==="in");
+        if(stillIn.length>0) addNotification(`${stillIn.length} team member(s) still logged in: ${stillIn.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
+      }
+    },60000);
+    return ()=>clearInterval(check);
+  },[now,logs]);
 
   useEffect(()=>{
     Promise.all([
@@ -407,7 +515,6 @@ function AttendanceTracker() {
   const logAction=()=>{
     if(!selectedMember) return;
     const status=getStatus(selectedMember);
-    // ★ GATE: must have SOD to log in
     if(status!=="in"&&!hasSodToday(selectedMember)){
       setShowSodForm(true);
       return;
@@ -425,7 +532,6 @@ function AttendanceTracker() {
     const updated={...sodSubmissions,[sod.member]:sod};
     setSodSubmissions(updated);
     setShowSodForm(false);
-    // Auto log in after SOD
     const ts=new Date().toISOString();
     const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
     const nl=[...logs,{id:Date.now(),member:sod.member,type:"in",date:todayStr(),time,timestamp:ts}];
@@ -446,6 +552,35 @@ function AttendanceTracker() {
 
   if(loading) return <LoadingScreen />;
 
+  const isCurrentUserAdmin=currentUser?isAdmin(currentUser):false;
+  const viewMembers=isCurrentUserAdmin?TEAM_OPS:[currentUser];
+
+  // User selection screen
+  if(showUserSelect||!currentUser) return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <Card style={{padding:20}}>
+        <CardLabel color={T.orange}>SELECT YOUR NAME TO CONTINUE</CardLabel>
+        <div style={{display:"flex",flexWrap:"wrap",gap:10,marginTop:16}}>
+          {TEAM_OPS.map(m=>{
+            const hasSod=hasSodToday(m);
+            const admin=isAdmin(m);
+            return (
+              <button key={m} onClick={()=>{setCurrentUser(m);setSelectedMember(m);setShowUserSelect(false);}}
+                style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"14px 18px",borderRadius:0,background:T.bg,color:T.darkGray,border:`2px solid ${T.black}`,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:T.font,transition:"all 0.15s",position:"relative"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=T.orange}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=T.black}>
+                {admin&&<div style={{position:"absolute",top:4,right:4,fontSize:9,fontWeight:700,color:T.orange,fontFamily:T.mono}}>🔑 ADMIN</div>}
+                <Avatar name={m} size={48} muted={!hasSod} />
+                <span>{m}</span>
+                <span style={{width:10,height:10,borderRadius:"50%",background:hasSod?statusColor(getStatus(m)):T.red,border:"1px solid rgba(0,0,0,0.2)"}} />
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+
   const memberStatus=selectedMember?getStatus(selectedMember):"absent";
   const isIn=memberStatus==="in";
   const hoursToday=selectedMember?getTotalHours(selectedMember,todayStr()):0;
@@ -456,9 +591,15 @@ function AttendanceTracker() {
   const inNow=TEAM_OPS.filter(m=>getStatus(m)==="in").length;
   const sodCount=Object.keys(sodSubmissions).length;
 
-  // ── SOD FORM OVERLAY ──
+  // Weekly summary calculations for admin
+  const weeklyTotal=isCurrentUserAdmin?weekDates.reduce((sum,d)=>sum+TEAM_OPS.reduce((s,m)=>s+parseFloat(getTotalHours(m,d)),0),0):0;
+  const avgHoursPerDay=isCurrentUserAdmin?(weeklyTotal/(weekDates.length*TEAM_OPS.length)).toFixed(1):0;
+  const lateArrivals=isCurrentUserAdmin?weekDates.reduce((s,d)=>s+TEAM_OPS.filter(m=>isLate(m,d)).length,0):0;
+  const perfectAttendance=isCurrentUserAdmin?TEAM_OPS.filter(m=>weekDates.every(d=>!isLate(m,d)&&logs.some(l=>l.member===m&&l.date===d&&l.type==="in"))).length:0;
+
   if(showSodForm&&selectedMember) return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <NotificationCenter notifications={notifications} onDismiss={id=>setNotifications(prev=>prev.filter(n=>n.id!==id))} />
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div>
           <div style={{fontSize:16,fontWeight:700,fontFamily:T.font}}>{selectedMember}</div>
@@ -472,20 +613,36 @@ function AttendanceTracker() {
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <NotificationCenter notifications={notifications} onDismiss={id=>setNotifications(prev=>prev.filter(n=>n.id!==id))} />
 
       {/* STATS BAR */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
-        {[["IN NOW",inNow,T.green],["PRESENT TODAY",presentToday,T.orange],["SOD SUBMITTED",sodCount,sodCount===TEAM_OPS.length?T.green:T.yellow],["LATE TODAY",lateToday,lateToday>0?T.red:T.green]].map(([l,v,c])=>(
-          <div key={l} style={{background:T.black,border:`2px solid ${T.black}`,padding:"14px 18px"}}>
-            <div style={{fontSize:9,color:"#666",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
-            <div style={{fontSize:28,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
-            <div style={{fontSize:9,color:"#555",fontFamily:T.mono,marginTop:4}}>of {TEAM_OPS.length} team</div>
-          </div>
-        ))}
+        {isCurrentUserAdmin ? (
+          [["IN NOW",inNow,T.green],["PRESENT TODAY",presentToday,T.orange],["SOD SUBMITTED",sodCount,sodCount===TEAM_OPS.length?T.green:T.yellow],["LATE TODAY",lateToday,lateToday>0?T.red:T.green]].map(([l,v,c])=>(
+            <div key={l} style={{background:T.black,border:`2px solid ${T.black}`,padding:"14px 18px"}}>
+              <div style={{fontSize:9,color:"#666",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
+              <div style={{fontSize:28,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
+              <div style={{fontSize:9,color:"#555",fontFamily:T.mono,marginTop:4}}>of {TEAM_OPS.length} team</div>
+            </div>
+          ))
+        ) : (
+          [["STATUS",statusLabel(memberStatus),statusColor(memberStatus)],["HOURS TODAY",hoursToday+"h",T.orange],["SOD",hasSodToday(currentUser)?"✓ SUBMITTED":"PENDING",hasSodToday(currentUser)?T.green:T.red],["THIS WEEK",weekDates.reduce((s,d)=>s+parseFloat(getTotalHours(currentUser,d)),0).toFixed(1)+"h",T.purple]].map(([l,v,c])=>(
+            <div key={l} style={{background:T.black,border:`2px solid ${T.black}`,padding:"14px 18px"}}>
+              <div style={{fontSize:9,color:"#666",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
+              <div style={{fontSize:24,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* SWITCH USER */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:12,color:T.grayLight,fontFamily:T.mono}}>Logged in as: <strong>{currentUser}</strong>{isCurrentUserAdmin&&<span style={{color:T.orange,marginLeft:6}}>🔑 ADMIN</span>}</div>
+        <button onClick={()=>{setCurrentUser(null);setSelectedMember(null);setShowUserSelect(true);}} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.bg,color:T.darkGray,border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SWITCH USER</button>
       </div>
 
       {/* PENDING SOD WARNING */}
-      {sodCount < TEAM_OPS.length && (
+      {sodCount < TEAM_OPS.length && isCurrentUserAdmin && (
         <div style={{background:"#fef2f2",border:`2px solid ${T.red}`,padding:"10px 16px"}}>
           <div style={{fontSize:10,fontWeight:700,color:T.red,fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>⚠ PENDING SOD — CANNOT LOG IN YET</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -499,25 +656,27 @@ function AttendanceTracker() {
         </div>
       )}
 
-      {/* MEMBER SELECTOR */}
-      <Card style={{padding:20}}>
-        <CardLabel color={T.orange}>SELECT YOUR NAME</CardLabel>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:12}}>
-          {TEAM_OPS.map(m=>{
-            const s=getStatus(m);
-            const hasSod=hasSodToday(m);
-            return (
-              <button key={m} onClick={()=>{setSelectedMember(m);setConfirmed(false);setShowSodForm(false);}}
-                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:0,background:selectedMember===m?T.black:T.bg,color:selectedMember===m?"#fff":T.darkGray,border:`2px solid ${selectedMember===m?T.black:T.borderDark}`,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:T.font,transition:"all 0.15s"}}>
-                <Avatar name={m} size={24} muted={!hasSod} />
-                {m.split(" ")[0]}
-                <span style={{width:8,height:8,borderRadius:"50%",background:hasSod?statusColor(s):T.red,display:"inline-block",marginLeft:2,border:"1px solid rgba(0,0,0,0.2)"}} title={hasSod?"SOD submitted":"No SOD yet"} />
-              </button>
-            );
-          })}
-        </div>
-        <div style={{marginTop:10,fontSize:10,color:T.grayLight,fontFamily:T.mono}}>🔴 Red dot = no SOD submitted yet · Cannot log in without SOD</div>
-      </Card>
+      {/* MEMBER SELECTOR (ADMIN sees all, non-admin sees only self) */}
+      {isCurrentUserAdmin && (
+        <Card style={{padding:20}}>
+          <CardLabel color={T.orange}>SELECT TEAM MEMBER</CardLabel>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:12}}>
+            {TEAM_OPS.map(m=>{
+              const s=getStatus(m);
+              const hasSod=hasSodToday(m);
+              return (
+                <button key={m} onClick={()=>{setSelectedMember(m);setConfirmed(false);setShowSodForm(false);}}
+                  style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:0,background:selectedMember===m?T.black:T.bg,color:selectedMember===m?"#fff":T.darkGray,border:`2px solid ${selectedMember===m?T.black:T.borderDark}`,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:T.font,transition:"all 0.15s"}}>
+                  <Avatar name={m} size={24} muted={!hasSod} />
+                  {m.split(" ")[0]}
+                  <span style={{width:8,height:8,borderRadius:"50%",background:hasSod?statusColor(s):T.red,display:"inline-block",marginLeft:2,border:"1px solid rgba(0,0,0,0.2)"}} title={hasSod?"SOD submitted":"No SOD yet"} />
+                </button>
+              );
+            })}
+          </div>
+          <div style={{marginTop:10,fontSize:10,color:T.grayLight,fontFamily:T.mono}}>🔴 Red dot = no SOD submitted yet · Cannot log in without SOD</div>
+        </Card>
+      )}
 
       {/* LOG IN/OUT CARD */}
       {selectedMember&&(
@@ -542,7 +701,6 @@ function AttendanceTracker() {
             </div>
           )}
 
-          {/* ★ SOD-gated Log In button */}
           {!hasSodToday(selectedMember)&&!isIn ? (
             <div style={{marginTop:14}}>
               <div style={{fontSize:12,color:T.red,fontFamily:T.mono,fontWeight:700,letterSpacing:1,marginBottom:10}}>
@@ -565,7 +723,7 @@ function AttendanceTracker() {
           {memberStatus!=="absent"&&(
             <div style={{marginTop:14,fontSize:11,color:T.grayLight,fontFamily:T.mono}}>
               {getMemberToday(selectedMember).map((l,i)=>(
-                <span key={i} style={{marginRight:12}}>{l.type==="in"?"↑ IN":"↓ OUT"} {l.time}</span>
+                <span key={i} style={{marginRight:12}}>{l.type==="in"?"↑ IN":"↓ OUT"} {l.time}{l.auto?" (auto)":""}</span>
               ))}
             </div>
           )}
@@ -574,15 +732,94 @@ function AttendanceTracker() {
 
       {/* VIEW TABS */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"]].map(([v,l])=>(
+        {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"]]:[] )].map(([v,l])=>(
           <Pill key={v} label={l} active={view===v} onClick={()=>setView(v)} />
         ))}
       </div>
 
+      {/* ADMIN REPORTS VIEW */}
+      {view==="reports"&&isCurrentUserAdmin&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+            {[["TOTAL HOURS",weeklyTotal.toFixed(1)+"h",T.purple],["AVG HRS/DAY",avgHoursPerDay+"h",T.green],["LATE ARRIVALS",lateArrivals,lateArrivals>0?T.red:T.green],["PERFECT ATTENDANCE",perfectAttendance,T.green]].map(([l,v,c])=>(
+              <div key={l} style={{background:T.black,padding:"14px 18px"}}>
+                <div style={{fontSize:9,color:"#666",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
+                <div style={{fontSize:24,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
+              </div>
+            ))}
+          </div>
+          
+          <Card>
+            <div style={{padding:"12px 18px",borderBottom:`2px solid ${T.black}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <CardLabel color={T.orange}>WEEKLY SUMMARY — {weekLabel()}</CardLabel>
+              <button onClick={()=>exportAttendanceCSV(logs,weekDates,TEAM_OPS)} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.green,color:"#fff",border:`2px solid ${T.green}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>EXPORT CSV</button>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead><tr style={{background:T.bg,borderBottom:`2px solid ${T.black}`}}>
+                  <th style={{padding:"10px 14px",textAlign:"left",fontSize:10,fontWeight:700,fontFamily:T.mono,color:T.darkGray}}>MEMBER</th>
+                  {["MON","TUE","WED","THU","FRI"].map(d=><th key={d} style={{padding:"10px 14px",textAlign:"center",fontSize:10,fontWeight:700,fontFamily:T.mono,color:T.darkGray}}>{d}</th>)}
+                  <th style={{padding:"10px 14px",textAlign:"center",fontSize:10,fontWeight:700,fontFamily:T.mono,color:T.darkGray}}>TOTAL</th>
+                  <th style={{padding:"10px 14px",textAlign:"center",fontSize:10,fontWeight:700,fontFamily:T.mono,color:T.darkGray}}>STATUS</th>
+                </tr></thead>
+                <tbody>
+                  {TEAM_OPS.map(member=>{
+                    const hours=weekDates.map(d=>getTotalHours(member,d));
+                    const total=hours.reduce((a,h)=>a+parseFloat(h),0).toFixed(1);
+                    const lateDays=weekDates.filter(d=>isLate(member,d)).length;
+                    const absentDays=weekDates.filter(d=>!logs.some(l=>l.member===member&&l.date===d&&l.type==="in")).length;
+                    return (
+                      <tr key={member} style={{borderBottom:`1px solid ${T.border}`}}>
+                        <td style={{padding:"10px 14px",fontSize:12,fontWeight:600}}>{member}</td>
+                        {hours.map((h,i)=>{
+                          const date=weekDates[i];
+                          const late=isLate(member,date);
+                          const absent=parseFloat(h)===0;
+                          return <td key={i} style={{padding:"10px 14px",textAlign:"center",fontSize:11,fontWeight:700,color:absent?T.gray:late?T.yellow:T.green}}>{absent?"—":h+"h"}</td>;
+                        })}
+                        <td style={{padding:"10px 14px",textAlign:"center",fontSize:12,fontWeight:800,color:T.orange}}>{total}h</td>
+                        <td style={{padding:"10px 14px",textAlign:"center"}}>
+                          {absentDays>0&&<Badge label={`${absentDays}x ABSENT`} color={T.gray} />}
+                          {lateDays>0&&<Badge label={`${lateDays}x LATE`} color={T.red} />}
+                          {absentDays===0&&lateDays===0&&<Badge label="✓" color={T.green} />}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card style={{padding:18}}>
+            <CardLabel color={T.yellow}>OVERTIME TRACKER (8+ hr days)</CardLabel>
+            <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:8}}>
+              {TEAM_OPS.map(member=>{
+                const otDays=weekDates.filter(d=>parseFloat(getTotalHours(member,d))>=8);
+                const otHours=otDays.reduce((s,d)=>s+(parseFloat(getTotalHours(member,d))-8),0).toFixed(1);
+                if(otDays.length===0) return null;
+                return (
+                  <div key={member} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:T.bg,border:`2px solid ${T.black}`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <Avatar name={member} size={28} />
+                      <span style={{fontSize:13,fontWeight:600}}>{member}</span>
+                    </div>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <span style={{fontSize:11,color:T.grayLight,fontFamily:T.mono}}>{otDays.length} days</span>
+                      <span style={{fontSize:16,fontWeight:800,color:T.yellow,fontFamily:T.font}}>+{otHours}h</span>
+                    </div>
+                  </div>
+                );
+              }).filter(Boolean)}
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* TODAY VIEW */}
       {view==="today"&&(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {TEAM_OPS.map(member=>{
+          {viewMembers.map(member=>{
             const status=getStatus(member);
             const late=isLate(member);
             const hours=getTotalHours(member,todayStr());
@@ -621,7 +858,7 @@ function AttendanceTracker() {
       {view==="sod"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono,letterSpacing:1,marginBottom:4}}>TODAY'S SOD SUBMISSIONS — {new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
-          {TEAM_OPS.map(member=>{
+          {viewMembers.map(member=>{
             const sod=sodSubmissions[member];
             return (
               <Card key={member} style={{overflow:"hidden",borderLeft:`4px solid ${sod?T.green:T.red}`}}>
@@ -668,15 +905,15 @@ function AttendanceTracker() {
       {view==="history"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {[...new Set(logs.map(l=>l.date))].sort((a,b)=>b.localeCompare(a)).slice(0,21).map(date=>{
-            const membersWithLogs=TEAM_OPS.filter(m=>logs.some(l=>l.member===m&&l.date===date));
+            const membersWithLogs=viewMembers.filter(m=>logs.some(l=>l.member===m&&l.date===date));
             return (
               <Card key={date}>
                 <div style={{background:T.black,padding:"12px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={{fontSize:12,fontWeight:700,color:"#fff",fontFamily:T.mono}}>{new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</span>
-                  <span style={{fontSize:10,color:T.orange,fontFamily:T.mono}}>{membersWithLogs.length}/{TEAM_OPS.length} PRESENT</span>
+                  <span style={{fontSize:10,color:T.orange,fontFamily:T.mono}}>{membersWithLogs.length}/{viewMembers.length} PRESENT</span>
                 </div>
                 <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:6}}>
-                  {TEAM_OPS.map(member=>{
+                  {viewMembers.map(member=>{
                     const dl=logs.filter(l=>l.member===member&&l.date===date);
                     const firstIn=dl.find(l=>l.type==="in");
                     const lastOut=[...dl].reverse().find(l=>l.type==="out");
@@ -695,7 +932,7 @@ function AttendanceTracker() {
                         <span style={{fontSize:11,color:T.grayLight,fontFamily:T.mono}}>OUT: {lastOut?.time||"—"}</span>
                         <span style={{fontSize:12,fontWeight:800,color:T.orange,fontFamily:T.font,minWidth:32,textAlign:"right"}}>{hrs}h</span>
                         {late&&<Badge label="LATE" color={T.red} />}
-                        <button onClick={()=>saveLogs(logs.filter(l=>!dl.map(x=>x.id).includes(l.id)))} style={{background:"none",border:"none",cursor:"pointer",color:T.grayLight,fontSize:14,padding:"0 4px"}}>🗑</button>
+                        {isCurrentUserAdmin&&<button onClick={()=>saveLogs(logs.filter(l=>!dl.map(x=>x.id).includes(l.id)))} style={{background:"none",border:"none",cursor:"pointer",color:T.grayLight,fontSize:14,padding:"0 4px"}}>🗑</button>}
                       </div>
                     );
                   })}
@@ -713,7 +950,7 @@ function AttendanceTracker() {
           <Card style={{background:T.black,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div><CardLabel color={T.orange}>{weekLabel()}</CardLabel><div style={{fontSize:11,color:"#666",fontFamily:T.mono,marginTop:4}}>Mon–Fri · Shift {SHIFT_START}–{SHIFT_END}</div></div>
           </Card>
-          {TEAM_OPS.map(member=>{
+          {viewMembers.map(member=>{
             const presentDays=weekDates.filter(d=>logs.some(l=>l.member===member&&l.date===d&&l.type==="in"));
             const lateDays=weekDates.filter(d=>isLate(member,d));
             const absentDays=weekDates.filter(d=>!logs.some(l=>l.member===member&&l.date===d&&l.type==="in"));
