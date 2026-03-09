@@ -88,15 +88,30 @@ const showNotification = (title, body, icon = "🔔") => {
 
 // ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
 const sendToSlack = async (webhookUrl, message) => {
-  if (!webhookUrl) return;
+  if (!webhookUrl) {
+    console.log("❌ No webhook URL provided");
+    return;
+  }
+  
+  console.log("🔵 Attempting to send to Slack:", webhookUrl.substring(0, 50) + "...");
+  console.log("📝 Message:", message);
+  
   try {
-    await fetch(webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: message })
     });
+    
+    console.log("✅ Slack response:", response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Slack error response:", errorText);
+    }
   } catch (error) {
-    console.error("Slack error:", error);
+    console.error("❌ Slack fetch error:", error);
+    alert(`Slack Error: ${error.message}. Check console for details.`);
   }
 };
 
@@ -1824,15 +1839,23 @@ function AttendanceTracker() {
     setTimeout(()=>setConfirmed(false),2500);
     
     // Load webhook from storage and send Slack notifications
+    console.log("🔍 SOD Submit: Loading webhook from storage...");
     storage.get("slack-webhook").then(w => {
+      console.log("📦 Storage result:", w);
       if(w && w.value) {
         const webhook = w.value;
+        console.log("✅ Webhook found:", webhook.substring(0, 50) + "...");
         const sodCount = Object.keys(updated).length;
         // Login notification
         sendToSlack(webhook, `🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`);
         // SOD notification
         sendToSlack(webhook, `✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
+      } else {
+        console.log("❌ No webhook found in storage");
+        alert("⚠️ Slack webhook not configured! Click 💬 SLACK button to set it up.");
       }
+    }).catch(err => {
+      console.error("❌ Storage error:", err);
     });
   };
 
@@ -1849,16 +1872,23 @@ function AttendanceTracker() {
     setTimeout(()=>setConfirmed(false),2500);
     
     // Load webhook from storage and send Slack notifications
+    console.log("🔍 EOD Submit: Loading webhook from storage...");
     storage.get("slack-webhook").then(w => {
+      console.log("📦 Storage result:", w);
       if(w && w.value) {
         const webhook = w.value;
+        console.log("✅ Webhook found:", webhook.substring(0, 50) + "...");
         const eodCount = Object.keys(updated).length;
         const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
         // Logout notification
         sendToSlack(webhook, `🔴 *LOGGED OUT*\n*${eod.member}* has logged out at ${time}`);
         // EOD notification
         sendToSlack(webhook, `📊 *EOD Submitted*\n*${eod.member}* - ${eodCount} EODs today\n\n*Metrics:*\n${metricsText}`);
+      } else {
+        console.log("❌ No webhook found in storage");
       }
+    }).catch(err => {
+      console.error("❌ Storage error:", err);
     });
   };
 
@@ -2018,12 +2048,22 @@ function AttendanceTracker() {
         </div>
         <div style={{display:"flex",gap:8}}>
           {isCurrentUserAdmin && (
-            <button onClick={()=>{
+            <button onClick={async ()=>{
               const webhook = prompt("Enter Slack Webhook URL:", slackWebhook);
               if(webhook !== null) {
+                console.log("💾 Saving webhook to storage:", webhook.substring(0, 50) + "...");
                 setSlackWebhook(webhook);
-                storage.set("slack-webhook", webhook);
-                if(webhook) alert("Slack notifications enabled!");
+                await storage.set("slack-webhook", webhook);
+                
+                // Verify it was saved
+                const verify = await storage.get("slack-webhook");
+                console.log("✅ Verified saved webhook:", verify);
+                
+                if(webhook) {
+                  alert("✅ Slack notifications enabled!\n\nTest it by logging in as a team member and submitting SOD.");
+                  // Test send immediately
+                  sendToSlack(webhook, `🔔 *Slack Integration Test*\nWebhook configured successfully by ${currentUser}!`);
+                }
               }
             }}
               style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:slackWebhook?T.purple:T.bg,color:slackWebhook?"#fff":T.gray,border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
