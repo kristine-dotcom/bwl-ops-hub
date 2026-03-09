@@ -8,9 +8,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message } = req.body;
+  const { message, userId, isAnnouncement } = req.body; // isAnnouncement flag for channel selection
   const SLACK_BOT_TOKEN = process.env.VITE_SLACK_BOT_TOKEN;
   const SLACK_CHANNEL = process.env.VITE_SLACK_CHANNEL || '#attendance-admin';
+  const ANNOUNCEMENTS_CHANNEL = process.env.VITE_ANNOUNCEMENTS_CHANNEL || '#team-announcements';
 
   if (!SLACK_BOT_TOKEN) {
     console.error('❌ Slack bot token not configured');
@@ -21,8 +22,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Message is required' });
   }
 
+  // Determine target: userId (DM), announcements channel, or default channel
+  let target;
+  if (userId) {
+    target = userId; // DM
+  } else if (isAnnouncement) {
+    target = ANNOUNCEMENTS_CHANNEL; // #team-announcements
+  } else {
+    target = SLACK_CHANNEL; // #attendance-admin
+  }
+
   try {
-    console.log('🔵 Sending to Slack:', SLACK_CHANNEL);
+    console.log('🔵 Sending to Slack:', userId ? `DM to ${userId}` : target);
     console.log('📝 Message:', message);
 
     const response = await fetch('https://slack.com/api/chat.postMessage', {
@@ -32,7 +43,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        channel: SLACK_CHANNEL,
+        channel: target,
         text: message
       })
     });
