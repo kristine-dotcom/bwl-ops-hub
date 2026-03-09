@@ -3332,7 +3332,7 @@ function OpsPulse({slackIds}) {
 
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-function Dashboard({ navigate }) {
+function Dashboard({ navigate, sendToSlack }) {
   const date=new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}).toUpperCase();
   const getGreeting=()=>{const now=new Date();const estHour=parseInt(now.toLocaleString("en-US",{timeZone:"America/New_York",hour:"numeric",hour12:false}));if(estHour>=5&&estHour<12) return "MORNING.";if(estHour>=12&&estHour<17) return "AFTERNOON.";if(estHour>=17&&estHour<21) return "EVENING.";return "NIGHT.";};
   const greeting=getGreeting();
@@ -4003,7 +4003,7 @@ export default function App() {
 
   const renderPage=()=>{
     switch(page){
-      case "dashboard": return <Dashboard navigate={navigate} />;
+      case "dashboard": return <Dashboard navigate={navigate} sendToSlack={sendToSlack} />;
       case "attendance": return <AttendanceTracker />;
       case "ops-pulse": return <OpsPulse slackIds={slackIds} />;
       case "rfp": return <RFPEngine />;
