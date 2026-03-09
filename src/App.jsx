@@ -1696,6 +1696,7 @@ function AttendanceTracker() {
     setLogs(nl);
     try {
       await storage.set("attendance-logs",JSON.stringify(nl));
+      localStorage.setItem("attendance-logs-backup", JSON.stringify(nl)); // Backup
       console.log("✅ Logs saved:", nl.length, "entries");
     } catch(error) {
       console.error("❌ Error saving logs:", error);
@@ -1903,35 +1904,71 @@ function AttendanceTracker() {
     const loadData = async () => {
       try {
         console.log("🔵 Loading all data from storage...");
+        const today = todayStr();
+        console.log("📅 Today's date key:", today);
         
         // Load attendance logs
         const logsResult = await storage.get("attendance-logs");
         if(logsResult?.value) {
           const loadedLogs = JSON.parse(logsResult.value);
           setLogs(loadedLogs);
-          console.log("✅ Loaded logs:", loadedLogs.length, "entries");
+          localStorage.setItem("attendance-logs-backup", logsResult.value); // Backup
+          console.log("✅ Loaded logs from storage:", loadedLogs.length, "entries");
         } else {
-          console.log("ℹ️ No logs found in storage");
+          // Try localStorage backup
+          const backup = localStorage.getItem("attendance-logs-backup");
+          if(backup) {
+            const loadedLogs = JSON.parse(backup);
+            setLogs(loadedLogs);
+            await storage.set("attendance-logs", backup); // Restore to storage
+            console.log("✅ Restored logs from localStorage backup:", loadedLogs.length, "entries");
+          } else {
+            console.log("ℹ️ No logs found in storage or backup");
+          }
         }
         
         // Load SOD submissions for today
-        const sodResult = await storage.get(`sod-${todayStr()}`);
+        const sodKey = `sod-${today}`;
+        console.log("🔍 Looking for SOD with key:", sodKey);
+        const sodResult = await storage.get(sodKey);
         if(sodResult?.value) {
           const loadedSod = JSON.parse(sodResult.value);
           setSodSubmissions(loadedSod);
-          console.log("✅ Loaded SOD:", Object.keys(loadedSod).length, "submissions");
+          localStorage.setItem(`${sodKey}-backup`, sodResult.value); // Backup
+          console.log("✅ Loaded SOD from storage:", Object.keys(loadedSod).length, "submissions");
         } else {
-          console.log("ℹ️ No SOD submissions found for today");
+          // Try localStorage backup
+          const backup = localStorage.getItem(`${sodKey}-backup`);
+          if(backup) {
+            const loadedSod = JSON.parse(backup);
+            setSodSubmissions(loadedSod);
+            await storage.set(sodKey, backup); // Restore to storage
+            console.log("✅ Restored SOD from localStorage backup:", Object.keys(loadedSod).length, "submissions");
+          } else {
+            console.log("ℹ️ No SOD submissions found for today");
+          }
         }
         
         // Load EOD submissions for today
-        const eodResult = await storage.get(`eod-${todayStr()}`);
+        const eodKey = `eod-${today}`;
+        console.log("🔍 Looking for EOD with key:", eodKey);
+        const eodResult = await storage.get(eodKey);
         if(eodResult?.value) {
           const loadedEod = JSON.parse(eodResult.value);
           setEodSubmissions(loadedEod);
-          console.log("✅ Loaded EOD:", Object.keys(loadedEod).length, "submissions");
+          localStorage.setItem(`${eodKey}-backup`, eodResult.value); // Backup
+          console.log("✅ Loaded EOD from storage:", Object.keys(loadedEod).length, "submissions");
         } else {
-          console.log("ℹ️ No EOD submissions found for today");
+          // Try localStorage backup
+          const backup = localStorage.getItem(`${eodKey}-backup`);
+          if(backup) {
+            const loadedEod = JSON.parse(backup);
+            setEodSubmissions(loadedEod);
+            await storage.set(eodKey, backup); // Restore to storage
+            console.log("✅ Restored EOD from localStorage backup:", Object.keys(loadedEod).length, "submissions");
+          } else {
+            console.log("ℹ️ No EOD submissions found for today");
+          }
         }
         
         // Load Slack webhook (legacy)
@@ -1981,11 +2018,17 @@ function AttendanceTracker() {
   const handleSODSubmit=async(sod)=>{
     const updated={...sodSubmissions,[sod.member]:sod};
     setSodSubmissions(updated);
+    const sodKey = `sod-${todayStr()}`;
+    const sodData = JSON.stringify(updated);
     try {
-      await storage.set(`sod-${todayStr()}`,JSON.stringify(updated));
-      console.log("✅ SOD saved for", sod.member, "- Total:", Object.keys(updated).length);
+      await storage.set(sodKey, sodData);
+      localStorage.setItem(`${sodKey}-backup`, sodData); // Backup
+      console.log("✅ SOD saved for", sod.member, "- Key:", sodKey, "- Total:", Object.keys(updated).length);
     } catch(error) {
       console.error("❌ Error saving SOD:", error);
+      // Save to localStorage anyway as fallback
+      localStorage.setItem(`${sodKey}-backup`, sodData);
+      console.log("⚠️ Saved SOD to localStorage backup only");
     }
     setShowSodForm(false);
     const ts=new Date().toISOString();
@@ -2006,18 +2049,25 @@ function AttendanceTracker() {
     }
     
     // Admin summary to channel
-    sendToSlack(`📋 *SOD Update:* ${sod.member} submitted SOD (${sodCount}/${TEAM_OPS.length} complete)`);
+    const tasksList = sod.tasks.map((t,i)=>`${i+1}. ${t.task} [${t.priority}]`).join("\n");
+    sendToSlack(`📋 *SOD Update:* ${sod.member} submitted SOD (${sodCount}/${TEAM_OPS.length} complete)\n\n*Tasks for today:*\n${tasksList}\n\n*Metrics:* ${sod.metrics || "None specified"}`);
   };
 
 
   const handleEODSubmit=async(eod)=>{
     const updated={...eodSubmissions,[eod.member]:eod};
     setEodSubmissions(updated);
+    const eodKey = `eod-${todayStr()}`;
+    const eodData = JSON.stringify(updated);
     try {
-      await storage.set(`eod-${todayStr()}`,JSON.stringify(updated));
-      console.log("✅ EOD saved for", eod.member, "- Total:", Object.keys(updated).length);
+      await storage.set(eodKey, eodData);
+      localStorage.setItem(`${eodKey}-backup`, eodData); // Backup
+      console.log("✅ EOD saved for", eod.member, "- Key:", eodKey, "- Total:", Object.keys(updated).length);
     } catch(error) {
       console.error("❌ Error saving EOD:", error);
+      // Save to localStorage anyway as fallback
+      localStorage.setItem(`${eodKey}-backup`, eodData);
+      console.log("⚠️ Saved EOD to localStorage backup only");
     }
     setShowEodForm(false);
     const ts=new Date().toISOString();
@@ -2039,7 +2089,7 @@ function AttendanceTracker() {
     }
     
     // Admin summary to channel
-    sendToSlack(`📊 *EOD Update:* ${eod.member} submitted EOD (${eodCount} today)`);
+    sendToSlack(`📊 *EOD Update:* ${eod.member} submitted EOD (${eodCount} today)\n\n*Today's Metrics:*\n${metricsText}`);
   };
 
 
@@ -3297,16 +3347,27 @@ function Dashboard({ navigate }) {
         const result = await storage.get("announcements");
         if(result?.value) {
           setAnnouncements(JSON.parse(result.value));
+          localStorage.setItem("announcements-backup", result.value); // Backup
         } else {
-          // Only set default if storage is empty (first time)
-          const defaultAnnouncement = [{
-            id:1,
-            text:"Welcome to the Leverage Operations Hub. Use this space for team-wide notes and announcements.",
-            author:"David Perlov",
-            date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
-          }];
-          setAnnouncements(defaultAnnouncement);
-          await storage.set("announcements", JSON.stringify(defaultAnnouncement));
+          // Try localStorage backup
+          const backup = localStorage.getItem("announcements-backup");
+          if(backup) {
+            setAnnouncements(JSON.parse(backup));
+            await storage.set("announcements", backup); // Restore to storage
+            console.log("✅ Restored announcements from localStorage backup");
+          } else {
+            // Only set default if storage AND backup are empty (first time)
+            const defaultAnnouncement = [{
+              id:1,
+              text:"Welcome to the Leverage Operations Hub. Use this space for team-wide notes and announcements.",
+              author:"David Perlov",
+              date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
+            }];
+            setAnnouncements(defaultAnnouncement);
+            const defaultData = JSON.stringify(defaultAnnouncement);
+            await storage.set("announcements", defaultData);
+            localStorage.setItem("announcements-backup", defaultData);
+          }
         }
       } catch(error) {
         console.error("Error loading announcements:", error);
@@ -3320,11 +3381,16 @@ function Dashboard({ navigate }) {
   // Save announcements to storage
   const saveAnnouncements=async(newAnnouncements)=>{
     setAnnouncements(newAnnouncements);
+    const data = JSON.stringify(newAnnouncements);
     try {
-      await storage.set("announcements",JSON.stringify(newAnnouncements));
+      await storage.set("announcements", data);
+      localStorage.setItem("announcements-backup", data); // Backup
       console.log("✅ Announcements saved to storage");
     } catch(error) {
       console.error("❌ Error saving announcements:", error);
+      // Save to localStorage anyway as fallback
+      localStorage.setItem("announcements-backup", data);
+      console.log("⚠️ Saved announcements to localStorage backup only");
     }
   };
   
@@ -3679,8 +3745,10 @@ function FeedbackSummary() {
 
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
-function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePassword}) {
+function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePassword,sendToSlack}) {
   const [token,setToken]=useState(slackToken||"");const [ids,setIds]=useState(slackIds||DEFAULT_SLACK_IDS);const [saved,setSaved]=useState(false);const [newPw,setNewPw]=useState("");const [confirmPw,setConfirmPw]=useState("");const [pwMsg,setPwMsg]=useState(null);
+  const [debugData,setDebugData]=useState(null);const [debugLoading,setDebugLoading]=useState(false);
+  
   const save=async()=>{setSlackToken(token);setSlackIds(ids);await storage.set("slack-token",token);await storage.set("slack-ids",JSON.stringify(ids));setSaved(true);setTimeout(()=>setSaved(false),2000);};
   const changePw=async()=>{
     if(!newPw||newPw.length<6){setPwMsg({type:"error",text:"Password must be at least 6 characters"});return;}
@@ -3688,11 +3756,99 @@ function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePasswor
     await storage.set("app-password",newPw);onChangePassword(newPw);setNewPw("");setConfirmPw("");
     setPwMsg({type:"success",text:"Password updated successfully"});setTimeout(()=>setPwMsg(null),3000);
   };
+  
+  const loadDebugData = async () => {
+    setDebugLoading(true);
+    try {
+      const todayStr = () => new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }).split("/").reverse().join("-");
+      const logs = await storage.get("attendance-logs");
+      const sod = await storage.get(`sod-${todayStr()}`);
+      const eod = await storage.get(`eod-${todayStr()}`);
+      const announcements = await storage.get("announcements");
+      
+      setDebugData({
+        logs: logs?.value ? JSON.parse(logs.value).length : 0,
+        sod: sod?.value ? Object.keys(JSON.parse(sod.value)).length : 0,
+        eod: eod?.value ? Object.keys(JSON.parse(eod.value)).length : 0,
+        announcements: announcements?.value ? JSON.parse(announcements.value).length : 0,
+        raw: {
+          logs: logs?.value ? JSON.parse(logs.value).slice(0,3) : [],
+          sod: sod?.value ? Object.keys(JSON.parse(sod.value)) : [],
+          eod: eod?.value ? Object.keys(JSON.parse(eod.value)) : [],
+          announcements: announcements?.value ? JSON.parse(announcements.value).slice(0,2) : []
+        }
+      });
+    } catch(error) {
+      setDebugData({error: error.message});
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+  
+  const testSlack = async () => {
+    sendToSlack(`🧪 *Test Message*\n\nThis is a test from Settings panel.\n\n_Sent at ${new Date().toLocaleTimeString()}_`);
+    alert("Test message sent to #attendance-admin! Check Slack.");
+  };
+  
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <Card><SectionHeader label="Slack Bot Token" /><div style={{padding:16}}><input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="xoxb-…" style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div></Card>
       <Card><SectionHeader label="Slack User IDs" /><div style={{padding:16,display:"flex",flexDirection:"column",gap:10}}>{Object.entries(ids).map(([name,id])=>(<div key={name} style={{display:"flex",alignItems:"center",gap:12}}><Avatar name={name} size={28} /><div style={{width:130,fontSize:12,fontWeight:600,flexShrink:0}}>{name.split(" ")[0]}</div><input value={id} onChange={e=>setIds(p=>({...p,[name]:e.target.value}))} placeholder="U0XXXXXXXXX" style={{flex:1,background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:12,padding:"8px 12px",outline:"none",fontFamily:T.mono}} /></div>))}</div></Card>
       <Btn onClick={save} label={saved?"✓ SAVED":"SAVE SETTINGS"} color={saved?T.green:T.black} />
+      
+      <Card>
+        <SectionHeader label="🧪 Test Slack Integration" />
+        <div style={{padding:16}}>
+          <button onClick={testSlack} style={{padding:"11px 20px",background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,width:"100%"}}>SEND TEST MESSAGE</button>
+        </div>
+      </Card>
+      
+      <Card>
+        <SectionHeader label="🔍 Debug Storage" />
+        <div style={{padding:16}}>
+          <button onClick={loadDebugData} disabled={debugLoading} style={{padding:"11px 20px",background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,width:"100%",marginBottom:14}}>
+            {debugLoading ? "LOADING..." : "CHECK STORAGE"}
+          </button>
+          {debugData && (
+            <div style={{background:"#f5f5f0",border:`2px solid ${T.black}`,padding:14,fontFamily:T.mono,fontSize:12}}>
+              {debugData.error ? (
+                <div style={{color:T.red}}>❌ Error: {debugData.error}</div>
+              ) : (
+                <>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontWeight:700,color:T.orange,marginBottom:6}}>📊 STORAGE SUMMARY:</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                      <div>Attendance Logs: <strong>{debugData.logs}</strong></div>
+                      <div>Announcements: <strong>{debugData.announcements}</strong></div>
+                      <div>SOD Today: <strong>{debugData.sod}</strong></div>
+                      <div>EOD Today: <strong>{debugData.eod}</strong></div>
+                    </div>
+                  </div>
+                  {debugData.logs > 0 && (
+                    <div style={{marginTop:10,fontSize:11,color:T.gray}}>
+                      <div style={{fontWeight:700,marginBottom:4}}>Recent Logs:</div>
+                      {debugData.raw.logs.map((l,i)=>(<div key={i}>• {l.member} - {l.type} at {l.time}</div>))}
+                    </div>
+                  )}
+                  {debugData.sod > 0 && (
+                    <div style={{marginTop:10,fontSize:11,color:T.gray}}>
+                      <div style={{fontWeight:700,marginBottom:4}}>SOD Submitted By:</div>
+                      {debugData.raw.sod.map((name,i)=>(<div key={i}>• {name}</div>))}
+                    </div>
+                  )}
+                  {debugData.announcements > 0 && (
+                    <div style={{marginTop:10,fontSize:11,color:T.gray}}>
+                      <div style={{fontWeight:700,marginBottom:4}}>Recent Announcements:</div>
+                      {debugData.raw.announcements.map((a,i)=>(<div key={i}>• {a.author}: {a.text.substring(0,50)}...</div>))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
+      
       <Card><SectionHeader label="🔐 Change Password" /><div style={{padding:16,display:"flex",flexDirection:"column",gap:10}}>
         <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>NEW PASSWORD</div><input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div>
         <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>CONFIRM PASSWORD</div><input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePw()} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div>
@@ -3857,7 +4013,7 @@ export default function App() {
       case "team-performance": return <TeamPerformance />;
       case "strategic-decision": return <StrategicDecision />;
       case "culture": return <CultureDashboard />;
-      case "settings": return <Settings slackToken={slackToken} setSlackToken={setSlackToken} slackIds={slackIds} setSlackIds={setSlackIds} onChangePassword={setCurrentPassword} />;
+      case "settings": return <Settings slackToken={slackToken} setSlackToken={setSlackToken} slackIds={slackIds} setSlackIds={setSlackIds} onChangePassword={setCurrentPassword} sendToSlack={sendToSlack} />;
       default: return <Dashboard navigate={navigate} />;
     }
   };
