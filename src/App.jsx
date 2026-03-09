@@ -1138,12 +1138,6 @@ function AttendanceTracker() {
     }
   };
 
-  const getWeekDates=()=>{
-    const d=new Date(),day=d.getDay(),mon=new Date(d);
-    mon.setDate(d.getDate()-(day===0?6:day-1));
-    return Array.from({length:5},(_,i)=>{const date=new Date(mon);date.setDate(mon.getDate()+i);return date.toISOString().split("T")[0];});
-  };
-
   const deleteLog=(id)=>{const nl=logs.filter(l=>l.id!==id);saveLogs(nl);};
   const statusColor=(s)=>({in:T.green,out:T.orange,absent:T.red}[s]||T.gray);
   const statusLabel=(s)=>({in:"LOGGED IN",out:"LOGGED OUT",absent:"ABSENT"}[s]||s);
