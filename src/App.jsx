@@ -87,21 +87,45 @@ const showNotification = (title, body, icon = "🔔") => {
 };
 
 // ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
-const sendToSlack = async (webhookUrl, message) => {
-  if (!webhookUrl) {
-    console.log("❌ No webhook URL provided");
+const sendToSlack = async (channel, message, botToken) => {
+  if (!botToken) {
+    console.log("❌ No bot token provided");
     return;
   }
   
-  console.log("🔵 Attempting to send to Slack:", webhookUrl.substring(0, 50) + "...");
+  if (!channel) {
+    console.log("❌ No channel/user ID provided");
+    return;
+  }
+  
+  console.log("🔵 Attempting to send to Slack channel:", channel);
   console.log("📝 Message:", message);
   
   try {
-    const response = await fetch(webhookUrl, {
+    const response = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: message })
+      headers: {
+        "Authorization": `Bearer ${botToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        channel: channel,
+        text: message
+      })
     });
+    
+    const data = await response.json();
+    console.log("✅ Slack response:", data);
+    
+    if (!data.ok) {
+      console.error("❌ Slack API error:", data.error);
+      alert(`Slack Error: ${data.error}`);
+    }
+  } catch (error) {
+    console.error("❌ Slack fetch error:", error);
+    alert(`Slack Error: ${error.message}`);
+  }
+};
     
     console.log("✅ Slack response:", response.status, response.statusText);
     
@@ -1709,9 +1733,10 @@ function AttendanceTracker() {
             }
           }
           // Slack notification - load from storage to ensure it works
-          storage.get("slack-webhook").then(w => {
-            if(w && w.value) {
-              sendToSlack(w.value, `⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
+         const botToken = await storage.get("slack-bot-token");
+if (botToken?.value) {
+  sendToSlack("#general", message, botToken.value); // or specific channel
+}
             }
           });
         }
@@ -1839,25 +1864,33 @@ function AttendanceTracker() {
     setTimeout(()=>setConfirmed(false),2500);
     
     // Load webhook from storage and send Slack notifications
-    console.log("🔍 SOD Submit: Loading webhook from storage...");
-    storage.get("slack-webhook").then(w => {
-      console.log("📦 Storage result:", w);
-      if(w && w.value) {
-        const webhook = w.value;
-        console.log("✅ Webhook found:", webhook.substring(0, 50) + "...");
-        const sodCount = Object.keys(updated).length;
-        // Login notification
-        sendToSlack(webhook, `🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`);
-        // SOD notification
-        sendToSlack(webhook, `✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
-      } else {
-        console.log("❌ No webhook found in storage");
-        alert("⚠️ Slack webhook not configured! Click 💬 SLACK button to set it up.");
-      }
-    }).catch(err => {
-      console.error("❌ Storage error:", err);
-    });
-  };
+   const handleSODSubmit=async(sod)=>{
+  const updated={...sodSubmissions,[sod.member]:sod};
+  setSodSubmissions(updated);
+  await storage.set(`sod-${todayStr()}`,JSON.stringify(updated));
+  setShowSodForm(false);
+  
+  const ts=new Date().toISOString();
+  const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+  const nl=[...logs,{id:Date.now(),member:sod.member,type:"in",date:todayStr(),time,timestamp:ts}];
+  saveLogs(nl);
+  setConfirmed(true);
+  setTimeout(()=>setConfirmed(false),2500);
+  
+  // ✅ NEW BOT TOKEN APPROACH
+  const botToken = await storage.get("slack-bot-token");
+  if(botToken?.value) {
+    const sodCount = Object.keys(updated).length;
+    
+    // Login notification to general channel
+    sendToSlack("#general", `🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`, botToken.value);
+    
+    // SOD notification to general channel
+    sendToSlack("#general", `✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`, botToken.value);
+  } else {
+    console.log("❌ No bot token configured");
+  }
+};
 
   const handleEODSubmit=async(eod)=>{
     const updated={...eodSubmissions,[eod.member]:eod};
@@ -2049,11 +2082,21 @@ function AttendanceTracker() {
         <div style={{display:"flex",gap:8}}>
           {isCurrentUserAdmin && (
             <button onClick={async ()=>{
-              const webhook = prompt("Enter Slack Webhook URL:", slackWebhook);
-              if(webhook !== null) {
-                console.log("💾 Saving webhook to storage:", webhook.substring(0, 50) + "...");
-                setSlackWebhook(webhook);
-                await storage.set("slack-webhook", webhook);
+              const botToken = prompt("Enter Slack Bot Token (xoxb-...):", slackWebhook);
+if(botToken !== null) {
+  console.log("💾 Saving bot token...");
+  setSlackWebhook(botToken);
+  await storage.set("slack-bot-token", botToken);
+  
+  const verify = await storage.get("slack-bot-token");
+  console.log("✅ Verified saved token:", verify);
+  
+  if(botToken) {
+    alert("✅ Slack bot token saved!\n\nMessages will now be sent via Slack API.");
+    // Test send to general channel
+    sendToSlack("#general", `🔔 *Bot Token Test*\nConfigured by ${currentUser}!`, botToken);
+  }
+}
                 
                 // Verify it was saved
                 const verify = await storage.get("slack-webhook");
