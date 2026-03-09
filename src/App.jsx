@@ -2124,7 +2124,7 @@ function AttendanceTracker() {
       {/* VIEW TABS */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"space-between"}}>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["eod","📊 EOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],["performance","🎯 PERFORMANCE"],["kpis","📊 LIVE KPIs"],["analytics","📈 ANALYTICS"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"],["reviews","📝 REVIEWS"]]:[] )].map(([v,l])=>(
+          {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["eod","📊 EOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],["performance","🎯 PERFORMANCE"],...(isCurrentUserAdmin?[["kpis","📊 LIVE KPIs"],["analytics","📈 ANALYTICS"],["reports","📊 REPORTS"],["reviews","📝 REVIEWS"]]:[] )].map(([v,l])=>(
             <Pill key={v} label={l} active={view===v} onClick={()=>setView(v)} />
           ))}
         </div>
@@ -2519,12 +2519,12 @@ function AttendanceTracker() {
       )}
 
       {/* LIVE KPI DASHBOARD */}
-      {view==="kpis"&&(
+      {view==="kpis"&&isCurrentUserAdmin&&(
         <LiveKPIDashboard eodSubmissions={eodSubmissions} />
       )}
 
       {/* ADVANCED ANALYTICS */}
-      {view==="analytics"&&(
+      {view==="analytics"&&isCurrentUserAdmin&&(
         <AdvancedAnalytics logs={logs} sodSubmissions={sodSubmissions} eodSubmissions={eodSubmissions} />
       )}
 
