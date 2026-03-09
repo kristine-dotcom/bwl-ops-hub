@@ -975,7 +975,7 @@ function AttendanceTracker() {
         const pending=TEAM_OPS.filter(mem=>!sodSubmissions[mem]);
         if(pending.length>0) {
           // For individual users: only show notification if THEY haven't submitted
-          if(isCurrentUserAdmin) {
+          if(isAdminMode) {
             // Admin sees all pending
             addNotification(`${pending.length} team member(s) haven't submitted SOD yet: ${pending.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
             if(notificationsEnabled) {
@@ -996,7 +996,7 @@ function AttendanceTracker() {
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,sodSubmissions,notificationsEnabled,slackWebhook,currentUser,isCurrentUserAdmin]);
+  },[now,sodSubmissions,notificationsEnabled,slackWebhook,currentUser,isAdminMode]);
 
   // EOD reminder at 5:45 PM
   useEffect(()=>{
@@ -1006,7 +1006,7 @@ function AttendanceTracker() {
         const stillIn=TEAM_OPS.filter(mem=>getStatus(mem)==="in"&&!eodSubmissions[mem]);
         if(stillIn.length>0) {
           // For individual users: only show notification if THEY are still logged in
-          if(isCurrentUserAdmin) {
+          if(isAdminMode) {
             // Admin sees all
             addNotification(`${stillIn.length} team member(s) need to submit EOD: ${stillIn.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
             if(notificationsEnabled) {
@@ -1027,7 +1027,7 @@ function AttendanceTracker() {
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,eodSubmissions,logs,notificationsEnabled,slackWebhook,currentUser,isCurrentUserAdmin]);
+  },[now,eodSubmissions,logs,notificationsEnabled,slackWebhook,currentUser,isAdminMode]);
 
   // Logout reminder at 6:30 PM
   useEffect(()=>{
@@ -1037,7 +1037,7 @@ function AttendanceTracker() {
         const stillIn=TEAM_OPS.filter(mem=>getStatus(mem)==="in");
         if(stillIn.length>0) {
           // For individual users: only show notification if THEY are still logged in
-          if(isCurrentUserAdmin) {
+          if(isAdminMode) {
             // Admin sees all
             addNotification(`${stillIn.length} team member(s) still logged in: ${stillIn.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
             if(notificationsEnabled) {
@@ -1058,7 +1058,7 @@ function AttendanceTracker() {
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,logs,notificationsEnabled,slackWebhook,currentUser,isCurrentUserAdmin]);
+  },[now,logs,notificationsEnabled,slackWebhook,currentUser,isAdminMode]);
 
   useEffect(()=>{
     Promise.all([
