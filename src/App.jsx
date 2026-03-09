@@ -97,10 +97,10 @@ const showNotification = (title, body, icon = "🔔") => {
 
 // ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
 // ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
-const sendToSlack = async (message, userId = null) => {
+const sendToSlack = async (message, userId = null, isAnnouncement = false) => {
   console.log("🔵 Sending to Slack via API route");
   console.log("📝 Message:", message);
-  console.log("👤 Target:", userId ? `DM to ${userId}` : "Channel");
+  console.log("👤 Target:", userId ? `DM to ${userId}` : isAnnouncement ? "#team-announcements" : "#attendance-admin");
   
   try {
     const response = await fetch("/api/slack", {
@@ -108,7 +108,7 @@ const sendToSlack = async (message, userId = null) => {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ message, userId })
+      body: JSON.stringify({ message, userId, isAnnouncement })
     });
     
     const data = await response.json();
@@ -1806,8 +1806,13 @@ function AttendanceTracker() {
               showNotification("⏰ SOD Reminder", `${currentUser.split(" ")[0]}, please submit your SOD`, "📋");
             }
           }
-          // Slack notification
-          sendToSlack(`⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
+          // Slack notification - send DM to each person who hasn't submitted
+          pending.forEach(memberName => {
+            const userSlackId = DEFAULT_SLACK_IDS[memberName];
+            if (userSlackId) {
+              sendToSlack(`⏰ *SOD Reminder*\n\nHi! You haven't submitted your Start of Day (SOD) yet.\n\nPlease submit before starting work today! 📋`, userSlackId);
+            }
+          });
         }
       }
     },60000);
@@ -1836,8 +1841,13 @@ function AttendanceTracker() {
               showNotification("⏰ EOD Reminder", `${currentUser.split(" ")[0]}, please submit your EOD before logout`, "📊");
             }
           }
-          // Slack notification
-          sendToSlack(`⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          // Slack notification - send DM to each person who needs to submit EOD
+          stillIn.forEach(memberName => {
+            const userSlackId = DEFAULT_SLACK_IDS[memberName];
+            if (userSlackId) {
+              sendToSlack(`⏰ *EOD Reminder*\n\nHi! Please submit your End of Day (EOD) report before logging out.\n\nYour shift ends at 5:00 PM. Don't forget to log your metrics! 📊`, userSlackId);
+            }
+          });
         }
       }
     },60000);
@@ -1867,8 +1877,13 @@ function AttendanceTracker() {
               showNotification("⚠️ Still Logged In", `${currentUser.split(" ")[0]}, please log out`, "🔴");
             }
           }
-          // Slack notification
-          sendToSlack(`⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          // Slack notification - send DM to each person still logged in
+          stillIn.forEach(memberName => {
+            const userSlackId = DEFAULT_SLACK_IDS[memberName];
+            if (userSlackId) {
+              sendToSlack(`⚠️ *Still Logged In*\n\nHi! You're still logged in after shift hours (ended at 5:00 PM).\n\nPlease make sure to log out and submit your EOD if you haven't already! 🔴`, userSlackId);
+            }
+          });
         }
       }
     },60000);
@@ -3218,9 +3233,44 @@ function Dashboard({ navigate }) {
   const greeting=getGreeting();
   const [announcements,setAnnouncements]=useState([{id:1,text:"Welcome to the Leverage Operations Hub. Use this space for team-wide notes and announcements.",author:"David Perlov",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}]);
   const [editing,setEditing]=useState(null);const [newNote,setNewNote]=useState("");const [showInput,setShowInput]=useState(false);const [authorName,setAuthorName]=useState("Kristine");
-  const addNote=()=>{if(!newNote.trim()) return;setAnnouncements(prev=>[{id:Date.now(),text:newNote.trim(),author:authorName||"Team",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})},...prev]);setNewNote("");setShowInput(false);};
-  const deleteNote=(id)=>setAnnouncements(prev=>prev.filter(a=>a.id!==id));
-  const saveEdit=(id,text)=>{setAnnouncements(prev=>prev.map(a=>a.id===id?{...a,text}:a));setEditing(null);};
+  
+  // Load announcements from storage
+  useEffect(()=>{
+    storage.get("announcements").then(r=>{
+      if(r?.value) setAnnouncements(JSON.parse(r.value));
+    });
+  },[]);
+  
+  // Save announcements to storage
+  const saveAnnouncements=(newAnnouncements)=>{
+    setAnnouncements(newAnnouncements);
+    storage.set("announcements",JSON.stringify(newAnnouncements));
+  };
+  
+  const addNote=()=>{
+    if(!newNote.trim()) return;
+    const note={id:Date.now(),text:newNote.trim(),author:authorName||"Team",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})};
+    const updated=[note,...announcements];
+    saveAnnouncements(updated);
+    setNewNote("");
+    setShowInput(false);
+    // Send to #team-announcements with @channel mention
+    sendToSlack(`<!channel> 📢 *NEW ANNOUNCEMENT*\n\n*${note.author}* posted:\n"${note.text}"\n\n_Posted: ${note.date}_`, null, true);
+  };
+  const deleteNote=(id)=>{
+    const updated=announcements.filter(a=>a.id!==id);
+    saveAnnouncements(updated);
+  };
+  const saveEdit=(id,text)=>{
+    const announcement=announcements.find(a=>a.id===id);
+    const updated=announcements.map(a=>a.id===id?{...a,text}:a);
+    saveAnnouncements(updated);
+    setEditing(null);
+    // Send to #team-announcements with @channel mention
+    if(announcement) {
+      sendToSlack(`<!channel> ✏️ *ANNOUNCEMENT UPDATED*\n\n*${announcement.author}* edited:\n"${text}"\n\n_Updated: ${new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}_`, null, true);
+    }
+  };
   return (
     <div style={{background:"#F5F5F0",border:"2px solid #000",fontFamily:T.body}}>
       <div style={{padding:"0 32px",borderBottom:"3px solid #000"}}>
