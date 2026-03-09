@@ -1928,12 +1928,10 @@ function AttendanceTracker() {
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
     
-    // Load webhook from storage and send Slack notifications
     // Slack notifications
     const sodCount = Object.keys(updated).length;
-      sendToSlack(`🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`);
-      sendToSlack(`✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
-    }
+    sendToSlack(`🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`);
+    sendToSlack(`✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
   };
 
 
@@ -1951,10 +1949,9 @@ function AttendanceTracker() {
     
     // Slack notifications
     const eodCount = Object.keys(updated).length;
-      const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
-      sendToSlack(`🔴 *LOGGED OUT*\n*${eod.member}* has logged out at ${time}`);
-      sendToSlack(`📊 *EOD Submitted*\n*${eod.member}* - ${eodCount} EODs today\n\n*Metrics:*\n${metricsText}`);
-    }
+    const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
+    sendToSlack(`🔴 *LOGGED OUT*\n*${eod.member}* has logged out at ${time}`);
+    sendToSlack(`📊 *EOD Submitted*\n*${eod.member}* - ${eodCount} EODs today\n\n*Metrics:*\n${metricsText}`);
   };
 
 
