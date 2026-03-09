@@ -1806,7 +1806,6 @@ function AttendanceTracker() {
           }
           // Slack notification
           sendToSlack(`⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
-          }
         }
       }
     },60000);
@@ -1837,7 +1836,6 @@ function AttendanceTracker() {
           }
           // Slack notification
           sendToSlack(`⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
-          }
         }
       }
     },60000);
@@ -1869,7 +1867,6 @@ function AttendanceTracker() {
           }
           // Slack notification
           sendToSlack(`⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
-          }
         }
       }
     },60000);
