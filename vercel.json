@@ -1,8 +1,8 @@
 {
-  "crons": [
-    {
-      "path": "/api/scan",
-      "schedule": "0 14 * * *"
+  "functions": {
+    "api/slack.js": {
+      "memory": 1024,
+      "maxDuration": 10
     }
-  ]
+  }
 }
