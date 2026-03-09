@@ -1,46 +1,45 @@
-export const config = { runtime: 'edge' }
-
-export default async function handler(req) {
+// api/slack.js
+export default async function handler(req, res) {
+  // Only allow POST requests
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const { message } = req.body;
+  const SLACK_BOT_TOKEN = process.env.VITE_SLACK_BOT_TOKEN;
+  const SLACK_CHANNEL = process.env.VITE_SLACK_CHANNEL || '#attendance-admin';
+
+  if (!SLACK_BOT_TOKEN) {
+    return res.status(500).json({ error: 'Slack bot token not configured' });
+  }
+
+  if (!message) {
+    return res.status(400).json({ error: 'Message is required' });
   }
 
   try {
-    const { token, channel, text } = await req.json()
-
-    if (!token) {
-      return new Response(JSON.stringify({ error: 'Missing Slack token' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
-
     const response = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${SLACK_BOT_TOKEN}`,
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ channel, text })
-    })
+      body: JSON.stringify({
+        channel: SLACK_CHANNEL,
+        text: message
+      })
+    });
 
-    const data = await response.json()
+    const data = await response.json();
 
     if (!data.ok) {
-      return new Response(JSON.stringify({ error: data.error }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      })
+      console.error('Slack API error:', data.error);
+      return res.status(500).json({ error: data.error });
     }
 
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Slack fetch error:', error);
+    return res.status(500).json({ error: error.message });
   }
 }
