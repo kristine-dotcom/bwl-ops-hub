@@ -12,6 +12,7 @@ const T = {
 };
 
 const CORRECT_PASSWORD = "leverage2025";
+const ADMIN_PASSWORD = "admin2025";
 const SHIFT_START = "09:00";
 const SHIFT_END = "18:00";
 const PRIORITY_OPTIONS = ["High","Medium","Low"];
@@ -347,6 +348,99 @@ function SODForm({member, onSubmit}) {
     </div>
   );
 }
+// ─── EOD FORM ─────────────────────────────────────────────────────────────────
+function EODForm({member, onSubmit}) {
+  const [eodReport,setEodReport]=useState("");
+  const [metrics,setMetrics]=useState([]);
+  const [submitting,setSubmitting]=useState(false);
+  
+  const kpiData=KPI_DATA[member];
+  
+  // Initialize metrics from KPI data
+  useEffect(()=>{
+    if(kpiData){
+      const allMetrics=kpiData.categories.flatMap(cat=>
+        cat.metrics.map(m=>({name:m.name,value:"",target:m.target,notes:m.notes}))
+      );
+      setMetrics(allMetrics);
+    }
+  },[member]);
+
+  const updateMetric=(i,val)=>setMetrics(prev=>prev.map((m,idx)=>idx===i?{...m,value:val}:m));
+  const canSubmit=eodReport.trim()&&metrics.every(m=>m.value.trim());
+
+  const handleSubmit=async()=>{
+    if(!canSubmit) return;
+    setSubmitting(true);
+    const eod={
+      member,date:todayStr(),
+      submittedAt:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}),
+      eodReport:eodReport.trim(),
+      metrics:metrics.filter(m=>m.value.trim()),
+    };
+    setTimeout(()=>onSubmit(eod),800);
+  };
+
+  if(submitting) return (
+    <div style={{textAlign:"center",padding:"48px 20px"}}>
+      <div style={{fontSize:48,marginBottom:12}}>✅</div>
+      <div style={{fontSize:16,fontWeight:700,fontFamily:T.font,marginBottom:6}}>EOD Submitted!</div>
+      <div style={{fontSize:12,color:T.gray,fontFamily:T.mono,letterSpacing:1}}>Unlocking your Log Out…</div>
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* Banner */}
+      <div style={{background:"#fff0f0",border:`2px solid ${T.red}`,padding:"12px 16px",fontSize:12,color:T.darkGray,lineHeight:1.6}}>
+        📊 <strong>Submit your End of Day report and metrics.</strong> Once submitted, your <strong>Log Out button will unlock</strong>. Your EOD will be visible to Kristine and David.
+      </div>
+
+      {/* EOD Report */}
+      <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+        <div style={{background:T.black,padding:"10px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>END OF DAY REPORT *</div>
+        </div>
+        <textarea value={eodReport} onChange={e=>setEodReport(e.target.value)} 
+          placeholder={kpiData?.eod?.join("\n") || "Describe your accomplishments, challenges, and tomorrow's plan…"}
+          style={{width:"100%",minHeight:140,background:"transparent",border:"none",padding:14,fontSize:13,outline:"none",fontFamily:T.mono,lineHeight:1.7,resize:"vertical",color:T.black,display:"block"}} />
+      </div>
+
+      {/* Metrics */}
+      <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+        <div style={{background:T.black,padding:"10px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>TODAY'S METRICS *</div>
+        </div>
+        <div style={{padding:14,display:"flex",flexDirection:"column",gap:12}}>
+          {kpiData && kpiData.categories.map((cat,ci)=>(
+            <div key={ci}>
+              <div style={{fontSize:10,fontWeight:700,color:T.grayLight,fontFamily:T.mono,letterSpacing:2,marginBottom:8}}>{cat.name.toUpperCase()}</div>
+              {cat.metrics.map((metric,mi)=>{
+                const idx=metrics.findIndex(m=>m.name===metric.name);
+                if(idx===-1) return null;
+                return (
+                  <div key={mi} style={{marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:600,color:T.black,marginBottom:4}}>{metric.name}</div>
+                    <div style={{fontSize:10,color:T.grayLight,marginBottom:4,fontFamily:T.mono}}>Target: {metric.target} · {metric.notes}</div>
+                    <input value={metrics[idx].value} onChange={e=>updateMetric(idx,e.target.value)} 
+                      placeholder={`Enter your ${metric.name.toLowerCase()}…`}
+                      style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,padding:"9px 12px",fontSize:13,outline:"none",fontFamily:T.body,color:T.black}} />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Submit */}
+      <button onClick={handleSubmit} disabled={!canSubmit}
+        style={{width:"100%",padding:"14px",background:canSubmit?T.red:"#E5E0D8",color:canSubmit?"#fff":T.gray,border:"none",fontSize:13,fontWeight:700,cursor:canSubmit?"pointer":"not-allowed",letterSpacing:2,fontFamily:T.font}}>
+        {canSubmit?"✅  SUBMIT EOD & UNLOCK LOG OUT":"COMPLETE ALL FIELDS TO CONTINUE"}
+      </button>
+    </div>
+  );
+}
 // ─── NOTIFICATION CENTER ──────────────────────────────────────────────────────
 function NotificationCenter({notifications, onDismiss}) {
   if(!notifications.length) return null;
@@ -406,6 +500,7 @@ function exportAttendanceCSV(logs, weekDates, TEAM_OPS) {
 function AttendanceTracker() {
   const [logs,setLogs]=useState([]);
   const [sodSubmissions,setSodSubmissions]=useState({});
+  const [eodSubmissions,setEodSubmissions]=useState({});
   const [selectedMember,setSelectedMember]=useState(null);
   const [currentUser,setCurrentUser]=useState(null);
   const [showUserSelect,setShowUserSelect]=useState(true);
@@ -414,8 +509,13 @@ function AttendanceTracker() {
   const [now,setNow]=useState(new Date());
   const [confirmed,setConfirmed]=useState(false);
   const [showSodForm,setShowSodForm]=useState(false);
+  const [showEodForm,setShowEodForm]=useState(false);
   const [notifications,setNotifications]=useState([]);
   const [autoLogoutSettings]=useState({enabled:true,maxHours:10});
+  const [showAdminAccess,setShowAdminAccess]=useState(false);
+  const [adminPassword,setAdminPassword]=useState("");
+  const [adminError,setAdminError]=useState(false);
+  const [isAdminMode,setIsAdminMode]=useState(false);
 
   const addNotification=(message,type="warning")=>{
     const id=Date.now();
@@ -474,15 +574,29 @@ function AttendanceTracker() {
   useEffect(()=>{
     Promise.all([
       storage.get("attendance-logs"),
-      storage.get(`sod-${todayStr()}`)
-    ]).then(([r,s])=>{
+      storage.get(`sod-${todayStr()}`),
+      storage.get(`eod-${todayStr()}`)
+    ]).then(([r,s,e])=>{
       if(r) setLogs(JSON.parse(r.value));
       if(s) setSodSubmissions(JSON.parse(s.value));
+      if(e) setEodSubmissions(JSON.parse(e.value));
       setLoading(false);
     });
   },[]);
 
   const saveLogs=async(nl)=>{setLogs(nl);await storage.set("attendance-logs",JSON.stringify(nl));};
+
+  const verifyAdminPassword=()=>{
+    if(adminPassword===ADMIN_PASSWORD){
+      setIsAdminMode(true);
+      setShowAdminAccess(false);
+      setAdminPassword("");
+    } else {
+      setAdminError(true);
+      setAdminPassword("");
+      setTimeout(()=>setAdminError(false),2000);
+    }
+  };
 
   const getMemberToday=(member)=>logs.filter(l=>l.member===member&&l.date===todayStr());
   const getStatus=(member)=>{
@@ -491,6 +605,7 @@ function AttendanceTracker() {
     return tl[tl.length-1].type==="in"?"in":"out";
   };
   const hasSodToday=(member)=>!!sodSubmissions[member];
+  const hasEodToday=(member)=>!!eodSubmissions[member];
 
   const isLate=(member,date)=>{
     const d=date||todayStr();
@@ -515,8 +630,14 @@ function AttendanceTracker() {
   const logAction=()=>{
     if(!selectedMember) return;
     const status=getStatus(selectedMember);
+    // Check for SOD when logging IN
     if(status!=="in"&&!hasSodToday(selectedMember)){
       setShowSodForm(true);
+      return;
+    }
+    // Check for EOD when logging OUT
+    if(status==="in"&&!hasEodToday(selectedMember)){
+      setShowEodForm(true);
       return;
     }
     const type=status==="in"?"out":"in";
@@ -540,6 +661,19 @@ function AttendanceTracker() {
     setTimeout(()=>setConfirmed(false),2500);
   };
 
+  const handleEODSubmit=async(eod)=>{
+    const updated={...eodSubmissions,[eod.member]:eod};
+    setEodSubmissions(updated);
+    await storage.set(`eod-${todayStr()}`,JSON.stringify(updated));
+    setShowEodForm(false);
+    const ts=new Date().toISOString();
+    const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+    const nl=[...logs,{id:Date.now(),member:eod.member,type:"out",date:todayStr(),time,timestamp:ts}];
+    saveLogs(nl);
+    setConfirmed(true);
+    setTimeout(()=>setConfirmed(false),2500);
+  };
+
   const getWeekDates=()=>{
     const d=new Date(),day=d.getDay(),mon=new Date(d);
     mon.setDate(d.getDate()-(day===0?6:day-1));
@@ -552,8 +686,44 @@ function AttendanceTracker() {
 
   if(loading) return <LoadingScreen />;
 
-  const isCurrentUserAdmin=currentUser?isAdmin(currentUser):false;
+  const isCurrentUserAdmin=isAdminMode;
   const viewMembers=isCurrentUserAdmin?TEAM_OPS:[currentUser];
+
+  // Admin Access Modal
+  if(showAdminAccess) return (
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{width:"100%",maxWidth:480}}>
+        <Card style={{padding:32,textAlign:"center",border:`3px solid ${adminError?T.red:T.orange}`}}>
+          <div style={{fontSize:48,marginBottom:20}}>🛡️</div>
+          <div style={{fontSize:20,fontWeight:700,fontFamily:T.font,marginBottom:6}}>Admin Access</div>
+          <div style={{fontSize:12,color:T.grayLight,fontFamily:T.mono,marginBottom:24,letterSpacing:1}}>
+            Enter admin password to continue
+          </div>
+          <div style={{background:T.black,padding:"20px 24px",marginBottom:20}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:3,marginBottom:10}}>ADMIN ZONE</div>
+            <div style={{fontSize:10,color:"#666",fontFamily:T.mono,letterSpacing:1}}>Manager-only access</div>
+          </div>
+          <input 
+            type="password" 
+            value={adminPassword} 
+            onChange={e=>setAdminPassword(e.target.value)} 
+            onKeyDown={e=>e.key==="Enter"&&adminPassword&&verifyAdminPassword()}
+            placeholder="●●●●●●●●"
+            autoFocus
+            style={{width:"100%",background:T.black,border:`2px solid ${adminError?T.red:T.black}`,color:"#fff",fontSize:16,padding:"14px 18px",outline:"none",fontFamily:T.mono,letterSpacing:4,textAlign:"center",marginBottom:16}} />
+          {adminError&&<div style={{fontSize:12,color:T.red,fontFamily:T.mono,marginBottom:12,letterSpacing:1,fontWeight:700}}>✗ INCORRECT PASSWORD</div>}
+          <button onClick={verifyAdminPassword} disabled={!adminPassword}
+            style={{width:"100%",padding:"14px",background:adminPassword?T.orange:"#E5E0D8",color:adminPassword?"#fff":T.gray,border:"none",fontSize:13,fontWeight:700,cursor:adminPassword?"pointer":"not-allowed",letterSpacing:2,fontFamily:T.font,marginBottom:12}}>
+            {adminPassword?"UNLOCK ADMIN →":"ENTER PASSWORD"}
+          </button>
+          <button onClick={()=>{setShowAdminAccess(false);setAdminPassword("");setAdminError(false);}}
+            style={{width:"100%",padding:"12px",background:"transparent",color:T.gray,border:`2px solid ${T.black}`,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:2,fontFamily:T.mono}}>
+            ← BACK
+          </button>
+        </Card>
+      </div>
+    </div>
+  );
 
   // User selection screen
   if(showUserSelect||!currentUser) return (
@@ -569,13 +739,19 @@ function AttendanceTracker() {
                 style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"14px 18px",borderRadius:0,background:T.bg,color:T.darkGray,border:`2px solid ${T.black}`,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:T.font,transition:"all 0.15s",position:"relative"}}
                 onMouseEnter={e=>e.currentTarget.style.borderColor=T.orange}
                 onMouseLeave={e=>e.currentTarget.style.borderColor=T.black}>
-                {admin&&<div style={{position:"absolute",top:4,right:4,fontSize:9,fontWeight:700,color:T.orange,fontFamily:T.mono}}>🔑 ADMIN</div>}
+                {admin&&<div style={{position:"absolute",top:4,right:4,fontSize:9,fontWeight:700,color:T.orange,fontFamily:T.mono}}>🔑</div>}
                 <Avatar name={m} size={48} muted={!hasSod} />
                 <span>{m}</span>
                 <span style={{width:10,height:10,borderRadius:"50%",background:hasSod?statusColor(getStatus(m)):T.red,border:"1px solid rgba(0,0,0,0.2)"}} />
               </button>
             );
           })}
+        </div>
+      </Card>
+      <Card style={{padding:"16px 20px",textAlign:"center",cursor:"pointer",border:`2px solid ${T.black}`}} hover onClick={()=>setShowAdminAccess(true)}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+          <span style={{fontSize:18}}>🛡️</span>
+          <div style={{fontSize:13,fontWeight:700,fontFamily:T.mono,letterSpacing:2,color:T.orange}}>ADMIN ACCESS</div>
         </div>
       </Card>
     </div>
@@ -596,6 +772,7 @@ function AttendanceTracker() {
   const avgHoursPerDay=isCurrentUserAdmin?(weeklyTotal/(weekDates.length*TEAM_OPS.length)).toFixed(1):0;
   const lateArrivals=isCurrentUserAdmin?weekDates.reduce((s,d)=>s+TEAM_OPS.filter(m=>isLate(m,d)).length,0):0;
   const perfectAttendance=isCurrentUserAdmin?TEAM_OPS.filter(m=>weekDates.every(d=>!isLate(m,d)&&logs.some(l=>l.member===m&&l.date===d&&l.type==="in"))).length:0;
+  const eodCount=Object.keys(eodSubmissions).length;
 
   if(showSodForm&&selectedMember) return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -611,6 +788,20 @@ function AttendanceTracker() {
     </div>
   );
 
+  if(showEodForm&&selectedMember) return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <NotificationCenter notifications={notifications} onDismiss={id=>setNotifications(prev=>prev.filter(n=>n.id!==id))} />
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:700,fontFamily:T.font}}>{selectedMember}</div>
+          <div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submit EOD and Metrics to unlock Log Out</div>
+        </div>
+        <button onClick={()=>setShowEodForm(false)} style={{background:"none",border:`2px solid ${T.black}`,padding:"6px 14px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,color:T.gray}}>← BACK</button>
+      </div>
+      <EODForm member={selectedMember} onSubmit={handleEODSubmit} />
+    </div>
+  );
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <NotificationCenter notifications={notifications} onDismiss={id=>setNotifications(prev=>prev.filter(n=>n.id!==id))} />
@@ -618,7 +809,7 @@ function AttendanceTracker() {
       {/* STATS BAR */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
         {isCurrentUserAdmin ? (
-          [["IN NOW",inNow,T.green],["PRESENT TODAY",presentToday,T.orange],["SOD SUBMITTED",sodCount,sodCount===TEAM_OPS.length?T.green:T.yellow],["LATE TODAY",lateToday,lateToday>0?T.red:T.green]].map(([l,v,c])=>(
+          [["IN NOW",inNow,T.green],["SOD SUBMITTED",sodCount,sodCount===TEAM_OPS.length?T.green:T.yellow],["EOD SUBMITTED",eodCount,eodCount===inNow?T.green:T.red],["LATE TODAY",lateToday,lateToday>0?T.red:T.green]].map(([l,v,c])=>(
             <div key={l} style={{background:T.black,border:`2px solid ${T.black}`,padding:"14px 18px"}}>
               <div style={{fontSize:9,color:"#666",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
               <div style={{fontSize:28,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
@@ -626,7 +817,7 @@ function AttendanceTracker() {
             </div>
           ))
         ) : (
-          [["STATUS",statusLabel(memberStatus),statusColor(memberStatus)],["HOURS TODAY",hoursToday+"h",T.orange],["SOD",hasSodToday(currentUser)?"✓ SUBMITTED":"PENDING",hasSodToday(currentUser)?T.green:T.red],["THIS WEEK",weekDates.reduce((s,d)=>s+parseFloat(getTotalHours(currentUser,d)),0).toFixed(1)+"h",T.purple]].map(([l,v,c])=>(
+          [["STATUS",statusLabel(memberStatus),statusColor(memberStatus)],["HOURS TODAY",hoursToday+"h",T.orange],["SOD",hasSodToday(currentUser)?"✓ SUBMITTED":"PENDING",hasSodToday(currentUser)?T.green:T.red],["EOD",hasEodToday(currentUser)?"✓ SUBMITTED":"PENDING",hasEodToday(currentUser)?T.green:T.red]].map(([l,v,c])=>(
             <div key={l} style={{background:T.black,border:`2px solid ${T.black}`,padding:"14px 18px"}}>
               <div style={{fontSize:9,color:"#666",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
               <div style={{fontSize:24,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
@@ -636,9 +827,16 @@ function AttendanceTracker() {
       </div>
 
       {/* SWITCH USER */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
         <div style={{fontSize:12,color:T.grayLight,fontFamily:T.mono}}>Logged in as: <strong>{currentUser}</strong>{isCurrentUserAdmin&&<span style={{color:T.orange,marginLeft:6}}>🔑 ADMIN</span>}</div>
-        <button onClick={()=>{setCurrentUser(null);setSelectedMember(null);setShowUserSelect(true);}} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.bg,color:T.darkGray,border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SWITCH USER</button>
+        <div style={{display:"flex",gap:8}}>
+          {!isCurrentUserAdmin ? (
+            <button onClick={()=>setShowAdminAccess(true)} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>🛡️ ADMIN</button>
+          ) : (
+            <button onClick={()=>{setIsAdminMode(false);setSelectedMember(currentUser);}} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.red,color:"#fff",border:`2px solid ${T.red}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>← EXIT ADMIN</button>
+          )}
+          <button onClick={()=>{setCurrentUser(null);setSelectedMember(null);setShowUserSelect(true);setIsAdminMode(false);}} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.bg,color:T.darkGray,border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SWITCH USER</button>
+        </div>
       </div>
 
       {/* PENDING SOD WARNING */}
@@ -687,6 +885,8 @@ function AttendanceTracker() {
             <Badge label={statusLabel(memberStatus)} color={statusColor(memberStatus)} />
             {hasSodToday(selectedMember)&&<Badge label={`SOD @ ${sodSubmissions[selectedMember]?.submittedAt}`} color={T.green} />}
             {!hasSodToday(selectedMember)&&<Badge label="NO SOD YET" color={T.red} />}
+            {hasEodToday(selectedMember)&&<Badge label={`EOD @ ${eodSubmissions[selectedMember]?.submittedAt}`} color={T.green} />}
+            {!hasEodToday(selectedMember)&&isIn&&<Badge label="NO EOD YET" color={T.red} />}
             {isLate(selectedMember)&&memberStatus==="in"&&<Badge label="LATE ARRIVAL" color={T.red} />}
           </div>
           <div style={{fontSize:13,color:T.grayLight,fontFamily:T.mono,marginTop:10}}>
@@ -711,6 +911,16 @@ function AttendanceTracker() {
                 📋  SUBMIT SOD
               </button>
             </div>
+          ) : !hasEodToday(selectedMember)&&isIn ? (
+            <div style={{marginTop:14}}>
+              <div style={{fontSize:12,color:T.red,fontFamily:T.mono,fontWeight:700,letterSpacing:1,marginBottom:10}}>
+                🔒 SUBMIT EOD & METRICS TO LOG OUT
+              </div>
+              <button onClick={()=>setShowEodForm(true)}
+                style={{width:"100%",maxWidth:340,padding:"16px",borderRadius:0,background:T.red,color:"#fff",border:"none",fontSize:14,fontWeight:700,cursor:"pointer",letterSpacing:2,fontFamily:T.font}}>
+                📊  SUBMIT EOD & METRICS
+              </button>
+            </div>
           ) : (
             <button onClick={logAction}
               style={{width:"100%",maxWidth:340,padding:"18px",borderRadius:0,background:isIn?T.red:T.green,color:"#fff",border:"none",fontSize:16,fontWeight:700,cursor:"pointer",letterSpacing:3,fontFamily:T.font,marginTop:14,transition:"opacity 0.15s"}}
@@ -732,7 +942,7 @@ function AttendanceTracker() {
 
       {/* VIEW TABS */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"]]:[] )].map(([v,l])=>(
+        {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["eod","📊 EOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"]]:[] )].map(([v,l])=>(
           <Pill key={v} label={l} active={view===v} onClick={()=>setView(v)} />
         ))}
       </div>
@@ -893,6 +1103,59 @@ function AttendanceTracker() {
                         {sod.blockers}
                       </div>
                     )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* EOD TODAY VIEW */}
+      {view==="eod"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono,letterSpacing:1,marginBottom:4}}>TODAY'S EOD SUBMISSIONS — {new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
+          {viewMembers.map(member=>{
+            const eod=eodSubmissions[member];
+            const kpiData=KPI_DATA[member];
+            return (
+              <Card key={member} style={{overflow:"hidden",borderLeft:`4px solid ${eod?T.green:T.red}`}}>
+                <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <Avatar name={member} size={32} muted={!eod} />
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13}}>{member}</div>
+                      {eod&&<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {eod.submittedAt} · {eod.metrics.length} metrics</div>}
+                    </div>
+                  </div>
+                  {eod ? <Badge label={`EOD ✓`} color={T.green} /> : <Badge label="PENDING" color={T.red} />}
+                </div>
+                {eod&&(
+                  <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 16px",background:T.bg,display:"flex",flexDirection:"column",gap:8}}>
+                    {eod.eodReport&&(
+                      <div style={{padding:"10px 14px",background:T.surface,borderLeft:`3px solid ${T.orange}`}}>
+                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:6}}>EOD REPORT</span>
+                        <pre style={{fontSize:12,color:T.darkGray,fontFamily:T.mono,lineHeight:1.6,margin:0,whiteSpace:"pre-wrap"}}>{eod.eodReport}</pre>
+                      </div>
+                    )}
+                    {kpiData && kpiData.categories.map((cat,ci)=>{
+                      const catMetrics=eod.metrics.filter(m=>cat.metrics.some(cm=>cm.name===m.name));
+                      if(catMetrics.length===0) return null;
+                      return (
+                        <div key={ci}>
+                          <div style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.grayLight,letterSpacing:2,marginBottom:6,marginLeft:2}}>{cat.name.toUpperCase()}</div>
+                          {catMetrics.map((m,mi)=>(
+                            <div key={mi} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",background:T.surface,borderLeft:`3px solid ${kpiData.color}`,marginBottom:4}}>
+                              <div>
+                                <div style={{fontSize:12,fontWeight:600,color:T.black}}>{m.name}</div>
+                                <div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Target: {m.target}</div>
+                              </div>
+                              <div style={{fontSize:15,fontWeight:800,color:kpiData.color,fontFamily:T.font}}>{m.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </Card>
