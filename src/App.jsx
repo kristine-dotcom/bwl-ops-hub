@@ -14,6 +14,8 @@ const T = {
 const CORRECT_PASSWORD = "leverage2025";
 const SHIFT_START = "09:00";
 const SHIFT_END = "18:00";
+const PRIORITY_OPTIONS = ["High","Medium","Low"];
+const TIME_OPTIONS = ["9:00 AM","10:00 AM","11:00 AM","12:00 PM","1:00 PM","2:00 PM","3:00 PM","4:00 PM","5:00 PM","6:00 PM","EOD"];
 
 const GlobalStyle = () => (
   <style>{`
@@ -40,12 +42,12 @@ const storage = {
   delete: async (key) => { try { await window.storage.delete(key); } catch {} },
 };
 
+const todayStr = () => new Date().toISOString().split("T")[0];
 const weekLabel = () => {
   const now=new Date(),day=now.getDay(),mon=new Date(now);
   mon.setDate(now.getDate()-(day===0?6:day-1));
   return `Week of ${mon.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}`;
 };
-
 const useIsMobile = () => {
   const [m,setM]=useState(window.innerWidth<=768);
   useEffect(()=>{ const h=()=>setM(window.innerWidth<=768); window.addEventListener("resize",h); return ()=>window.removeEventListener("resize",h); },[]);
@@ -56,7 +58,6 @@ async function claudeFetch(body) {
   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(body)});
   return r.json();
 }
-
 async function callClaude(prompt, maxTokens=2000) {
   const data=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]});
   if(data.error) throw new Error(data.error.message);
@@ -65,34 +66,21 @@ async function callClaude(prompt, maxTokens=2000) {
   return JSON.parse(clean.slice(clean.indexOf("{"),clean.lastIndexOf("}")+1));
 }
 
+const priorityColor = p => ({High:T.red,Medium:T.yellow,Low:T.green,high:T.red,medium:T.yellow,low:T.green}[p]||T.gray);
+
+// ─── SHARED UI ────────────────────────────────────────────────────────────────
 const Badge = ({label,color=T.orange,bg}) => (
   <span style={{display:"inline-flex",alignItems:"center",background:bg||"transparent",color,border:`1.5px solid ${color}`,borderRadius:0,padding:"2px 8px",fontSize:10,fontWeight:700,letterSpacing:1.5,fontFamily:T.mono,textTransform:"uppercase"}}>{label}</span>
 );
-
-const Pill = ({label,color=T.orange,active,onClick}) => {
+const Pill = ({label,active,onClick}) => {
   const [hov,setHov]=useState(false);
-  return (
-    <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{padding:"5px 14px",borderRadius:0,fontSize:10,fontWeight:700,letterSpacing:1.5,background:active?T.black:hov?T.black:T.surface,color:active?T.orange:hov?"#fff":T.gray,border:`2px solid ${T.black}`,cursor:"pointer",transition:"all 0.15s",fontFamily:T.mono,textTransform:"uppercase"}}>
-      {label}
-    </button>
-  );
+  return <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{padding:"5px 14px",borderRadius:0,fontSize:10,fontWeight:700,letterSpacing:1.5,background:active?T.black:hov?T.black:T.surface,color:active?T.orange:hov?"#fff":T.gray,border:`2px solid ${T.black}`,cursor:"pointer",transition:"all 0.15s",fontFamily:T.mono,textTransform:"uppercase"}}>{label}</button>;
 };
-
 const Card = ({children,style={},hover=false}) => {
   const [isHov,setIsHov]=useState(false);
-  return (
-    <div onMouseEnter={()=>hover&&setIsHov(true)} onMouseLeave={()=>hover&&setIsHov(false)}
-      style={{background:T.surface,border:`2px solid ${T.black}`,borderRadius:0,borderTop:hover&&isHov?`4px solid ${T.orange}`:`2px solid ${T.black}`,transition:"border-top 0.15s",overflow:"hidden",...style}}>
-      {children}
-    </div>
-  );
+  return <div onMouseEnter={()=>hover&&setIsHov(true)} onMouseLeave={()=>hover&&setIsHov(false)} style={{background:T.surface,border:`2px solid ${T.black}`,borderRadius:0,borderTop:hover&&isHov?`4px solid ${T.orange}`:`2px solid ${T.black}`,transition:"border-top 0.15s",overflow:"hidden",...style}}>{children}</div>;
 };
-
-const CardLabel = ({children,color=T.orange}) => (
-  <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color,textTransform:"uppercase",fontFamily:T.mono}}>{children}</div>
-);
-
+const CardLabel = ({children,color=T.orange}) => <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color,textTransform:"uppercase",fontFamily:T.mono}}>{children}</div>;
 const SectionHeader = ({label,action}) => (
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`2px solid ${T.black}`,background:T.black}}>
     <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -102,84 +90,45 @@ const SectionHeader = ({label,action}) => (
     {action}
   </div>
 );
-
 const Input = ({value,onChange,placeholder,type="text",style={},...props}) => {
   const [focused,setFocused]=useState(false);
-  return (
-    <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
-      style={{width:"100%",background:T.surface,border:`2px solid ${focused?T.orange:T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.body,transition:"border-color 0.15s",...style}}
-      onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} {...props} />
-  );
+  return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{width:"100%",background:T.surface,border:`2px solid ${focused?T.orange:T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.body,transition:"border-color 0.15s",...style}} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} {...props} />;
 };
-
 const Textarea = ({label,value,onChange,placeholder,minHeight=120}) => {
   const [focused,setFocused]=useState(false);
   return (
     <div style={{background:T.surface,border:`2px solid ${focused?T.orange:T.black}`,borderRadius:0,overflow:"hidden",transition:"border-color 0.15s"}}>
       {label&&<div style={{padding:"12px 16px",borderBottom:`2px solid ${T.black}`,background:T.black}}><div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:T.orange,textTransform:"uppercase",fontFamily:T.mono}}>{label}</div></div>}
-      <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
-        onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
-        style={{width:"100%",minHeight,background:"transparent",border:"none",color:T.black,fontSize:13,padding:16,resize:"vertical",outline:"none",fontFamily:T.body,lineHeight:1.7,display:"block"}} />
+      <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} style={{width:"100%",minHeight,background:"transparent",border:"none",color:T.black,fontSize:13,padding:16,resize:"vertical",outline:"none",fontFamily:T.body,lineHeight:1.7,display:"block"}} />
     </div>
   );
 };
-
 const Btn = ({onClick,disabled,loading,label,color,icon,variant="primary"}) => {
   const [hov,setHov]=useState(false);
   const bg=disabled?"#E5E0D8":variant==="ghost"?"transparent":hov?T.orange:(color||T.black);
   const col=disabled?T.gray:variant==="ghost"?T.black:"#fff";
   const border=variant==="ghost"?`2px solid ${T.black}`:disabled?`2px solid ${T.border}`:`2px solid ${T.black}`;
-  return (
-    <button onClick={onClick} disabled={disabled||loading} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{width:"100%",padding:"12px 20px",borderRadius:0,background:bg,color:col,border,fontSize:12,fontWeight:700,cursor:disabled?"not-allowed":"pointer",letterSpacing:2,display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"background 0.15s",fontFamily:T.font,textTransform:"uppercase"}}>
-      {icon&&<span style={{fontSize:14}}>{icon}</span>}
-      {loading?"GENERATING…":label}
-    </button>
-  );
+  return <button onClick={onClick} disabled={disabled||loading} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{width:"100%",padding:"12px 20px",borderRadius:0,background:bg,color:col,border,fontSize:12,fontWeight:700,cursor:disabled?"not-allowed":"pointer",letterSpacing:2,display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"background 0.15s",fontFamily:T.font,textTransform:"uppercase"}}>{icon&&<span style={{fontSize:14}}>{icon}</span>}{loading?"GENERATING…":label}</button>;
 };
-
 const CopyBtn = ({text}) => {
   const [copied,setCopied]=useState(false);
-  return (
-    <button onClick={()=>{navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),2000);}}
-      style={{background:copied?T.green:T.black,color:"#fff",border:"none",borderRadius:0,padding:"5px 14px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"background 0.2s",fontFamily:T.mono,letterSpacing:1}}>
-      {copied?"✓ COPIED":"COPY"}
-    </button>
-  );
+  return <button onClick={()=>{navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),2000);}} style={{background:copied?T.green:T.black,color:"#fff",border:"none",borderRadius:0,padding:"5px 14px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"background 0.2s",fontFamily:T.mono,letterSpacing:1}}>{copied?"✓ COPIED":"COPY"}</button>;
 };
-
-const Err = ({msg}) => msg?(
-  <div style={{background:T.orangeSoft,border:`2px solid ${T.orange}`,borderRadius:0,padding:"12px 16px",color:T.orange,fontSize:13,display:"flex",gap:8,alignItems:"flex-start"}}>
-    <span>⚠</span><span>{msg}</span>
-  </div>
-):null;
-
+const Err = ({msg}) => msg?<div style={{background:T.orangeSoft,border:`2px solid ${T.orange}`,borderRadius:0,padding:"12px 16px",color:T.orange,fontSize:13,display:"flex",gap:8,alignItems:"flex-start"}}><span>⚠</span><span>{msg}</span></div>:null;
 const Bullets = ({label,items,color}) => {
   if(!items?.length) return null;
-  return (
-    <Card style={{padding:16}}>
-      <CardLabel color={color}>{label}</CardLabel>
-      <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
-        {items.map((w,i)=><div key={i} style={{fontSize:13,color:T.darkGray,lineHeight:1.6,paddingLeft:12,borderLeft:`2px solid ${color}`}}>{w}</div>)}
-      </div>
-    </Card>
-  );
+  return <Card style={{padding:16}}><CardLabel color={color}>{label}</CardLabel><div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>{items.map((w,i)=><div key={i} style={{fontSize:13,color:T.darkGray,lineHeight:1.6,paddingLeft:12,borderLeft:`2px solid ${color}`}}>{w}</div>)}</div></Card>;
 };
-
 const ProgressBar = ({value,color,height=6}) => (
   <div style={{background:T.border,borderRadius:0,height,overflow:"hidden"}}>
     <div style={{height:"100%",width:`${value}%`,background:value===100?T.green:(color||T.orange),borderRadius:0,transition:"width 0.4s ease"}} />
   </div>
 );
-
-const Avatar = ({name,size=32}) => {
+const Avatar = ({name,size=32,muted=false}) => {
   const initials=name.split(" ").map(n=>n[0]).slice(0,2).join("");
   const hue=name.split("").reduce((a,c)=>a+c.charCodeAt(0),0)%360;
-  return (
-    <div style={{width:size,height:size,borderRadius:0,background:`hsl(${hue},60%,88%)`,color:`hsl(${hue},50%,35%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.36,fontWeight:700,flexShrink:0,fontFamily:T.font,border:`2px solid ${T.black}`}}>{initials}</div>
-  );
+  return <div style={{width:size,height:size,borderRadius:0,background:muted?"#ddd":`hsl(${hue},60%,88%)`,color:muted?"#999":`hsl(${hue},50%,35%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.36,fontWeight:700,flexShrink:0,fontFamily:T.font,border:`2px solid ${muted?"#ccc":T.black}`}}>{initials}</div>;
 };
-
 const LoadingScreen = () => (
   <div style={{padding:60,textAlign:"center"}}>
     <div style={{width:40,height:40,border:`3px solid ${T.border}`,borderTopColor:T.orange,borderRadius:"50%",margin:"0 auto 16px",animation:"spin 0.8s linear infinite"}} />
@@ -187,13 +136,13 @@ const LoadingScreen = () => (
   </div>
 );
 
+// ─── PROPOSAL HELPERS ─────────────────────────────────────────────────────────
 const isSectionHeader=(line)=>{if(line.length<5) return false;const twoDigits=line[0]>="0"&&line[0]<="9"&&line[1]>="0"&&line[1]<="9";return twoDigits&&line.indexOf("//")!==-1;};
 const parseSectionHeader=(line)=>{const slashIdx=line.indexOf("//");return {num:line.slice(0,2),title:line.slice(slashIdx+2).trim()};};
 const isKeyInsight=(line)=>line.toUpperCase().indexOf("KEY INSIGHT")!==-1&&line.indexOf("//")!==-1;
 const isTableRow=(line)=>line.includes("|")&&line.split("|").length>=3;
 const isDividerRow=(line)=>{const stripped=line.replace(/[\|\s\-]/g,"");return stripped.length===0;};
 const isAllCapsSubtitle=(line)=>{if(line.length<4||line.length>60) return false;if(line[0]>="0"&&line[0]<="9") return false;return line===line.toUpperCase();};
-
 const parseProposalText=(text)=>{
   const blocks=[];const lines=text.split("\n");let i=0;
   while(i<lines.length){
@@ -209,20 +158,13 @@ const parseProposalText=(text)=>{
   }
   return blocks;
 };
-
 const ProposalTable = ({rows}) => {
   if(!rows||rows.length===0) return null;
   const header=rows[0],body=rows.slice(1);
   const thStyle={padding:"10px 14px",color:"#fff",textAlign:"left",fontWeight:700,letterSpacing:1,fontSize:10};
   const tdStyle={padding:"9px 14px",color:T.black,fontSize:12};
-  return (
-    <table style={{width:"100%",borderCollapse:"collapse",margin:"16px 0",fontFamily:T.mono,fontSize:12}}>
-      <thead><tr style={{background:T.black}}>{header.map((h,hi)=><th key={hi} style={thStyle}>{h}</th>)}</tr></thead>
-      <tbody>{body.map((row,ri)=><tr key={ri} style={{background:ri%2===0?T.cream:"#EBEBDF",borderBottom:"1px solid "+T.border}}>{row.map((cell,ci)=><td key={ci} style={tdStyle}>{cell}</td>)}</tr>)}</tbody>
-    </table>
-  );
+  return <table style={{width:"100%",borderCollapse:"collapse",margin:"16px 0",fontFamily:T.mono,fontSize:12}}><thead><tr style={{background:T.black}}>{header.map((h,hi)=><th key={hi} style={thStyle}>{h}</th>)}</tr></thead><tbody>{body.map((row,ri)=><tr key={ri} style={{background:ri%2===0?T.cream:"#EBEBDF",borderBottom:"1px solid "+T.border}}>{row.map((cell,ci)=><td key={ci} style={tdStyle}>{cell}</td>)}</tr>)}</tbody></table>;
 };
-
 const BrandedProposal = ({proposal,rfp}) => {
   const now=new Date();
   const monthYear=now.toLocaleDateString("en-US",{month:"long",year:"numeric"}).toUpperCase();
@@ -239,9 +181,7 @@ const BrandedProposal = ({proposal,rfp}) => {
           </div>
         </div>
         <div style={{borderTop:"1px solid #2a2a2a",paddingTop:24}}>
-          <div style={{fontSize:36,fontWeight:700,color:"#fff",lineHeight:1.1,letterSpacing:1,textTransform:"uppercase",maxWidth:520,fontFamily:T.font}}>
-            {proposal.subject_line||`A NEW REVENUE CHANNEL FOR ${rfp?.organization?.toUpperCase()}`}
-          </div>
+          <div style={{fontSize:36,fontWeight:700,color:"#fff",lineHeight:1.1,letterSpacing:1,textTransform:"uppercase",maxWidth:520,fontFamily:T.font}}>{proposal.subject_line||`A NEW REVENUE CHANNEL FOR ${rfp?.organization?.toUpperCase()}`}</div>
         </div>
       </div>
       <div style={{padding:"36px 40px",background:T.cream}}>
@@ -260,85 +200,163 @@ const BrandedProposal = ({proposal,rfp}) => {
   );
 };
 
+// ─── TEAM / KPI DATA ──────────────────────────────────────────────────────────
 const TEAM_OPS=["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Caleb Bentil","David Perlov","Cyril Butanas","Darlene Mae Malolos"];
 const DEFAULT_SLACK_IDS={"David Perlov":"U08BQH5JJDD","Cyril Butanas":"U09HHPVSSUQ","Caleb Bentil":"U0AE1T4N7A8","Darlene Mae Malolos":"U0A8GV25V0A","Suki Santos":"U093GFVM7D1","Kristine Miel Zulaybar":"U093GFXPK3M","Kristine Mirabueno":"U09QJGY27JP"};
 const INPUT_TYPES=[{key:"transcript",label:"Meeting Transcript"},{key:"sod",label:"SOD Report"},{key:"email",label:"Emails"},{key:"slack",label:"Slack"}];
 
 const KPI_DATA = {
   "Caleb Bentil": {
-    color:"#6366f1", emoji:"📞", role:"Outbound Specialist",
+    color:"#6366f1",emoji:"📞",role:"Outbound Specialist",
     categories:[
-      { name:"Activity", metrics:[
-        {name:"Calls Dialed",target:"80/day",stretch:"100+/day",notes:"Total dials incl. voicemails"},
-        {name:"Live Connect Rate",target:"10%",stretch:"15%+",notes:"Conversations / total dials"},
-        {name:"Voicemail Drop Rate",target:"≤60%",stretch:"≤50%",notes:"Track voicemail script effectiveness"},
-      ]},
-      { name:"Pipeline", metrics:[
-        {name:"Qualified Conversations",target:"8/day",stretch:"12+/day",notes:"Prospect showed interest"},
-        {name:"Meetings Booked",target:"3/week",stretch:"5+/week",notes:"Confirmed calendar invites sent"},
-        {name:"Follow-ups Sent",target:"100% of convos",stretch:"Same day",notes:"Email or message after every live connect"},
-      ]},
+      {name:"Activity",metrics:[{name:"Calls Dialed",target:"80/day",stretch:"100+/day",notes:"Total dials incl. voicemails"},{name:"Live Connect Rate",target:"10%",stretch:"15%+",notes:"Conversations / total dials"},{name:"Voicemail Drop Rate",target:"≤60%",stretch:"≤50%",notes:"Track voicemail script effectiveness"}]},
+      {name:"Pipeline",metrics:[{name:"Qualified Conversations",target:"8/day",stretch:"12+/day",notes:"Prospect showed interest"},{name:"Meetings Booked",target:"3/week",stretch:"5+/week",notes:"Confirmed calendar invites sent"},{name:"Follow-ups Sent",target:"100% of convos",stretch:"Same day",notes:"Email or message after every live connect"}]},
     ],
     eod:["Calls dialed: __","Live connects: __ (__% connect rate)","Meetings booked: __","Notable conversations: [brief summary]","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
   },
   "Darlene Mae Malolos": {
-    color:"#ec4899", emoji:"🎨", role:"Graphic Designer",
+    color:"#ec4899",emoji:"🎨",role:"Graphic Designer",
     categories:[
-      { name:"Output", metrics:[
-        {name:"Designs Delivered",target:"Per agreed scope/week",stretch:"Ahead of deadline",notes:"Defined each week in SOD"},
-        {name:"On-Brief Accuracy",target:"90%",stretch:"95%+",notes:"Designs meeting brief without major revisions"},
-        {name:"Revision Rounds",target:"≤2 per asset",stretch:"≤1 per asset",notes:"Tracks brief clarity and execution"},
-      ]},
-      { name:"Quality & Timeliness", metrics:[
-        {name:"Turnaround Time",target:"24–48hrs",stretch:"Same day (simple assets)",notes:"From brief received to first draft"},
-        {name:"Brand Consistency",target:"100%",stretch:"100%",notes:"Fonts, colors, tone vs brand guide"},
-        {name:"Stakeholder Satisfaction",target:"Approved w/o major rework",stretch:"Praised / reused",notes:"Reviewed weekly by Kristine or David"},
-      ]},
+      {name:"Output",metrics:[{name:"Designs Delivered",target:"Per agreed scope/week",stretch:"Ahead of deadline",notes:"Defined each week in SOD"},{name:"On-Brief Accuracy",target:"90%",stretch:"95%+",notes:"Designs meeting brief without major revisions"},{name:"Revision Rounds",target:"≤2 per asset",stretch:"≤1 per asset",notes:"Tracks brief clarity and execution"}]},
+      {name:"Quality & Timeliness",metrics:[{name:"Turnaround Time",target:"24–48hrs",stretch:"Same day (simple assets)",notes:"From brief received to first draft"},{name:"Brand Consistency",target:"100%",stretch:"100%",notes:"Fonts, colors, tone vs brand guide"},{name:"Stakeholder Satisfaction",target:"Approved w/o major rework",stretch:"Praised / reused",notes:"Reviewed weekly by Kristine or David"}]},
     ],
     eod:["Assets completed today: __ (list titles)","In progress: [asset name + % complete]","Revision requests received: __","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
   },
   "Cyril Butanas": {
-    color:"#10b981", emoji:"🌟", role:"Influencer Outreach Specialist",
+    color:"#10b981",emoji:"🌟",role:"Influencer Outreach Specialist",
     categories:[
-      { name:"Sourcing & Outreach", metrics:[
-        {name:"Influencers Sourced",target:"20/week",stretch:"30+/week",notes:"Qualified profiles added to pipeline"},
-        {name:"Outreach Messages Sent",target:"30/week",stretch:"50+/week",notes:"Initial DMs or emails sent"},
-        {name:"Response Rate",target:"20%",stretch:"30%+",notes:"Replies received / messages sent"},
-      ]},
-      { name:"Relationships & Campaign", metrics:[
-        {name:"Influencers Onboarded",target:"3/week",stretch:"5+/week",notes:"Confirmed partnerships ready for activation"},
-        {name:"Follow-up Rate",target:"100% of non-replies",stretch:"Within 48hrs",notes:"Every unanswered outreach gets 1 follow-up"},
-        {name:"Campaign Tracking Accuracy",target:"100%",stretch:"100%",notes:"Pipeline tracker updated daily"},
-      ]},
+      {name:"Sourcing & Outreach",metrics:[{name:"Influencers Sourced",target:"20/week",stretch:"30+/week",notes:"Qualified profiles added to pipeline"},{name:"Outreach Messages Sent",target:"30/week",stretch:"50+/week",notes:"Initial DMs or emails sent"},{name:"Response Rate",target:"20%",stretch:"30%+",notes:"Replies received / messages sent"}]},
+      {name:"Relationships & Campaign",metrics:[{name:"Influencers Onboarded",target:"3/week",stretch:"5+/week",notes:"Confirmed partnerships ready for activation"},{name:"Follow-up Rate",target:"100% of non-replies",stretch:"Within 48hrs",notes:"Every unanswered outreach gets 1 follow-up"},{name:"Campaign Tracking Accuracy",target:"100%",stretch:"100%",notes:"Pipeline tracker updated daily"}]},
     ],
     eod:["Influencers sourced today: __","Outreach sent: __ | Responses received: __","New partnerships confirmed: __","Relationship updates: [name + status + next step]","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
   },
   "Suki Santos": {
-    color:"#f59e0b", emoji:"🔍", role:"Research & Sourcing Specialist",
+    color:"#f59e0b",emoji:"🔍",role:"Research & Sourcing Specialist",
     categories:[
-      { name:"Sourcing", metrics:[
-        {name:"Leads Sourced",target:"30/week",stretch:"50+/week",notes:"Contacts added to outreach list"},
-        {name:"Lead Qualification Rate",target:"80%",stretch:"90%+",notes:"Leads that meet ICP criteria"},
-        {name:"Data Completeness",target:"90%",stretch:"95%+",notes:"Name, title, company, email/phone, LinkedIn"},
-      ]},
-      { name:"Research", metrics:[
-        {name:"Research Tasks Completed",target:"Per agreed scope",stretch:"Ahead of deadline",notes:"Defined at start of each week"},
-        {name:"Research Accuracy",target:"95%",stretch:"99%+",notes:"Verified against source; spot-checked weekly"},
-        {name:"Turnaround Time",target:"Within 24hrs",stretch:"Same day",notes:"Time from request to delivery"},
-      ]},
+      {name:"Sourcing",metrics:[{name:"Leads Sourced",target:"30/week",stretch:"50+/week",notes:"Contacts added to outreach list"},{name:"Lead Qualification Rate",target:"80%",stretch:"90%+",notes:"Leads that meet ICP criteria"},{name:"Data Completeness",target:"90%",stretch:"95%+",notes:"Name, title, company, email/phone, LinkedIn"}]},
+      {name:"Research",metrics:[{name:"Research Tasks Completed",target:"Per agreed scope",stretch:"Ahead of deadline",notes:"Defined at start of each week"},{name:"Research Accuracy",target:"95%",stretch:"99%+",notes:"Verified against source; spot-checked weekly"},{name:"Turnaround Time",target:"Within 24hrs",stretch:"Same day",notes:"Time from request to delivery"}]},
     ],
     eod:["Leads sourced today: __ (__ qualify)","Research task status: [task name + % complete]","Data quality flag (if any): [issue + fix]","Blocker (if any): [problem + 3 solutions + recommendation]","Tomorrow's goal: __"]
   },
 };
 
+// ─── SOD FORM ─────────────────────────────────────────────────────────────────
+const emptyTask = () => ({task:"",priority:"High",eta:"EOD"});
+
+function SODForm({member, onSubmit}) {
+  const [tasks,setTasks]=useState([emptyTask()]);
+  const [metrics,setMetrics]=useState("");
+  const [blockers,setBlockers]=useState("");
+  const [submitting,setSubmitting]=useState(false);
+
+  const updateTask=(i,field,val)=>setTasks(prev=>prev.map((t,idx)=>idx===i?{...t,[field]:val}:t));
+  const addTask=()=>setTasks(prev=>[...prev,emptyTask()]);
+  const removeTask=(i)=>setTasks(prev=>prev.filter((_,idx)=>idx!==i));
+  const canSubmit=tasks.some(t=>t.task.trim());
+
+  const handleSubmit=async()=>{
+    if(!canSubmit) return;
+    setSubmitting(true);
+    const sod={
+      member,date:todayStr(),
+      submittedAt:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}),
+      tasks:tasks.filter(t=>t.task.trim()),
+      metrics:metrics.trim(),
+      blockers:blockers.trim(),
+    };
+    // Save to storage
+    const key=`sod-${todayStr()}`;
+    const existing=await storage.get(key);
+    const allSods=existing?JSON.parse(existing.value):{};
+    allSods[member]=sod;
+    await storage.set(key,JSON.stringify(allSods));
+    setTimeout(()=>onSubmit(sod),800);
+  };
+
+  if(submitting) return (
+    <div style={{textAlign:"center",padding:"48px 20px"}}>
+      <div style={{fontSize:48,marginBottom:12}}>✅</div>
+      <div style={{fontSize:16,fontWeight:700,fontFamily:T.font,marginBottom:6}}>SOD Submitted!</div>
+      <div style={{fontSize:12,color:T.gray,fontFamily:T.mono,letterSpacing:1}}>Unlocking your Log In…</div>
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* Banner */}
+      <div style={{background:"#fff8f0",border:`2px solid ${T.orange}`,padding:"12px 16px",fontSize:12,color:T.darkGray,lineHeight:1.6}}>
+        📋 <strong>Submit your Start of Day report first.</strong> Once submitted, your <strong>Log In button will unlock</strong>. Your SOD will be visible to Kristine and David.
+      </div>
+
+      {/* Tasks */}
+      <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+        <div style={{background:T.black,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>TODAY'S TASKS *</div>
+          <button onClick={addTask} style={{background:"transparent",border:`1px solid #444`,color:"#aaa",padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>+ ADD TASK</button>
+        </div>
+        <div style={{padding:14,display:"flex",flexDirection:"column",gap:10}}>
+          {tasks.map((t,i)=>(
+            <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+              <div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono,paddingTop:12,minWidth:18}}>{i+1}.</div>
+              <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                <input value={t.task} onChange={e=>updateTask(i,"task",e.target.value)} placeholder={`Task ${i+1}…`}
+                  style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,padding:"9px 12px",fontSize:13,outline:"none",fontFamily:T.body,color:T.black}} />
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:9,color:T.grayLight,fontFamily:T.mono,letterSpacing:1,marginBottom:3}}>PRIORITY</div>
+                    <select value={t.priority} onChange={e=>updateTask(i,"priority",e.target.value)}
+                      style={{width:"100%",background:T.bg,border:`2px solid ${priorityColor(t.priority)}`,padding:"6px 10px",fontSize:12,fontWeight:700,color:priorityColor(t.priority),outline:"none",fontFamily:T.mono}}>
+                      {PRIORITY_OPTIONS.map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:9,color:T.grayLight,fontFamily:T.mono,letterSpacing:1,marginBottom:3}}>TARGET TIME</div>
+                    <select value={t.eta} onChange={e=>updateTask(i,"eta",e.target.value)}
+                      style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,padding:"6px 10px",fontSize:12,color:T.black,outline:"none",fontFamily:T.mono}}>
+                      {TIME_OPTIONS.map(o=><option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              {tasks.length>1&&<button onClick={()=>removeTask(i)} style={{background:"none",border:"none",color:T.grayLight,fontSize:16,cursor:"pointer",paddingTop:8}}>✕</button>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Metrics */}
+      <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+        <div style={{background:T.black,padding:"10px 16px"}}><div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>TODAY'S METRICS TARGET</div></div>
+        <textarea value={metrics} onChange={e=>setMetrics(e.target.value)} placeholder="e.g. 80 calls, 8 connects, 3 meetings booked…"
+          style={{width:"100%",minHeight:70,background:"transparent",border:"none",padding:14,fontSize:13,outline:"none",fontFamily:T.body,lineHeight:1.7,resize:"vertical",color:T.black,display:"block"}} />
+      </div>
+
+      {/* Blockers */}
+      <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+        <div style={{background:T.black,padding:"10px 16px"}}><div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>BLOCKERS OR CONCERNS</div></div>
+        <textarea value={blockers} onChange={e=>setBlockers(e.target.value)} placeholder="Anything blocking you today? (optional)"
+          style={{width:"100%",minHeight:60,background:"transparent",border:"none",padding:14,fontSize:13,outline:"none",fontFamily:T.body,lineHeight:1.7,resize:"vertical",color:T.black,display:"block"}} />
+      </div>
+
+      {/* Submit */}
+      <button onClick={handleSubmit} disabled={!canSubmit}
+        style={{width:"100%",padding:"14px",background:canSubmit?T.orange:"#E5E0D8",color:canSubmit?"#fff":T.gray,border:"none",fontSize:13,fontWeight:700,cursor:canSubmit?"pointer":"not-allowed",letterSpacing:2,fontFamily:T.font}}>
+        {canSubmit?"✅  SUBMIT SOD & UNLOCK LOG IN":"ADD AT LEAST ONE TASK TO CONTINUE"}
+      </button>
+    </div>
+  );
+}
+
 // ─── ATTENDANCE TRACKER ───────────────────────────────────────────────────────
 function AttendanceTracker() {
   const [logs,setLogs]=useState([]);
+  const [sodSubmissions,setSodSubmissions]=useState({});
   const [selectedMember,setSelectedMember]=useState(null);
   const [view,setView]=useState("today");
   const [loading,setLoading]=useState(true);
   const [now,setNow]=useState(new Date());
   const [confirmed,setConfirmed]=useState(false);
+  const [showSodForm,setShowSodForm]=useState(false);
 
   useEffect(()=>{
     const timer=setInterval(()=>setNow(new Date()),30000);
@@ -346,22 +364,25 @@ function AttendanceTracker() {
   },[]);
 
   useEffect(()=>{
-    storage.get("attendance-logs").then(r=>{
+    Promise.all([
+      storage.get("attendance-logs"),
+      storage.get(`sod-${todayStr()}`)
+    ]).then(([r,s])=>{
       if(r) setLogs(JSON.parse(r.value));
+      if(s) setSodSubmissions(JSON.parse(s.value));
       setLoading(false);
     });
   },[]);
 
   const saveLogs=async(nl)=>{setLogs(nl);await storage.set("attendance-logs",JSON.stringify(nl));};
-  const todayStr=()=>new Date().toISOString().split("T")[0];
 
   const getMemberToday=(member)=>logs.filter(l=>l.member===member&&l.date===todayStr());
-  
   const getStatus=(member)=>{
     const tl=getMemberToday(member);
     if(!tl.length) return "absent";
     return tl[tl.length-1].type==="in"?"in":"out";
   };
+  const hasSodToday=(member)=>!!sodSubmissions[member];
 
   const isLate=(member,date)=>{
     const d=date||todayStr();
@@ -386,10 +407,28 @@ function AttendanceTracker() {
   const logAction=()=>{
     if(!selectedMember) return;
     const status=getStatus(selectedMember);
+    // ★ GATE: must have SOD to log in
+    if(status!=="in"&&!hasSodToday(selectedMember)){
+      setShowSodForm(true);
+      return;
+    }
     const type=status==="in"?"out":"in";
     const ts=new Date().toISOString();
     const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
     const nl=[...logs,{id:Date.now(),member:selectedMember,type,date:todayStr(),time,timestamp:ts}];
+    saveLogs(nl);
+    setConfirmed(true);
+    setTimeout(()=>setConfirmed(false),2500);
+  };
+
+  const handleSODSubmit=async(sod)=>{
+    const updated={...sodSubmissions,[sod.member]:sod};
+    setSodSubmissions(updated);
+    setShowSodForm(false);
+    // Auto log in after SOD
+    const ts=new Date().toISOString();
+    const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+    const nl=[...logs,{id:Date.now(),member:sod.member,type:"in",date:todayStr(),time,timestamp:ts}];
     saveLogs(nl);
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
@@ -402,7 +441,6 @@ function AttendanceTracker() {
   };
 
   const deleteLog=(id)=>{const nl=logs.filter(l=>l.id!==id);saveLogs(nl);};
-
   const statusColor=(s)=>({in:T.green,out:T.orange,absent:T.red}[s]||T.gray);
   const statusLabel=(s)=>({in:"LOGGED IN",out:"LOGGED OUT",absent:"ABSENT"}[s]||s);
 
@@ -413,18 +451,31 @@ function AttendanceTracker() {
   const hoursToday=selectedMember?getTotalHours(selectedMember,todayStr()):0;
   const weekDates=getWeekDates();
   const nowTimeStr=now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true});
-
-  // stats for header
   const presentToday=TEAM_OPS.filter(m=>getStatus(m)!=="absent").length;
   const lateToday=TEAM_OPS.filter(m=>isLate(m)).length;
   const inNow=TEAM_OPS.filter(m=>getStatus(m)==="in").length;
+  const sodCount=Object.keys(sodSubmissions).length;
+
+  // ── SOD FORM OVERLAY ──
+  if(showSodForm&&selectedMember) return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:700,fontFamily:T.font}}>{selectedMember}</div>
+          <div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submit SOD to unlock Log In</div>
+        </div>
+        <button onClick={()=>setShowSodForm(false)} style={{background:"none",border:`2px solid ${T.black}`,padding:"6px 14px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,color:T.gray}}>← BACK</button>
+      </div>
+      <SODForm member={selectedMember} onSubmit={handleSODSubmit} />
+    </div>
+  );
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
 
       {/* STATS BAR */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-        {[["IN NOW",inNow,T.green],["PRESENT TODAY",presentToday,T.orange],["LATE TODAY",lateToday,lateToday>0?T.red:T.green]].map(([l,v,c])=>(
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+        {[["IN NOW",inNow,T.green],["PRESENT TODAY",presentToday,T.orange],["SOD SUBMITTED",sodCount,sodCount===TEAM_OPS.length?T.green:T.yellow],["LATE TODAY",lateToday,lateToday>0?T.red:T.green]].map(([l,v,c])=>(
           <div key={l} style={{background:T.black,border:`2px solid ${T.black}`,padding:"14px 18px"}}>
             <div style={{fontSize:9,color:"#666",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
             <div style={{fontSize:28,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
@@ -433,22 +484,39 @@ function AttendanceTracker() {
         ))}
       </div>
 
+      {/* PENDING SOD WARNING */}
+      {sodCount < TEAM_OPS.length && (
+        <div style={{background:"#fef2f2",border:`2px solid ${T.red}`,padding:"10px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.red,fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>⚠ PENDING SOD — CANNOT LOG IN YET</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {TEAM_OPS.filter(m=>!hasSodToday(m)).map(m=>(
+              <div key={m} style={{display:"flex",alignItems:"center",gap:6,background:"#fff",border:`1px solid ${T.red}`,padding:"3px 10px"}}>
+                <Avatar name={m} size={18} muted />
+                <span style={{fontSize:11,fontWeight:600,color:T.red}}>{m.split(" ")[0]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* MEMBER SELECTOR */}
       <Card style={{padding:20}}>
         <CardLabel color={T.orange}>SELECT YOUR NAME</CardLabel>
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:12}}>
           {TEAM_OPS.map(m=>{
             const s=getStatus(m);
+            const hasSod=hasSodToday(m);
             return (
-              <button key={m} onClick={()=>{setSelectedMember(m);setConfirmed(false);}}
-                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:0,background:selectedMember===m?T.black:T.bg,color:selectedMember===m?"#fff":T.darkGray,border:`2px solid ${selectedMember===m?T.black:T.borderDark}`,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:T.font,transition:"all 0.15s",position:"relative"}}>
-                <Avatar name={m} size={24} />
+              <button key={m} onClick={()=>{setSelectedMember(m);setConfirmed(false);setShowSodForm(false);}}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:0,background:selectedMember===m?T.black:T.bg,color:selectedMember===m?"#fff":T.darkGray,border:`2px solid ${selectedMember===m?T.black:T.borderDark}`,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:T.font,transition:"all 0.15s"}}>
+                <Avatar name={m} size={24} muted={!hasSod} />
                 {m.split(" ")[0]}
-                <span style={{width:8,height:8,borderRadius:"50%",background:statusColor(s),display:"inline-block",marginLeft:2,border:"1px solid rgba(0,0,0,0.2)"}} />
+                <span style={{width:8,height:8,borderRadius:"50%",background:hasSod?statusColor(s):T.red,display:"inline-block",marginLeft:2,border:"1px solid rgba(0,0,0,0.2)"}} title={hasSod?"SOD submitted":"No SOD yet"} />
               </button>
             );
           })}
         </div>
+        <div style={{marginTop:10,fontSize:10,color:T.grayLight,fontFamily:T.mono}}>🔴 Red dot = no SOD submitted yet · Cannot log in without SOD</div>
       </Card>
 
       {/* LOG IN/OUT CARD */}
@@ -458,6 +526,8 @@ function AttendanceTracker() {
           <div style={{fontSize:20,fontWeight:700,marginTop:12,fontFamily:T.font}}>{selectedMember}</div>
           <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
             <Badge label={statusLabel(memberStatus)} color={statusColor(memberStatus)} />
+            {hasSodToday(selectedMember)&&<Badge label={`SOD @ ${sodSubmissions[selectedMember]?.submittedAt}`} color={T.green} />}
+            {!hasSodToday(selectedMember)&&<Badge label="NO SOD YET" color={T.red} />}
             {isLate(selectedMember)&&memberStatus==="in"&&<Badge label="LATE ARRIVAL" color={T.red} />}
           </div>
           <div style={{fontSize:13,color:T.grayLight,fontFamily:T.mono,marginTop:10}}>
@@ -471,12 +541,27 @@ function AttendanceTracker() {
               ✓ {isIn?"LOGGED IN":"LOGGED OUT"} SUCCESSFULLY
             </div>
           )}
-          <button onClick={logAction}
-            style={{width:"100%",maxWidth:340,padding:"18px",borderRadius:0,background:isIn?T.red:T.green,color:"#fff",border:"none",fontSize:16,fontWeight:700,cursor:"pointer",letterSpacing:3,fontFamily:T.font,marginTop:14,transition:"opacity 0.15s"}}
-            onMouseEnter={e=>e.currentTarget.style.opacity="0.85"}
-            onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
-            {isIn?"🔴  LOG OUT":"🟢  LOG IN"}
-          </button>
+
+          {/* ★ SOD-gated Log In button */}
+          {!hasSodToday(selectedMember)&&!isIn ? (
+            <div style={{marginTop:14}}>
+              <div style={{fontSize:12,color:T.red,fontFamily:T.mono,fontWeight:700,letterSpacing:1,marginBottom:10}}>
+                🔒 SUBMIT SOD FIRST TO LOG IN
+              </div>
+              <button onClick={()=>setShowSodForm(true)}
+                style={{width:"100%",maxWidth:340,padding:"16px",borderRadius:0,background:T.orange,color:"#fff",border:"none",fontSize:14,fontWeight:700,cursor:"pointer",letterSpacing:2,fontFamily:T.font}}>
+                📋  SUBMIT SOD
+              </button>
+            </div>
+          ) : (
+            <button onClick={logAction}
+              style={{width:"100%",maxWidth:340,padding:"18px",borderRadius:0,background:isIn?T.red:T.green,color:"#fff",border:"none",fontSize:16,fontWeight:700,cursor:"pointer",letterSpacing:3,fontFamily:T.font,marginTop:14,transition:"opacity 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.opacity="0.85"}
+              onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+              {isIn?"🔴  LOG OUT":"🟢  LOG IN"}
+            </button>
+          )}
+
           {memberStatus!=="absent"&&(
             <div style={{marginTop:14,fontSize:11,color:T.grayLight,fontFamily:T.mono}}>
               {getMemberToday(selectedMember).map((l,i)=>(
@@ -489,7 +574,7 @@ function AttendanceTracker() {
 
       {/* VIEW TABS */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {[["today","📋 TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"]].map(([v,l])=>(
+        {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"]].map(([v,l])=>(
           <Pill key={v} label={l} active={view===v} onClick={()=>setView(v)} />
         ))}
       </div>
@@ -504,10 +589,11 @@ function AttendanceTracker() {
             const tl=getMemberToday(member);
             const firstIn=tl.find(l=>l.type==="in");
             const lastOut=[...tl].reverse().find(l=>l.type==="out");
+            const hasSod=hasSodToday(member);
             return (
-              <Card key={member} style={{padding:16}} hover>
+              <Card key={member} style={{padding:16,borderLeft:`4px solid ${hasSod?statusColor(status):T.red}`}} hover>
                 <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <Avatar name={member} />
+                  <Avatar name={member} muted={!hasSod} />
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,fontSize:14}}>{member}</div>
                     <div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -519,11 +605,59 @@ function AttendanceTracker() {
                   <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       {status!=="absent"&&<span style={{fontSize:13,fontWeight:800,color:T.orange,fontFamily:T.font}}>{hours}h</span>}
+                      {!hasSod&&<Badge label="NO SOD" color={T.red} />}
                       {late&&<Badge label="LATE" color={T.red} />}
                       <Badge label={statusLabel(status)} color={statusColor(status)} />
                     </div>
                   </div>
                 </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* SOD TODAY VIEW */}
+      {view==="sod"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{fontSize:11,color:T.grayLight,fontFamily:T.mono,letterSpacing:1,marginBottom:4}}>TODAY'S SOD SUBMISSIONS — {new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
+          {TEAM_OPS.map(member=>{
+            const sod=sodSubmissions[member];
+            return (
+              <Card key={member} style={{overflow:"hidden",borderLeft:`4px solid ${sod?T.green:T.red}`}}>
+                <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <Avatar name={member} size={32} muted={!sod} />
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13}}>{member}</div>
+                      {sod&&<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {sod.submittedAt} · {sod.tasks.length} tasks</div>}
+                    </div>
+                  </div>
+                  {sod ? <Badge label={`SOD ✓`} color={T.green} /> : <Badge label="PENDING" color={T.red} />}
+                </div>
+                {sod&&(
+                  <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 16px",background:T.bg,display:"flex",flexDirection:"column",gap:6}}>
+                    {sod.tasks.map((t,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 12px",background:T.surface,borderLeft:`3px solid ${priorityColor(t.priority)}`}}>
+                        <div style={{flex:1,fontSize:12,color:T.black}}>{t.task}</div>
+                        <Badge label={t.priority} color={priorityColor(t.priority)} />
+                        <span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{t.eta}</span>
+                      </div>
+                    ))}
+                    {sod.metrics&&(
+                      <div style={{padding:"7px 12px",background:"#f0fdf4",borderLeft:`3px solid ${T.green}`,fontSize:12,color:T.darkGray}}>
+                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.green,display:"block",marginBottom:2}}>METRICS TARGET</span>
+                        {sod.metrics}
+                      </div>
+                    )}
+                    {sod.blockers&&(
+                      <div style={{padding:"7px 12px",background:"#fff8f0",borderLeft:`3px solid ${T.orange}`,fontSize:12,color:T.darkGray}}>
+                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:2}}>BLOCKERS</span>
+                        {sod.blockers}
+                      </div>
+                    )}
+                  </div>
+                )}
               </Card>
             );
           })}
@@ -538,9 +672,7 @@ function AttendanceTracker() {
             return (
               <Card key={date}>
                 <div style={{background:T.black,padding:"12px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:12,fontWeight:700,color:"#fff",fontFamily:T.mono}}>
-                    {new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}
-                  </span>
+                  <span style={{fontSize:12,fontWeight:700,color:"#fff",fontFamily:T.mono}}>{new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</span>
                   <span style={{fontSize:10,color:T.orange,fontFamily:T.mono}}>{membersWithLogs.length}/{TEAM_OPS.length} PRESENT</span>
                 </div>
                 <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:6}}>
@@ -552,9 +684,7 @@ function AttendanceTracker() {
                     const late=isLate(member,date);
                     if(!dl.length) return (
                       <div key={member} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:`1px solid ${T.border}`,opacity:0.4}}>
-                        <Avatar name={member} size={22} />
-                        <span style={{flex:1,fontSize:12,fontWeight:600}}>{member}</span>
-                        <Badge label="ABSENT" color={T.gray} />
+                        <Avatar name={member} size={22} muted /><span style={{flex:1,fontSize:12,fontWeight:600}}>{member}</span><Badge label="ABSENT" color={T.gray} />
                       </div>
                     );
                     return (
@@ -565,10 +695,7 @@ function AttendanceTracker() {
                         <span style={{fontSize:11,color:T.grayLight,fontFamily:T.mono}}>OUT: {lastOut?.time||"—"}</span>
                         <span style={{fontSize:12,fontWeight:800,color:T.orange,fontFamily:T.font,minWidth:32,textAlign:"right"}}>{hrs}h</span>
                         {late&&<Badge label="LATE" color={T.red} />}
-                        <button onClick={()=>{
-                          const logsToDelete=dl.map(l=>l.id);
-                          saveLogs(logs.filter(l=>!logsToDelete.includes(l.id)));
-                        }} style={{background:"none",border:"none",cursor:"pointer",color:T.grayLight,fontSize:14,padding:"0 4px"}}>🗑</button>
+                        <button onClick={()=>saveLogs(logs.filter(l=>!dl.map(x=>x.id).includes(l.id)))} style={{background:"none",border:"none",cursor:"pointer",color:T.grayLight,fontSize:14,padding:"0 4px"}}>🗑</button>
                       </div>
                     );
                   })}
@@ -576,13 +703,7 @@ function AttendanceTracker() {
               </Card>
             );
           })}
-          {logs.length===0&&(
-            <Card style={{padding:40,textAlign:"center"}}>
-              <div style={{fontSize:32,marginBottom:12}}>📋</div>
-              <div style={{fontSize:14,fontWeight:600,color:T.gray}}>No attendance logs yet</div>
-              <div style={{fontSize:12,color:T.grayLight,marginTop:6}}>Team members need to log in first.</div>
-            </Card>
-          )}
+          {logs.length===0&&<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No attendance logs yet</div></Card>}
         </div>
       )}
 
@@ -590,15 +711,8 @@ function AttendanceTracker() {
       {view==="weekly"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           <Card style={{background:T.black,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <CardLabel color={T.orange}>{weekLabel()}</CardLabel>
-              <div style={{fontSize:11,color:"#666",fontFamily:T.mono,marginTop:4}}>Mon–Fri · Shift {SHIFT_START}–{SHIFT_END}</div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:10,color:"#555",fontFamily:T.mono,letterSpacing:2}}>ATTENDANCE</div>
-            </div>
+            <div><CardLabel color={T.orange}>{weekLabel()}</CardLabel><div style={{fontSize:11,color:"#666",fontFamily:T.mono,marginTop:4}}>Mon–Fri · Shift {SHIFT_START}–{SHIFT_END}</div></div>
           </Card>
-
           {TEAM_OPS.map(member=>{
             const presentDays=weekDates.filter(d=>logs.some(l=>l.member===member&&l.date===d&&l.type==="in"));
             const lateDays=weekDates.filter(d=>isLate(member,d));
@@ -626,7 +740,6 @@ function AttendanceTracker() {
                     const isToday=d===todayStr();
                     const dayLogs=logs.filter(l=>l.member===member&&l.date===d);
                     const firstIn=dayLogs.find(l=>l.type==="in");
-                    const lastOut=[...dayLogs].reverse().find(l=>l.type==="out");
                     const hrs=getTotalHours(member,d);
                     const dayName=["MON","TUE","WED","THU","FRI"][i];
                     return (
@@ -663,7 +776,7 @@ function OpsPulse({slackIds}) {
   const [error,setError]=useState(null);
   const [checked,setChecked]=useState({});
   const [selectedMember,setSelectedMember]=useState(null);
-  const [view,setView]=useState("team");
+  const [view,setView]=useState("sod");
   const [slackStatus,setSlackStatus]=useState({});
   const [showInput,setShowInput]=useState(false);
   const [storageLoading,setStorageLoading]=useState(true);
@@ -674,10 +787,31 @@ function OpsPulse({slackIds}) {
   const [editingTaskText,setEditingTaskText]=useState("");
   const [showKpi,setShowKpi]=useState(true);
   const [showEod,setShowEod]=useState(false);
+  const [sodSubmissions,setSodSubmissions]=useState({});
+  const [expandedSod,setExpandedSod]=useState(null);
 
   useEffect(()=>{
-    Promise.all([storage.get("ops-pulse-current"),storage.get("ops-pulse-checked"),storage.get("ops-pulse-history")])
-      .then(([r,c,h])=>{if(r) setResult(JSON.parse(r.value));if(c) setChecked(JSON.parse(c.value));if(h) setHistory(JSON.parse(h.value));setStorageLoading(false);});
+    Promise.all([
+      storage.get("ops-pulse-current"),
+      storage.get("ops-pulse-checked"),
+      storage.get("ops-pulse-history"),
+      storage.get(`sod-${todayStr()}`)
+    ]).then(([r,c,h,s])=>{
+      if(r) setResult(JSON.parse(r.value));
+      if(c) setChecked(JSON.parse(c.value));
+      if(h) setHistory(JSON.parse(h.value));
+      if(s) setSodSubmissions(JSON.parse(s.value));
+      setStorageLoading(false);
+    });
+  },[]);
+
+  // Refresh SOD every 30s
+  useEffect(()=>{
+    const t=setInterval(async()=>{
+      const s=await storage.get(`sod-${todayStr()}`);
+      if(s) setSodSubmissions(JSON.parse(s.value));
+    },30000);
+    return ()=>clearInterval(t);
   },[]);
 
   const isOverdue=(dueDay)=>{if(!dueDay) return false;const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];return days.indexOf(dueDay)!==-1&&days.indexOf(dueDay)<new Date().getDay();};
@@ -738,24 +872,105 @@ function OpsPulse({slackIds}) {
   const pColor=p=>({high:T.red,medium:T.yellow,low:T.green}[p]||T.gray);
   const tIcon=t=>({action:"→","follow-up":"↻",proactive:"↑"}[t]||"·");
 
+  const sodCount=Object.keys(sodSubmissions).length;
+  const notSubmitted=TEAM_OPS.filter(m=>!sodSubmissions[m]);
+
   if(storageLoading) return <LoadingScreen />;
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div>
-          <div style={{fontSize:18,fontWeight:700,color:T.black,fontFamily:T.font}}>{weekLabel()}</div>
-          {result&&<div style={{fontSize:12,color:T.grayLight,marginTop:2}}>Tasks loaded · {teamProgress()}% complete</div>}
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          {result&&<button onClick={clearTasks} style={{padding:"8px 16px",borderRadius:0,fontSize:11,fontWeight:700,background:"#FEF2F2",color:T.red,border:`2px solid ${T.red}`,cursor:"pointer",fontFamily:T.font,letterSpacing:1}}>CLEAR WEEK</button>}
-          <button onClick={()=>setShowInput(!showInput)} style={{padding:"8px 18px",borderRadius:0,fontSize:11,fontWeight:700,background:showInput?T.black:T.orange,color:"#fff",border:`2px solid ${showInput?T.black:T.orange}`,cursor:"pointer",fontFamily:T.font,letterSpacing:1}}>
-            {showInput?"✕ CLOSE":result?"+ NEW WEEK":"+ GENERATE TASKS"}
-          </button>
-        </div>
+
+      {/* VIEW TABS — SOD now first */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        {[["sod",`📝 SOD TODAY (${sodCount}/${TEAM_OPS.length})`],["team","👥 TASKS"],["person","👤 MEMBER"],["history","📋 HISTORY"]].map(([v,l])=>(
+          <Pill key={v} label={l} active={view===v} onClick={()=>{setView(v);if(v==="team") setSelectedMember(null);}} />
+        ))}
+        {view!=="sod"&&(
+          <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+            <button onClick={()=>setShowInput(!showInput)}
+              style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:showInput?T.black:T.orange,color:"#fff",border:`2px solid ${showInput?T.black:T.orange}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
+              {showInput?"✕ CLOSE":result?"+ NEW WEEK":"+ GENERATE TASKS"}
+            </button>
+            {result&&<button onClick={clearTasks} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:"#FEF2F2",color:T.red,border:`2px solid ${T.red}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>CLEAR</button>}
+          </div>
+        )}
       </div>
 
-      {(showInput||!result)&&(
+      {/* ── SOD VIEW (default) ── */}
+      {view==="sod"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            {[["SOD SUBMITTED",sodCount,sodCount===TEAM_OPS.length?T.green:T.yellow],["PENDING",notSubmitted.length,notSubmitted.length>0?T.red:T.green],["DATE",new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),T.orange]].map(([l,v,c])=>(
+              <div key={l} style={{background:T.black,padding:"14px 18px"}}>
+                <div style={{fontSize:9,color:"#555",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
+                <div style={{fontSize:26,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {notSubmitted.length>0&&(
+            <div style={{background:"#fef2f2",border:`2px solid ${T.red}`,padding:"10px 16px"}}>
+              <div style={{fontSize:10,fontWeight:700,color:T.red,fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>⚠ WAITING FOR SOD — CANNOT LOG IN</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {notSubmitted.map(m=>(
+                  <div key={m} style={{display:"flex",alignItems:"center",gap:6,background:"#fff",border:`1px solid ${T.red}`,padding:"3px 10px"}}>
+                    <Avatar name={m} size={18} muted /><span style={{fontSize:11,fontWeight:600,color:T.red}}>{m.split(" ")[0]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {TEAM_OPS.map(member=>{
+            const sod=sodSubmissions[member];
+            const isExpanded=expandedSod===member;
+            return (
+              <Card key={member} style={{overflow:"hidden",borderLeft:`4px solid ${sod?T.green:T.red}`}}>
+                <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:sod?"pointer":"default"}} onClick={()=>sod&&setExpandedSod(isExpanded?null:member)}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <Avatar name={member} size={36} muted={!sod} />
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14}}>{member}</div>
+                      {sod
+                        ?<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {sod.submittedAt} · {sod.tasks.length} task{sod.tasks.length!==1?"s":""}{sod.blockers?" · ⚠ blocker":""}</div>
+                        :<div style={{fontSize:10,color:T.red,fontFamily:T.mono,marginTop:2}}>No SOD submitted yet</div>
+                      }
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    {sod?<Badge label="SOD ✓" color={T.green} />:<Badge label="PENDING" color={T.red} />}
+                    {sod&&<span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{isExpanded?"▲":"▼"}</span>}
+                  </div>
+                </div>
+                {sod&&isExpanded&&(
+                  <div style={{borderTop:`2px solid ${T.black}`,padding:14,background:T.bg,display:"flex",flexDirection:"column",gap:6}}>
+                    {sod.tasks.map((t,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderLeft:`3px solid ${priorityColor(t.priority)}`}}>
+                        <div style={{flex:1,fontSize:12,color:T.black}}>{t.task}</div>
+                        <Badge label={t.priority} color={priorityColor(t.priority)} />
+                        <span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{t.eta}</span>
+                      </div>
+                    ))}
+                    {sod.metrics&&(
+                      <div style={{padding:"8px 12px",background:"#f0fdf4",borderLeft:`3px solid ${T.green}`,fontSize:12,color:T.darkGray}}>
+                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.green,display:"block",marginBottom:2}}>METRICS TARGET</span>{sod.metrics}
+                      </div>
+                    )}
+                    {sod.blockers&&(
+                      <div style={{padding:"8px 12px",background:"#fff8f0",borderLeft:`3px solid ${T.orange}`,fontSize:12,color:T.darkGray}}>
+                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:2}}>BLOCKERS</span>{sod.blockers}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Generate input */}
+      {view!=="sod"&&(showInput||!result)&&(
         <Card>
           <div style={{display:"flex",borderBottom:`2px solid ${T.black}`}}>
             {INPUT_TYPES.map(t=>(
@@ -772,7 +987,7 @@ function OpsPulse({slackIds}) {
         </Card>
       )}
 
-      {result&&(
+      {result&&view!=="sod"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <Card style={{padding:20}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
@@ -786,32 +1001,22 @@ function OpsPulse({slackIds}) {
             <p style={{margin:"14px 0 0",color:T.darkGray,fontSize:13,lineHeight:1.7}}>{result.week_summary}</p>
           </Card>
 
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            {[["team","👥 TEAM"],["person","👤 MEMBER"],["history","📋 HISTORY"]].map(([v,l])=>(
-              <Pill key={v} label={l} active={view===v} onClick={()=>{setView(v);if(v==="team") setSelectedMember(null);}} />
-            ))}
-            <div style={{marginLeft:"auto"}}>
-              <button onClick={()=>TEAM_OPS.forEach(m=>{if(result?.team_tasks?.[m]?.tasks?.length) sendDM(m,"");})}
-                style={{padding:"6px 14px",borderRadius:0,fontSize:10,fontWeight:700,background:"#1a1a2e",color:"#a78bfa",border:"2px solid #2a2a4a",cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
-                SLACK ALL
-              </button>
-            </div>
-          </div>
-
           {view==="team"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {TEAM_OPS.map(member=>{
                 const d=result.team_tasks?.[member];if(!d) return null;
                 const tasks=d.tasks||[],p=getProgress(member);
                 const overdueCount=tasks.filter((t,i)=>!checked[`${member}-${i}`]&&isOverdue(t.due_day)).length;
+                const hasSod=!!sodSubmissions[member];
                 return (
                   <Card key={member} hover>
                     <div onClick={()=>{setSelectedMember(member);setView("person");}} style={{padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
-                      <Avatar name={member} />
+                      <Avatar name={member} muted={!hasSod} />
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,flexWrap:"wrap"}}>
                           <span style={{fontWeight:600,fontSize:14}}>{member}</span>
                           <span style={{fontSize:11,color:T.grayLight}}>{d.role}</span>
+                          {!hasSod&&<Badge label="NO SOD" color={T.red} />}
                           {overdueCount>0&&<Badge label={`${overdueCount} overdue`} color={T.red} />}
                         </div>
                         <ProgressBar value={p} height={5} />
@@ -827,6 +1032,12 @@ function OpsPulse({slackIds}) {
                   </Card>
                 );
               })}
+              <div style={{marginLeft:"auto"}}>
+                <button onClick={()=>TEAM_OPS.forEach(m=>{if(result?.team_tasks?.[m]?.tasks?.length) sendDM(m,"");})}
+                  style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:"#1a1a2e",color:"#a78bfa",border:"2px solid #2a2a4a",cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
+                  SLACK ALL
+                </button>
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:4}}>
                 <Bullets label="Follow-ups Needed" items={result.follow_ups_needed} color={T.green} />
                 <Bullets label="Risks" items={result.risks} color={T.red} />
@@ -842,12 +1053,19 @@ function OpsPulse({slackIds}) {
               {selectedMember&&(()=>{
                 const d=result.team_tasks?.[selectedMember];if(!d) return null;
                 const tasks=d.tasks||[],done=tasks.filter((_,i)=>checked[`${selectedMember}-${i}`]).length,p=tasks.length?Math.round((done/tasks.length)*100):0;
+                const hasSod=!!sodSubmissions[selectedMember];
+                const sod=sodSubmissions[selectedMember];
                 return (
                   <Card style={{padding:20}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
                       <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                        <Avatar name={selectedMember} size={44} />
-                        <div><div style={{fontWeight:700,fontSize:16}}>{selectedMember}</div><div style={{fontSize:12,color:T.grayLight,marginTop:2}}>{d.role}</div></div>
+                        <Avatar name={selectedMember} size={44} muted={!hasSod} />
+                        <div>
+                          <div style={{fontWeight:700,fontSize:16}}>{selectedMember}</div>
+                          <div style={{fontSize:12,color:T.grayLight,marginTop:2}}>{d.role}</div>
+                          {hasSod&&<div style={{fontSize:10,color:T.green,fontFamily:T.mono,marginTop:3}}>SOD @ {sod.submittedAt}</div>}
+                          {!hasSod&&<div style={{fontSize:10,color:T.red,fontFamily:T.mono,marginTop:3}}>No SOD submitted</div>}
+                        </div>
                       </div>
                       <div style={{textAlign:"right"}}>
                         <div style={{fontSize:26,fontWeight:900,color:p===100?T.green:T.orange,fontFamily:T.font,lineHeight:1}}>{p}%</div>
@@ -855,34 +1073,39 @@ function OpsPulse({slackIds}) {
                       </div>
                     </div>
                     <ProgressBar value={p} height={7} />
+
+                    {/* SOD summary inline */}
+                    {sod&&(
+                      <div style={{marginTop:14,background:T.bg,border:`2px solid ${T.green}`,padding:12}}>
+                        <div style={{fontSize:9,fontWeight:700,color:T.green,fontFamily:T.mono,letterSpacing:2,marginBottom:8}}>TODAY'S SOD</div>
+                        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                          {sod.tasks.map((t,i)=>(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.darkGray}}>
+                              <span style={{color:priorityColor(t.priority)}}>·</span>{t.task}
+                              <span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginLeft:"auto"}}>{t.eta}</span>
+                            </div>
+                          ))}
+                          {sod.metrics&&<div style={{fontSize:11,color:T.green,fontFamily:T.mono,marginTop:4}}>📊 {sod.metrics}</div>}
+                          {sod.blockers&&<div style={{fontSize:11,color:T.orange,fontFamily:T.mono,marginTop:2}}>⚠ {sod.blockers}</div>}
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{marginTop:14,background:T.bg,border:`2px solid ${T.black}`,padding:12}}>
                       {showDmContext[selectedMember]?(
                         <div style={{display:"flex",flexDirection:"column",gap:8}}>
                           <div style={{fontSize:11,color:T.gray,fontWeight:700,letterSpacing:1,fontFamily:T.mono}}>ADD NOTE TO SLACK DM (OPTIONAL)</div>
-                          <textarea value={dmContext[selectedMember]||""} onChange={e=>setDmContext(p=>({...p,[selectedMember]:e.target.value}))}
-                            placeholder="e.g. Please prioritize the first 2 tasks this week…"
+                          <textarea value={dmContext[selectedMember]||""} onChange={e=>setDmContext(p=>({...p,[selectedMember]:e.target.value}))} placeholder="e.g. Please prioritize the first 2 tasks this week…"
                             style={{width:"100%",minHeight:70,background:T.surface,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 12px",outline:"none",fontFamily:T.body,resize:"vertical"}} />
                           <div style={{display:"flex",gap:8}}>
-                            <button onClick={()=>sendDM(selectedMember,dmContext[selectedMember])}
-                              style={{flex:1,padding:"9px 0",borderRadius:0,background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
-                              {slackStatus[selectedMember]||"SEND DM"}
-                            </button>
-                            <button onClick={()=>setShowDmContext(p=>({...p,[selectedMember]:false}))}
-                              style={{padding:"9px 16px",borderRadius:0,background:T.surface,color:T.gray,border:`2px solid ${T.black}`,fontSize:11,cursor:"pointer",fontFamily:T.mono}}>
-                              CANCEL
-                            </button>
+                            <button onClick={()=>sendDM(selectedMember,dmContext[selectedMember])} style={{flex:1,padding:"9px 0",background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>{slackStatus[selectedMember]||"SEND DM"}</button>
+                            <button onClick={()=>setShowDmContext(p=>({...p,[selectedMember]:false}))} style={{padding:"9px 16px",background:T.surface,color:T.gray,border:`2px solid ${T.black}`,fontSize:11,cursor:"pointer",fontFamily:T.mono}}>CANCEL</button>
                           </div>
                         </div>
                       ):(
                         <div style={{display:"flex",gap:8}}>
-                          <button onClick={()=>setShowDmContext(p=>({...p,[selectedMember]:true}))}
-                            style={{flex:1,padding:"9px 0",borderRadius:0,background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
-                            📩 SEND SLACK DM
-                          </button>
-                          <button onClick={()=>addTask(selectedMember)}
-                            style={{padding:"9px 16px",borderRadius:0,background:T.surface,color:T.orange,border:`2px solid ${T.orange}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
-                            + ADD TASK
-                          </button>
+                          <button onClick={()=>setShowDmContext(p=>({...p,[selectedMember]:true}))} style={{flex:1,padding:"9px 0",background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>📩 SEND SLACK DM</button>
+                          <button onClick={()=>addTask(selectedMember)} style={{padding:"9px 16px",background:T.surface,color:T.orange,border:`2px solid ${T.orange}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>+ ADD TASK</button>
                         </div>
                       )}
                     </div>
@@ -893,32 +1116,24 @@ function OpsPulse({slackIds}) {
                         return (
                           <div key={i} style={{background:isDone?"#F0FDF4":overdue?"#FFF7F5":T.bg,padding:"12px 14px",border:`2px solid ${isDone?T.green:overdue?T.orange:T.black}`}}>
                             <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                              <div onClick={()=>!isEditingThis&&toggleCheck(selectedMember,i)}
-                                style={{width:20,height:20,borderRadius:0,border:`2px solid ${isDone?T.green:overdue?T.orange:T.black}`,background:isDone?T.green:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,cursor:"pointer"}}>
+                              <div onClick={()=>!isEditingThis&&toggleCheck(selectedMember,i)} style={{width:20,height:20,border:`2px solid ${isDone?T.green:overdue?T.orange:T.black}`,background:isDone?T.green:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,cursor:"pointer"}}>
                                 {isDone&&<span style={{color:"#fff",fontSize:11,fontWeight:900}}>✓</span>}
                               </div>
                               <div style={{flex:1}}>
                                 {isEditingThis?(
                                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                                    <input autoFocus value={editingTaskText} onChange={e=>setEditingTaskText(e.target.value)}
-                                      onKeyDown={e=>{if(e.key==="Enter") saveTaskEdit(selectedMember,i);if(e.key==="Escape") setEditingTask(null);}}
-                                      style={{width:"100%",background:T.surface,border:`2px solid ${T.orange}`,borderRadius:0,color:T.black,fontSize:13,padding:"6px 10px",outline:"none",fontFamily:T.body}} />
+                                    <input autoFocus value={editingTaskText} onChange={e=>setEditingTaskText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter") saveTaskEdit(selectedMember,i);if(e.key==="Escape") setEditingTask(null);}}
+                                      style={{width:"100%",background:T.surface,border:`2px solid ${T.orange}`,color:T.black,fontSize:13,padding:"6px 10px",outline:"none",fontFamily:T.body}} />
                                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                                      <select value={t.priority} onChange={e=>updateTaskField(selectedMember,i,"priority",e.target.value)} style={{background:T.surface,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:11,padding:"4px 8px",outline:"none"}}>
-                                        {["high","medium","low"].map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}
-                                      </select>
-                                      <select value={t.due_day} onChange={e=>updateTaskField(selectedMember,i,"due_day",e.target.value)} style={{background:T.surface,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:11,padding:"4px 8px",outline:"none"}}>
-                                        {["Monday","Tuesday","Wednesday","Thursday","Friday","EOW"].map(d=><option key={d} value={d}>{d}</option>)}
-                                      </select>
-                                      <button onClick={()=>saveTaskEdit(selectedMember,i)} style={{background:T.green,color:"#fff",border:`2px solid ${T.green}`,borderRadius:0,padding:"4px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE</button>
-                                      <button onClick={()=>setEditingTask(null)} style={{background:T.bg,color:T.gray,border:`2px solid ${T.black}`,borderRadius:0,padding:"4px 12px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>CANCEL</button>
+                                      <select value={t.priority} onChange={e=>updateTaskField(selectedMember,i,"priority",e.target.value)} style={{background:T.surface,border:`2px solid ${T.black}`,color:T.black,fontSize:11,padding:"4px 8px",outline:"none"}}>{["high","medium","low"].map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}</select>
+                                      <select value={t.due_day} onChange={e=>updateTaskField(selectedMember,i,"due_day",e.target.value)} style={{background:T.surface,border:`2px solid ${T.black}`,color:T.black,fontSize:11,padding:"4px 8px",outline:"none"}}>{["Monday","Tuesday","Wednesday","Thursday","Friday","EOW"].map(d=><option key={d} value={d}>{d}</option>)}</select>
+                                      <button onClick={()=>saveTaskEdit(selectedMember,i)} style={{background:T.green,color:"#fff",border:`2px solid ${T.green}`,padding:"4px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE</button>
+                                      <button onClick={()=>setEditingTask(null)} style={{background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"4px 12px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>CANCEL</button>
                                     </div>
                                   </div>
                                 ):(
                                   <>
-                                    <div style={{fontSize:13,color:isDone?T.grayLight:T.black,textDecoration:isDone?"line-through":"none",lineHeight:1.5}}>
-                                      <span style={{opacity:0.5,marginRight:6}}>{tIcon(t.type)}</span>{t.task}
-                                    </div>
+                                    <div style={{fontSize:13,color:isDone?T.grayLight:T.black,textDecoration:isDone?"line-through":"none",lineHeight:1.5}}><span style={{opacity:0.5,marginRight:6}}>{tIcon(t.type)}</span>{t.task}</div>
                                     <div style={{display:"flex",gap:8,marginTop:5,flexWrap:"wrap"}}>
                                       <Badge label={t.priority} color={pColor(t.priority)} />
                                       {t.due_day&&<span style={{fontSize:10,color:overdue?T.orange:T.grayLight,fontFamily:T.mono}}>{overdue?"⚠ OVERDUE · ":""}{t.due_day}</span>}
@@ -940,13 +1155,9 @@ function OpsPulse({slackIds}) {
                     {d.blockers?.length>0&&(
                       <div style={{background:T.orangeSoft,border:`2px solid ${T.orange}`,padding:"12px 16px",marginTop:14}}>
                         <CardLabel color={T.orange}>Blockers</CardLabel>
-                        <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>
-                          {d.blockers.map((b,i)=><div key={i} style={{fontSize:13,color:T.darkGray}}>· {b}</div>)}
-                        </div>
+                        <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>{d.blockers.map((b,i)=><div key={i} style={{fontSize:13,color:T.darkGray}}>· {b}</div>)}</div>
                       </div>
                     )}
-
-                    {/* ── KPI PANEL ── */}
                     {KPI_DATA[selectedMember]&&(()=>{
                       const kpi=KPI_DATA[selectedMember];
                       return (
@@ -981,25 +1192,19 @@ function OpsPulse({slackIds}) {
                                 </div>
                               ))}
                               <div style={{borderTop:`1px solid ${T.border}`,paddingTop:10}}>
-                                <button onClick={e=>{e.stopPropagation();setShowEod(!showEod);}}
-                                  style={{background:"transparent",border:`2px solid ${T.black}`,borderRadius:0,padding:"6px 14px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,color:T.darkGray}}>
+                                <button onClick={e=>{e.stopPropagation();setShowEod(!showEod);}} style={{background:"transparent",border:`2px solid ${T.black}`,padding:"6px 14px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,color:T.darkGray}}>
                                   📝 {showEod?"HIDE":"VIEW"} EOD TEMPLATE
                                 </button>
                                 {showEod&&(
                                   <div style={{marginTop:10,background:"#1a1a1a",padding:14}}>
                                     <div style={{fontSize:9,color:kpi.color,fontWeight:700,letterSpacing:2,fontFamily:T.mono,marginBottom:10}}>END-OF-DAY UPDATE FORMAT</div>
                                     {kpi.eod.map((line,li)=>(
-                                      <div key={li} style={{fontSize:12,color:"#ccc",fontFamily:T.mono,marginBottom:8,lineHeight:1.6}}>
-                                        <span style={{color:kpi.color,marginRight:6}}>·</span>{line}
-                                      </div>
+                                      <div key={li} style={{fontSize:12,color:"#ccc",fontFamily:T.mono,marginBottom:8,lineHeight:1.6}}><span style={{color:kpi.color,marginRight:6}}>·</span>{line}</div>
                                     ))}
                                     <div style={{marginTop:10,padding:"8px 12px",background:"#2a1a1a",borderLeft:`3px solid ${T.orange}`}}>
                                       <div style={{fontSize:10,color:T.orange,fontFamily:T.mono,lineHeight:1.6}}>📌 If there's a blocker: name the issue → 3 solutions → 1 recommendation.</div>
                                     </div>
-                                    <button onClick={()=>navigator.clipboard.writeText(kpi.eod.join("\n"))}
-                                      style={{marginTop:10,background:T.black,color:"#fff",border:`1px solid #333`,borderRadius:0,padding:"5px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
-                                      COPY TEMPLATE
-                                    </button>
+                                    <button onClick={()=>navigator.clipboard.writeText(kpi.eod.join("\n"))} style={{marginTop:10,background:T.black,color:"#fff",border:`1px solid #333`,padding:"5px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>COPY TEMPLATE</button>
                                   </div>
                                 )}
                               </div>
@@ -1089,10 +1294,10 @@ function Dashboard({ navigate }) {
         {showInput&&(
           <div style={{background:T.surface,border:`2px solid ${T.orange}`,padding:18,marginBottom:18}}>
             <div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono,letterSpacing:1}}>YOUR NAME</div>
-            <input value={authorName} onChange={e=>setAuthorName(e.target.value)} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"8px 12px",outline:"none",fontFamily:T.body,marginBottom:10}} />
+            <input value={authorName} onChange={e=>setAuthorName(e.target.value)} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"8px 12px",outline:"none",fontFamily:T.body,marginBottom:10}} />
             <div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono,letterSpacing:1}}>NOTE</div>
-            <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Type your announcement…" style={{width:"100%",minHeight:80,background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 12px",outline:"none",fontFamily:T.body,resize:"vertical",lineHeight:1.7,display:"block",marginBottom:10}} />
-            <button onClick={addNote} disabled={!newNote.trim()} style={{padding:"9px 24px",borderRadius:0,background:newNote.trim()?T.black:T.border,color:newNote.trim()?"#fff":T.gray,border:`2px solid ${newNote.trim()?T.black:T.border}`,fontSize:11,fontWeight:700,cursor:newNote.trim()?"pointer":"not-allowed",fontFamily:T.mono,letterSpacing:1}}>POST NOTE</button>
+            <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Type your announcement…" style={{width:"100%",minHeight:80,background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 12px",outline:"none",fontFamily:T.body,resize:"vertical",lineHeight:1.7,display:"block",marginBottom:10}} />
+            <button onClick={addNote} disabled={!newNote.trim()} style={{padding:"9px 24px",background:newNote.trim()?T.black:T.border,color:newNote.trim()?"#fff":T.gray,border:`2px solid ${newNote.trim()?T.black:T.border}`,fontSize:11,fontWeight:700,cursor:newNote.trim()?"pointer":"not-allowed",fontFamily:T.mono,letterSpacing:1}}>POST NOTE</button>
           </div>
         )}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -1103,7 +1308,7 @@ function Dashboard({ navigate }) {
                   <p style={{fontSize:13,color:T.black,lineHeight:1.7,margin:"0 0 12px"}}>{a.text}</p>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:1}}>{a.author.toUpperCase()}</span><span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>· {a.date}</span></div>
-                    <div style={{display:"flex",gap:6}}><button onClick={()=>setEditing(a.id)} style={{background:"none",border:`2px solid ${T.black}`,borderRadius:0,padding:"3px 10px",fontSize:10,color:T.gray,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>EDIT</button><button onClick={()=>deleteNote(a.id)} style={{background:"none",border:`2px solid ${T.red}`,borderRadius:0,padding:"3px 10px",fontSize:10,color:T.red,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>DELETE</button></div>
+                    <div style={{display:"flex",gap:6}}><button onClick={()=>setEditing(a.id)} style={{background:"none",border:`2px solid ${T.black}`,padding:"3px 10px",fontSize:10,color:T.gray,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>EDIT</button><button onClick={()=>deleteNote(a.id)} style={{background:"none",border:`2px solid ${T.red}`,padding:"3px 10px",fontSize:10,color:T.red,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>DELETE</button></div>
                   </div>
                 </div>
               )}
@@ -1113,18 +1318,17 @@ function Dashboard({ navigate }) {
       </div>
       <div style={{borderTop:"3px solid #000",padding:"28px 32px",background:"#000",display:"flex",justifyContent:"space-between",alignItems:"center",gap:24}}>
         <div><div style={{fontSize:10,fontWeight:700,letterSpacing:3,color:T.orange,fontFamily:T.mono,marginBottom:6}}>COMPANY ETHOS</div><p style={{fontSize:13,color:"#888",fontFamily:T.mono,margin:0}}>Our values, principles, and standards.</p></div>
-        <button onClick={()=>navigate&&navigate("culture")} style={{padding:"12px 28px",borderRadius:0,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:2,fontFamily:T.font,whiteSpace:"nowrap"}}>→ VIEW COMPANY ETHOS</button>
+        <button onClick={()=>navigate&&navigate("culture")} style={{padding:"12px 28px",background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:2,fontFamily:T.font,whiteSpace:"nowrap"}}>→ VIEW COMPANY ETHOS</button>
       </div>
     </div>
   );
 }
-
 function EditNote({note,onSave,onCancel}) {
   const [text,setText]=useState(note.text);
   return (
     <div>
-      <textarea value={text} onChange={e=>setText(e.target.value)} autoFocus style={{width:"100%",minHeight:80,background:T.bg,border:`2px solid ${T.orange}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 12px",outline:"none",fontFamily:T.body,resize:"vertical",lineHeight:1.7,display:"block",marginBottom:10}} />
-      <div style={{display:"flex",gap:8}}><button onClick={()=>onSave(note.id,text)} style={{padding:"7px 18px",borderRadius:0,background:T.green,color:"#fff",border:`2px solid ${T.green}`,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE</button><button onClick={onCancel} style={{padding:"7px 18px",borderRadius:0,background:"transparent",color:T.gray,border:`2px solid ${T.black}`,fontSize:10,cursor:"pointer",fontFamily:T.mono}}>CANCEL</button></div>
+      <textarea value={text} onChange={e=>setText(e.target.value)} autoFocus style={{width:"100%",minHeight:80,background:T.bg,border:`2px solid ${T.orange}`,color:T.black,fontSize:13,padding:"10px 12px",outline:"none",fontFamily:T.body,resize:"vertical",lineHeight:1.7,display:"block",marginBottom:10}} />
+      <div style={{display:"flex",gap:8}}><button onClick={()=>onSave(note.id,text)} style={{padding:"7px 18px",background:T.green,color:"#fff",border:`2px solid ${T.green}`,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE</button><button onClick={onCancel} style={{padding:"7px 18px",background:"transparent",color:T.gray,border:`2px solid ${T.black}`,fontSize:10,cursor:"pointer",fontFamily:T.mono}}>CANCEL</button></div>
     </div>
   );
 }
@@ -1158,20 +1362,17 @@ function CultureDashboard() {
 
 // ─── RFP ENGINE ───────────────────────────────────────────────────────────────
 const urgencyTag=(deadline)=>{if(!deadline) return null;const d=new Date(deadline),now=new Date(),diff=Math.ceil((d-now)/86400000);if(isNaN(diff)) return null;if(diff<0) return {label:"EXPIRED",color:T.gray};if(diff<=7) return {label:`${diff}d left`,color:T.red};if(diff<=21) return {label:`${diff}d left`,color:T.yellow};return {label:`${diff}d left`,color:T.green};};
-
 function RFPEngine() {
-  const [keywords,setKeywords]=useState("");const [rfps,setRfps]=useState([]);const [selected,setSelected]=useState(null);const [proposal,setProposal]=useState(null);const [loading,setLoading]=useState({search:false,proposal:false});const [error,setError]=useState(null);const [view,setView]=useState("search");const [tracker,setTracker]=useState([]);const [expandedScore,setExpandedScore]=useState(null);const [editNote,setEditNote]=useState({});const [editRev,setEditRev]=useState({});const [viewingProposal,setViewingProposal]=useState(null);const [hideExpired,setHideExpired]=useState(true);const [sortByDeadline,setSortByDeadline]=useState(true);const [editingProposal,setEditingProposal]=useState(false);const [editedProposalText,setEditedProposalText]=useState("");
+  const [keywords,setKeywords]=useState("");const [rfps,setRfps]=useState([]);const [selected,setSelected]=useState(null);const [proposal,setProposal]=useState(null);const [loading,setLoading]=useState({search:false,proposal:false});const [error,setError]=useState(null);const [view,setView]=useState("search");const [tracker,setTracker]=useState([]);const [expandedScore,setExpandedScore]=useState(null);const [editedProposalText,setEditedProposalText]=useState("");
   useEffect(()=>{storage.get("rfp-tracker").then(s=>{if(s) setTracker(JSON.parse(s.value));});},[]);
   const setLoad=(k,v)=>setLoading(p=>({...p,[k]:v}));
   const persist=async(list)=>{setTracker(list);await storage.set("rfp-tracker",JSON.stringify(list));};
   const saveToTracker=(rfp,pt)=>{const e={id:Date.now(),title:rfp.title,organization:rfp.organization,type:rfp.type||"Other",budget:rfp.budget,deadline:rfp.deadline||"",services:rfp.services_needed||[],score:rfp.relevance_score,proposal:pt,status:"draft",revenue:"",notes:"",source_url:rfp.source_url||"",created_at:new Date().toISOString()};persist([e,...tracker]);};
   const updateStatus=(id,status)=>persist(tracker.map(t=>t.id===id?{...t,status}:t));
-  const updateField=(id,field,val)=>persist(tracker.map(t=>t.id===id?{...t,[field]:val}:t));
   const del=(id)=>persist(tracker.filter(t=>t.id!==id));
-
   const search=async()=>{
     setLoad("search",true);setError(null);setRfps([]);setSelected(null);setProposal(null);
-    const prompt=`RFP research specialist for BuildWithLeverage (growth agency: outbound, paid media, influencer, email marketing, design, web). Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound"],"source_url":"","source":""}]}`;
+    const prompt=`RFP research specialist for BuildWithLeverage. Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound"],"source_url":"","source":""}]}`;
     try {
       const data=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]});
       if(data.error) throw new Error(data.error.message);
@@ -1181,16 +1382,15 @@ function RFPEngine() {
     } catch(e){setError(e.message);}
     setLoad("search",false);
   };
-
-  const genProposal=async(rfp,customText)=>{
-    setSelected(rfp);setProposal(null);setLoad("proposal",true);setEditingProposal(false);setError(null);
+  const genProposal=async(rfp)=>{
+    setSelected(rfp);setProposal(null);setLoad("proposal",true);setError(null);
     try {
-      const metaPrompt=`Proposal writer for BuildWithLeverage. RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")} ${customText?"Context: "+customText:""} Return ONLY valid JSON: {"subject_line":"A NEW [X] FOR [ORG]","why_bwl":["reason"],"relevant_results":["result"],"investment":"price","timeline":"timeline","requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}`;
+      const metaPrompt=`Proposal writer for BuildWithLeverage. RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")} Return ONLY valid JSON: {"subject_line":"A NEW [X] FOR [ORG]","why_bwl":["reason"],"relevant_results":["result"],"investment":"price","timeline":"timeline","requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}`;
       const d1=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:metaPrompt}]});
       if(d1.error) throw new Error(d1.error.message);
       const t1=(d1.content?.find(b=>b.type==="text")?.text||"").replace(/```json|```/g,"").trim();
       const meta=JSON.parse(t1.slice(t1.indexOf("{"),t1.lastIndexOf("}")+1));
-      const textPrompt=`Senior proposal writer for LEVERAGE. Stats: $125M revenue, 11X ROAS, 20+ companies. RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")} ${customText?"Context: "+customText:""}\nWrite full proposal with sections: 01 // THE OPPORTUNITY, 02 // WHAT WE BUILD, 03 // THE PILOT, 04 // THE MATH (pipe table), 05 // INVESTMENT (pipe table), 06 // NEXT STEPS. Use // KEY INSIGHT for standout points. Price HIGH for ${rfp.type}. Plain text only.`;
+      const textPrompt=`Senior proposal writer for LEVERAGE. Stats: $125M revenue, 11X ROAS, 20+ companies. RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")}\nWrite full proposal with sections: 01 // THE OPPORTUNITY, 02 // WHAT WE BUILD, 03 // THE PILOT, 04 // THE MATH (pipe table), 05 // INVESTMENT (pipe table), 06 // NEXT STEPS. Use // KEY INSIGHT for standout points. Plain text only.`;
       const d2=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:textPrompt}]});
       if(d2.error) throw new Error(d2.error.message);
       const proposalText=d2.content?.find(b=>b.type==="text")?.text||"";
@@ -1198,51 +1398,44 @@ function RFPEngine() {
     } catch(e){setError(e.message);}
     setLoad("proposal",false);
   };
-
   const sc=s=>s>=80?T.green:s>=60?T.yellow:T.red;
   const ss=s=>({draft:{color:T.gray,label:"DRAFT"},submitted:{color:T.yellow,label:"SUBMITTED"},won:{color:T.green,label:"WON"},lost:{color:T.red,label:"LOST"}}[s]||{color:T.gray,label:s});
   const won=tracker.filter(t=>t.status==="won");
   const submitted=tracker.filter(t=>["submitted","won","lost"].includes(t.status));
   const winRate=submitted.length?Math.round((won.length/submitted.length)*100):0;
-
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",gap:8}}><Pill label="🔍 FIND RFPs" active={view==="search"} onClick={()=>setView("search")} /><Pill label={`📊 PIPELINE (${tracker.length})`} active={view==="tracker"} onClick={()=>setView("tracker")} /></div>
       {view==="search"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <Card><SectionHeader label="Search RFPs" /><div style={{padding:16,display:"flex",gap:10}}><Input value={keywords} onChange={setKeywords} placeholder="e.g. marketing services, digital advertising…" style={{flex:1}} onKeyDown={e=>e.key==="Enter"&&keywords.trim()&&search()} /><button onClick={search} disabled={!keywords.trim()||loading.search} style={{background:keywords.trim()?T.black:"#E5E0D8",color:keywords.trim()?"#fff":T.gray,border:`2px solid ${keywords.trim()?T.black:"#E5E0D8"}`,borderRadius:0,padding:"10px 20px",fontSize:12,fontWeight:700,cursor:keywords.trim()?"pointer":"not-allowed",whiteSpace:"nowrap",fontFamily:T.mono,letterSpacing:1}}>{loading.search?"SEARCHING…":"SEARCH"}</button></div></Card>
+          <Card><SectionHeader label="Search RFPs" /><div style={{padding:16,display:"flex",gap:10}}><Input value={keywords} onChange={setKeywords} placeholder="e.g. marketing services, digital advertising…" style={{flex:1}} onKeyDown={e=>e.key==="Enter"&&keywords.trim()&&search()} /><button onClick={search} disabled={!keywords.trim()||loading.search} style={{background:keywords.trim()?T.black:"#E5E0D8",color:keywords.trim()?"#fff":T.gray,border:`2px solid ${keywords.trim()?T.black:"#E5E0D8"}`,padding:"10px 20px",fontSize:12,fontWeight:700,cursor:keywords.trim()?"pointer":"not-allowed",whiteSpace:"nowrap",fontFamily:T.mono,letterSpacing:1}}>{loading.search?"SEARCHING…":"SEARCH"}</button></div></Card>
           <Err msg={error} />
-          {rfps.length>0&&!proposal&&(()=>{
-            let filtered=[...rfps];
-            if(hideExpired) filtered=filtered.filter(r=>{const d=urgencyTag(r.deadline);return !d||d.label!=="EXPIRED";});
-            if(sortByDeadline) filtered.sort((a,b)=>{if(!a.deadline) return 1;if(!b.deadline) return -1;return new Date(a.deadline)-new Date(b.deadline);});
-            return (
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {filtered.map((rfp,i)=>{
-                  const urg=urgencyTag(rfp.deadline),isExp=expandedScore===rfp.id;
-                  return (
-                    <Card key={i} style={{padding:18}} hover>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15,marginBottom:6}}>{rfp.title}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><span style={{fontSize:12,color:T.gray}}>{rfp.organization}</span><Badge label={rfp.type} color={T.gray} />{urg&&<Badge label={urg.label} color={urg.color} />}{rfp.budget&&<Badge label={rfp.budget} color={T.green} />}</div></div>
-                        <div style={{textAlign:"center",marginLeft:14}}><div style={{fontSize:28,fontWeight:900,color:sc(rfp.relevance_score),fontFamily:T.font,lineHeight:1}}>{rfp.relevance_score}</div><button onClick={()=>setExpandedScore(isExp?null:rfp.id)} style={{fontSize:10,color:T.orange,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:T.mono}}>{isExp?"HIDE":"WHY?"}</button></div>
-                      </div>
-                      {isExp&&rfp.score_breakdown&&(<div style={{background:T.bg,border:`2px solid ${T.black}`,padding:14,marginBottom:10}}><CardLabel>Score Breakdown</CardLabel><div style={{fontSize:12,color:T.darkGray,margin:"8px 0"}}>{rfp.score_breakdown.overall}</div></div>)}
-                      <p style={{margin:"0 0 10px",fontSize:13,color:T.darkGray,lineHeight:1.6}}>{rfp.description}</p>
-                      {rfp.services_needed?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>{rfp.services_needed.map((s,j)=><Badge key={j} label={s} color={T.orange} />)}</div>}
-                      <button onClick={()=>genProposal(rfp)} style={{width:"100%",padding:"10px 0",borderRadius:0,background:loading.proposal&&selected?.id===rfp.id?"#E5E0D8":T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>{loading.proposal&&selected?.id===rfp.id?"GENERATING…":"GENERATE PROPOSAL"}</button>
-                    </Card>
-                  );
-                })}
-              </div>
-            );
-          })()}
+          {rfps.length>0&&!proposal&&(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {rfps.map((rfp,i)=>{
+                const urg=urgencyTag(rfp.deadline),isExp=expandedScore===rfp.id;
+                return (
+                  <Card key={i} style={{padding:18}} hover>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                      <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15,marginBottom:6}}>{rfp.title}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><span style={{fontSize:12,color:T.gray}}>{rfp.organization}</span><Badge label={rfp.type} color={T.gray} />{urg&&<Badge label={urg.label} color={urg.color} />}{rfp.budget&&<Badge label={rfp.budget} color={T.green} />}</div></div>
+                      <div style={{textAlign:"center",marginLeft:14}}><div style={{fontSize:28,fontWeight:900,color:sc(rfp.relevance_score),fontFamily:T.font,lineHeight:1}}>{rfp.relevance_score}</div><button onClick={()=>setExpandedScore(isExp?null:rfp.id)} style={{fontSize:10,color:T.orange,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:T.mono}}>{isExp?"HIDE":"WHY?"}</button></div>
+                    </div>
+                    {isExp&&rfp.score_breakdown&&(<div style={{background:T.bg,border:`2px solid ${T.black}`,padding:14,marginBottom:10}}><CardLabel>Score Breakdown</CardLabel><div style={{fontSize:12,color:T.darkGray,margin:"8px 0"}}>{rfp.score_breakdown.overall}</div></div>)}
+                    <p style={{margin:"0 0 10px",fontSize:13,color:T.darkGray,lineHeight:1.6}}>{rfp.description}</p>
+                    {rfp.services_needed?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>{rfp.services_needed.map((s,j)=><Badge key={j} label={s} color={T.orange} />)}</div>}
+                    <button onClick={()=>genProposal(rfp)} style={{width:"100%",padding:"10px 0",background:loading.proposal&&selected?.id===rfp.id?"#E5E0D8":T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>{loading.proposal&&selected?.id===rfp.id?"GENERATING…":"GENERATE PROPOSAL"}</button>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
           {proposal&&selected&&(
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><CardLabel>Branded Proposal</CardLabel></div><Pill label="← BACK" onClick={()=>{setProposal(null);setSelected(null);}} /></div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><CardLabel>Branded Proposal</CardLabel><Pill label="← BACK" onClick={()=>{setProposal(null);setSelected(null);}} /></div>
               <BrandedProposal proposal={{...proposal,full_proposal_text:editedProposalText}} rfp={selected} />
               <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>navigator.clipboard.writeText(editedProposalText)} style={{flex:1,padding:12,borderRadius:0,background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>COPY</button>
-                <button onClick={()=>{saveToTracker(selected,editedProposalText);setView("tracker");setProposal(null);setSelected(null);}} style={{flex:1,padding:12,borderRadius:0,background:T.green,color:"#fff",border:`2px solid ${T.green}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE TO PIPELINE</button>
+                <button onClick={()=>navigator.clipboard.writeText(editedProposalText)} style={{flex:1,padding:12,background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>COPY</button>
+                <button onClick={()=>{saveToTracker(selected,editedProposalText);setView("tracker");setProposal(null);setSelected(null);}} style={{flex:1,padding:12,background:T.green,color:"#fff",border:`2px solid ${T.green}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE TO PIPELINE</button>
               </div>
             </div>
           )}
@@ -1253,7 +1446,7 @@ function RFPEngine() {
           <Card style={{background:T.black,padding:20}}><CardLabel color={T.orange}>Win Rate</CardLabel><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:14}}>{[["Total",tracker.length,T.orange],["Won",won.length,T.green],["Lost",tracker.filter(t=>t.status==="lost").length,T.red],["Win Rate",`${winRate}%`,winRate>=50?T.green:T.red]].map(([l,v,c])=>(<div key={l} style={{textAlign:"center",background:"#ffffff0d",border:"1px solid #333",padding:"12px 6px"}}><div style={{fontSize:22,fontWeight:900,color:c,fontFamily:T.font}}>{v}</div><div style={{fontSize:9,color:"#999",fontWeight:700,marginTop:2,fontFamily:T.mono}}>{l.toUpperCase()}</div></div>))}</div></Card>
           {tracker.length===0?<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No proposals saved yet</div></Card>:
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {tracker.map(t=>(<Card key={t.id} style={{padding:18}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{t.title}</div><div style={{fontSize:11,color:T.gray,marginTop:3}}>{t.organization}</div></div><Badge label={ss(t.status).label} color={ss(t.status).color} /></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:T.bg,color:T.yellow,border:`2px solid ${T.yellow}`,borderRadius:0,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>SUBMITTED</button>}{t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:T.bg,color:T.green,border:`2px solid ${T.green}`,borderRadius:0,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>WON</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:T.bg,color:T.red,border:`2px solid ${T.red}`,borderRadius:0,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>LOST</button></>}<button onClick={()=>del(t.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,borderRadius:0,padding:"6px 12px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}
+              {tracker.map(t=>(<Card key={t.id} style={{padding:18}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{t.title}</div><div style={{fontSize:11,color:T.gray,marginTop:3}}>{t.organization}</div></div><Badge label={ss(t.status).label} color={ss(t.status).color} /></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:T.bg,color:T.yellow,border:`2px solid ${T.yellow}`,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>SUBMITTED</button>}{t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:T.bg,color:T.green,border:`2px solid ${T.green}`,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>WON</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:T.bg,color:T.red,border:`2px solid ${T.red}`,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>LOST</button></>}<button onClick={()=>del(t.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"6px 12px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}
             </div>
           }
         </div>
@@ -1268,26 +1461,22 @@ function WeeklyReport() {
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Generate weekly status report for Kristine Mirabueno (CoS/EA) at BuildWithLeverage. Updates: ${updates}. Return ONLY valid JSON: {"executive_summary":"TL;DR","wins":["w1"],"in_progress":[{"item":"...","status":"..."}],"blockers":["b1"],"next_week":["p1"],"david_needs_to_know":["item"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Your Updates This Week" value={updates} onChange={setUpdates} placeholder="Type your updates…" /><Btn onClick={gen} disabled={!updates.trim()} loading={loading} label="Generate Weekly Report" icon="📄" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:20}}><CardLabel color={T.orange}>TL;DR</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.executive_summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Wins" items={result.wins} color={T.green} /><Bullets label="Blockers" items={result.blockers} color={T.red} /></div><Bullets label="Next Week" items={result.next_week} color={T.purple} /></>}</div>);
 }
-
 function ExecComms() {
   const [context,setContext]=useState("");const [tone,setTone]=useState("professional");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`CoS at BuildWithLeverage. Tone: ${tone}. Context: ${context}. Return ONLY valid JSON: {"subject":"subject","draft":"complete message","alt_version":"alternative","tips":["tip"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["professional","friendly","direct","urgent"].map(t=><Pill key={t} label={t.toUpperCase()} active={tone===t} onClick={()=>setTone(t)} />)}</div><Textarea label="Context" value={context} onChange={setContext} placeholder="What do you need to communicate?" /><Btn onClick={gen} disabled={!context.trim()} loading={loading} label="Draft Comms" icon="✏️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:15,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Draft</CardLabel><CopyBtn text={result.draft} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.draft}</div></div></>}</div>);
 }
-
 function DailyBriefing() {
   const [input,setInput]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`AI Chief of Staff briefing for David Perlov, CEO. Input: ${input}. Return ONLY valid JSON: {"summary":"TL;DR","urgent_items":["item"],"fyi_items":["item"],"decisions_needed":["decision"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Updates / Reports / Slack" value={input} onChange={setInput} placeholder="Paste anything for today's briefing…" /><Btn onClick={gen} disabled={!input.trim()} loading={loading} label="Generate Daily Briefing" icon="☀️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>TL;DR</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Urgent" items={result.urgent_items} color={T.red} /><Bullets label="Decisions Needed" items={result.decisions_needed} color={T.purple} /></div><Bullets label="FYI" items={result.fyi_items} color={T.yellow} /></>}</div>);
 }
-
 function TeamPerformance() {
   const [input,setInput]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Analyze team performance for BuildWithLeverage. Team: ${TEAM_OPS.join(", ")}. Input: ${input}. Return ONLY valid JSON: {"overall_health":"green|yellow|red","summary":"overview","top_performers":["name: reason"],"needs_attention":["name: reason"],"recommended_actions":["action"],"david_focus":"what David should focus on"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   const hColor=h=>({green:T.green,yellow:T.yellow,red:T.red}[h]||T.gray);
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Team Updates / Reports" value={input} onChange={setInput} placeholder="Paste any team updates…" /><Btn onClick={gen} disabled={!input.trim()} loading={loading} label="Analyze Team Performance" icon="📊" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><CardLabel color={T.orange}>Team Health</CardLabel>{result.overall_health&&<Badge label={result.overall_health.toUpperCase()} color={hColor(result.overall_health)} />}</div><p style={{margin:0,color:"#fff",fontSize:13,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Top Performers" items={result.top_performers} color={T.green} /><Bullets label="Needs Attention" items={result.needs_attention} color={T.red} /></div><Bullets label="Recommended Actions" items={result.recommended_actions} color={T.yellow} /></>}</div>);
 }
-
 function StrategicDecision() {
   const [situation,setSituation]=useState("");const [options,setOptions]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Strategic advisor for David Perlov. Situation: ${situation}. Options: ${options||"not specified"}. Return ONLY valid JSON: {"recommendation":"recommended path","confidence":"high|medium|low","pros_cons":[{"option":"name","pros":["p1"],"cons":["c1"]}],"risks":"key risk","next_steps":["step"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
@@ -1301,25 +1490,21 @@ function SequenceBuilder() {
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Build 3-email cold sequence for BuildWithLeverage. ICP: ${icp}. Goal: ${goal}. Return ONLY valid JSON: {"sequence_name":"name","emails":[{"step":1,"subject":"s","body":"full email","send_day":"Day 1","goal":"g"},{"step":2,"subject":"s","body":"full email","send_day":"Day 3","goal":"g"},{"step":3,"subject":"s","body":"full email","send_day":"Day 7","goal":"g"}],"tips":["t"]}`;try{const r=await callClaude(prompt,3000);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Target Audience / ICP" value={icp} onChange={setIcp} placeholder="Who are you targeting?" minHeight={80} /><Textarea label="Campaign Goal" value={goal} onChange={setGoal} placeholder="e.g. Book discovery call…" minHeight={70} /><Btn onClick={gen} disabled={!icp.trim()||!goal.trim()} loading={loading} label="Build Email Sequence" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Sequence: {result.sequence_name}</CardLabel></Card>{result.emails?.map((e,i)=>(<Card key={i} style={{padding:18}}><div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}><Badge label={`EMAIL ${e.step}`} color={T.black} bg={T.black} /><span style={{fontSize:10,color:T.gray,fontFamily:T.mono}}>{e.send_day}</span></div><div style={{fontSize:12,fontWeight:600,marginBottom:8,color:T.darkGray}}>Subject: {e.subject}</div><div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",background:T.bg,border:`2px solid ${T.black}`,padding:14}}>{e.body}</div></Card>))}</>}</div>);
 }
-
 function LeadResearch() {
   const [target,setTarget]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Lead research for BuildWithLeverage. Research: ${target}. Return ONLY valid JSON: {"company_summary":"2-3 sentences","pain_points":["p"],"why_bwl_fits":"reason","recommended_angle":"angle","talking_points":["t"],"estimated_fit_score":85}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Company / Lead to Research" value={target} onChange={setTarget} placeholder="Company name, website, or lead details…" minHeight={90} /><Btn onClick={gen} disabled={!target.trim()} loading={loading} label="Research Lead" icon="🔍" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between"}}><div style={{flex:1}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.company_summary}</p></div><div style={{textAlign:"center",marginLeft:20}}><div style={{fontSize:34,fontWeight:900,color:result.estimated_fit_score>=80?T.green:result.estimated_fit_score>=60?T.yellow:T.red,fontFamily:T.font,lineHeight:1}}>{result.estimated_fit_score}</div><div style={{fontSize:9,color:T.gray,fontWeight:700,fontFamily:T.mono}}>FIT SCORE</div></div></div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pain Points" items={result.pain_points} color={T.red} /><Bullets label="Talking Points" items={result.talking_points} color={T.purple} /></div></>}</div>);
 }
-
 function ColdEmailWriter() {
   const [lead,setLead]=useState("");const [offer,setOffer]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Top SDR at BuildWithLeverage. Write cold email. Lead: ${lead}. Offer: ${offer||"BWL growth services"}. Return ONLY valid JSON: {"subject_line":"s","email_body":"complete cold email under 150 words","alt_subject":"alt","follow_up":"day-3 follow-up","tips":["t"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead Info" value={lead} onChange={setLead} placeholder="Company, contact, role, pain points…" minHeight={90} /><Textarea label="Offer / Angle (Optional)" value={offer} onChange={setOffer} placeholder="What are you pitching?" minHeight={70} /><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="Write Cold Email" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject Lines</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:8}}>{result.subject_line}</div><div style={{fontSize:13,color:"#777",marginTop:6}}>Alt: {result.alt_subject}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Main Draft</CardLabel><CopyBtn text={result.email_body} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.email_body}</div></div></>}</div>);
 }
-
 function CallScript() {
-  const [lead,setLead]=useState("");const [goal,setGoal]=useState("book a discovery call");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
+  const [lead,setLead]=useState("");const [goal]=useState("book a discovery call");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Build cold call script for BuildWithLeverage. Lead: ${lead}. Goal: ${goal}. Return ONLY valid JSON: {"opener":"opener","value_prop":"value prop","discovery_questions":["q1","q2"],"objection_handling":[{"objection":"o","response":"r"}],"cta":"CTA","full_script":"complete script"}`;try{const r=await callClaude(prompt,2500);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead / Company Info" value={lead} onChange={setLead} placeholder="Who are you calling?" minHeight={90} /><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="Generate Call Script" icon="📞" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Opener</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.opener}</p></Card><Bullets label="Discovery Questions" items={result.discovery_questions} color={T.purple} /><Card style={{padding:16}}><CardLabel color={T.yellow}>Objection Handling</CardLabel><div style={{marginTop:10}}>{result.objection_handling?.map((o,i)=><div key={i} style={{marginBottom:12}}><div style={{fontSize:12,fontWeight:700,color:T.red,marginBottom:4}}>"{o.objection}"</div><div style={{fontSize:12,lineHeight:1.5,color:T.darkGray}}>→ {o.response}</div></div>)}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Full Script</CardLabel><CopyBtn text={result.full_script} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.full_script}</div></div></>}</div>);
 }
-
 function AfterCallAutomation() {
   const [callNotes,setCallNotes]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`SDR at BuildWithLeverage. After-call automation: ${callNotes}. Return ONLY valid JSON: {"call_summary":"summary","outcome":"connected|no_answer|left_voicemail|not_interested|interested|meeting_booked","crm_notes":"CRM note","follow_up_email":{"subject":"s","body":"email"},"next_action":"next action"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
@@ -1332,13 +1517,11 @@ function InfluencerOutreach() {
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Influencer outreach for BuildWithLeverage. Influencer: ${influencer}. Campaign: ${campaign}. Return ONLY valid JSON: {"subject":"subject","outreach_message":"complete outreach","follow_up":"day-3 follow-up","tips":["t"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Influencer Info" value={influencer} onChange={setInfluencer} placeholder="Name, niche, platform, followers…" minHeight={80} /><Textarea label="Campaign / Brand" value={campaign} onChange={setCampaign} placeholder="What brand or campaign?" minHeight={80} /><Btn onClick={gen} disabled={!influencer.trim()||!campaign.trim()} loading={loading} label="Generate Outreach" icon="📲" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Outreach</CardLabel><CopyBtn text={result.outreach_message} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.outreach_message}</div></div><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
 }
-
 function CampaignBrief() {
   const [details,setDetails]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Campaign brief for BuildWithLeverage. Details: ${details}. Return ONLY valid JSON: {"campaign_name":"n","objective":"o","deliverables":["d"],"timeline":"t","kpis":["k"],"dos":["do"],"donts":["dont"],"full_brief":"complete brief"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Campaign Details" value={details} onChange={setDetails} placeholder="Brand, product, goal, audience, budget…" /><Btn onClick={gen} disabled={!details.trim()} loading={loading} label="Build Campaign Brief" icon="📋" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Campaign: {result.campaign_name}</CardLabel><div style={{fontSize:13,color:"#ccc",lineHeight:1.6,marginTop:8}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="KPIs" items={result.kpis} color={T.green} /><Bullets label="Do's" items={result.dos} color={T.green} /><Bullets label="Don'ts" items={result.donts} color={T.red} /></div></>}</div>);
 }
-
 function InfluencerTracker() {
   const [influencers,setInfluencers]=useState([]);const [form,setForm]=useState({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:"",email:"",contact:""});const [showForm,setShowForm]=useState(false);const [filter,setFilter]=useState("all");
   useEffect(()=>{storage.get("influencer-tracker").then(s=>{if(s) setInfluencers(JSON.parse(s.value));});},[]);
@@ -1352,16 +1535,15 @@ function InfluencerTracker() {
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {[["all","ALL"],...Object.entries(statuses).map(([k,v])=>[k,v.label])].map(([k,l])=>(<Pill key={k} label={`${l} (${k==="all"?influencers.length:influencers.filter(i=>i.status===k).length})`} active={filter===k} onClick={()=>setFilter(k)} />))}
-        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"5px 14px",borderRadius:0,fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>+ ADD</button>
+        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"5px 14px",fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>+ ADD</button>
       </div>
-      {showForm&&(<Card><SectionHeader label="Add Influencer" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["name","NAME *"],["handle","HANDLE"],["niche","NICHE"],["followers","FOLLOWERS"],["rate","RATE"],["email","EMAIL"]].map(([k,l])=>(<div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>))}<div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><Btn onClick={add} disabled={!form.name.trim()} label="ADD INFLUENCER" /></div></Card>)}
+      {showForm&&(<Card><SectionHeader label="Add Influencer" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["name","NAME *"],["handle","HANDLE"],["niche","NICHE"],["followers","FOLLOWERS"],["rate","RATE"],["email","EMAIL"]].map(([k,l])=>(<div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>))}<div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><Btn onClick={add} disabled={!form.name.trim()} label="ADD INFLUENCER" /></div></Card>)}
       {filtered.length===0?<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No influencers yet</div></Card>:
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(inf=>(<Card key={inf.id} style={{padding:16}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div><div style={{fontWeight:700,fontSize:15}}>{inf.name}</div><div style={{fontSize:12,color:T.gray,marginTop:3}}>@{inf.handle} · {inf.platform}</div></div><Badge label={statuses[inf.status]?.label} color={statuses[inf.status]?.color} /></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==inf.status).map(([k,v])=>(<button key={k} onClick={()=>updateStatus(inf.id,k)} style={{background:T.bg,color:v.color,border:`2px solid ${v.color}`,borderRadius:0,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>→ {v.label}</button>))}<button onClick={()=>del(inf.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,borderRadius:0,padding:"4px 10px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(inf=>(<Card key={inf.id} style={{padding:16}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div><div style={{fontWeight:700,fontSize:15}}>{inf.name}</div><div style={{fontSize:12,color:T.gray,marginTop:3}}>@{inf.handle} · {inf.platform}</div></div><Badge label={statuses[inf.status]?.label} color={statuses[inf.status]?.color} /></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==inf.status).map(([k,v])=>(<button key={k} onClick={()=>updateStatus(inf.id,k)} style={{background:T.bg,color:v.color,border:`2px solid ${v.color}`,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>→ {v.label}</button>))}<button onClick={()=>del(inf.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"4px 10px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}</div>
       }
     </div>
   );
 }
-
 function ContentTracker() {
   const [posts,setPosts]=useState([]);const [form,setForm]=useState({influencer:"",platform:"Instagram",content_type:"Post",caption:"",post_date:"",status:"planned",link:""});const [showForm,setShowForm]=useState(false);const [filter,setFilter]=useState("all");
   useEffect(()=>{storage.get("content-tracker").then(s=>{if(s) setPosts(JSON.parse(s.value));});},[]);
@@ -1375,11 +1557,11 @@ function ContentTracker() {
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {[["all","ALL"],...Object.entries(statuses).map(([k,v])=>[k,v.label])].map(([k,l])=>(<Pill key={k} label={`${l} (${k==="all"?posts.length:posts.filter(p=>p.status===k).length})`} active={filter===k} onClick={()=>setFilter(k)} />))}
-        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"5px 14px",borderRadius:0,fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono}}>+ ADD CONTENT</button>
+        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"5px 14px",fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono}}>+ ADD CONTENT</button>
       </div>
-      {showForm&&(<Card><SectionHeader label="Add Content" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["influencer","INFLUENCER *"],["link","POST LINK"]].map(([k,l])=>(<div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>))}<div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(o=><option key={o}>{o}</option>)}</select></div><div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><Btn onClick={add} disabled={!form.influencer.trim()} label="ADD CONTENT" /></div></Card>)}
+      {showForm&&(<Card><SectionHeader label="Add Content" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["influencer","INFLUENCER *"],["link","POST LINK"]].map(([k,l])=>(<div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>))}<div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(o=><option key={o}>{o}</option>)}</select></div><div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><Btn onClick={add} disabled={!form.influencer.trim()} label="ADD CONTENT" /></div></Card>)}
       {filtered.length===0?<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No content tracked yet</div></Card>:
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(post=>(<Card key={post.id} style={{padding:16}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:15}}>{post.influencer}</div><div style={{fontSize:12,color:T.gray,marginTop:3}}>{post.platform} · {post.content_type}</div></div><Badge label={statuses[post.status]?.label} color={statuses[post.status]?.color} /></div>{post.caption&&<div style={{fontSize:12,color:T.darkGray,background:T.bg,border:`2px solid ${T.black}`,padding:"8px 12px",marginBottom:10}}>{post.caption}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==post.status).map(([k,v])=>(<button key={k} onClick={()=>updateStatus(post.id,k)} style={{background:T.bg,color:v.color,border:`2px solid ${v.color}`,borderRadius:0,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>→ {v.label}</button>))}<button onClick={()=>del(post.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,borderRadius:0,padding:"4px 10px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(post=>(<Card key={post.id} style={{padding:16}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:15}}>{post.influencer}</div><div style={{fontSize:12,color:T.gray,marginTop:3}}>{post.platform} · {post.content_type}</div></div><Badge label={statuses[post.status]?.label} color={statuses[post.status]?.color} /></div>{post.caption&&<div style={{fontSize:12,color:T.darkGray,background:T.bg,border:`2px solid ${T.black}`,padding:"8px 12px",marginBottom:10}}>{post.caption}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==post.status).map(([k,v])=>(<button key={k} onClick={()=>updateStatus(post.id,k)} style={{background:T.bg,color:v.color,border:`2px solid ${v.color}`,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>→ {v.label}</button>))}<button onClick={()=>del(post.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"4px 10px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}</div>
       }
     </div>
   );
@@ -1391,7 +1573,6 @@ function DesignBrief() {
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Creative director at BuildWithLeverage. Build design brief: ${request}. Return ONLY valid JSON: {"project_title":"t","objective":"o","deliverables":["d"],"mood":["v"],"brand_guidelines":["g"],"full_brief":"complete brief"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Design Request" value={request} onChange={setRequest} placeholder="What needs to be designed?" /><Btn onClick={gen} disabled={!request.trim()} loading={loading} label="Generate Design Brief" icon="🎨" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Project: {result.project_title}</CardLabel><div style={{fontSize:13,color:"#ccc",lineHeight:1.6,marginTop:8}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="Mood / Vibe" items={result.mood} color="#a855f7" /></div><Bullets label="Brand Guidelines" items={result.brand_guidelines} color={T.orange} /></>}</div>);
 }
-
 function FeedbackSummary() {
   const [feedback,setFeedback]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Summarize design feedback for BuildWithLeverage. Feedback: ${feedback}. Return ONLY valid JSON: {"summary":"overview","required_changes":["c"],"nice_to_have":["n"],"keep_as_is":["k"],"designer_message":"message to designer"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
@@ -1410,14 +1591,14 @@ function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePasswor
   };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <Card><SectionHeader label="Slack Bot Token" /><div style={{padding:16}}><input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="xoxb-…" style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div></Card>
-      <Card><SectionHeader label="Slack User IDs" /><div style={{padding:16,display:"flex",flexDirection:"column",gap:10}}>{Object.entries(ids).map(([name,id])=>(<div key={name} style={{display:"flex",alignItems:"center",gap:12}}><Avatar name={name} size={28} /><div style={{width:130,fontSize:12,fontWeight:600,flexShrink:0}}>{name.split(" ")[0]}</div><input value={id} onChange={e=>setIds(p=>({...p,[name]:e.target.value}))} placeholder="U0XXXXXXXXX" style={{flex:1,background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:12,padding:"8px 12px",outline:"none",fontFamily:T.mono}} /></div>))}</div></Card>
+      <Card><SectionHeader label="Slack Bot Token" /><div style={{padding:16}}><input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="xoxb-…" style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div></Card>
+      <Card><SectionHeader label="Slack User IDs" /><div style={{padding:16,display:"flex",flexDirection:"column",gap:10}}>{Object.entries(ids).map(([name,id])=>(<div key={name} style={{display:"flex",alignItems:"center",gap:12}}><Avatar name={name} size={28} /><div style={{width:130,fontSize:12,fontWeight:600,flexShrink:0}}>{name.split(" ")[0]}</div><input value={id} onChange={e=>setIds(p=>({...p,[name]:e.target.value}))} placeholder="U0XXXXXXXXX" style={{flex:1,background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:12,padding:"8px 12px",outline:"none",fontFamily:T.mono}} /></div>))}</div></Card>
       <Btn onClick={save} label={saved?"✓ SAVED":"SAVE SETTINGS"} color={saved?T.green:T.black} />
       <Card><SectionHeader label="🔐 Change Password" /><div style={{padding:16,display:"flex",flexDirection:"column",gap:10}}>
-        <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>NEW PASSWORD</div><input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div>
-        <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>CONFIRM PASSWORD</div><input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePw()} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div>
+        <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>NEW PASSWORD</div><input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div>
+        <div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>CONFIRM PASSWORD</div><input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePw()} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none",fontFamily:T.mono}} /></div>
         {pwMsg&&<div style={{fontSize:12,color:pwMsg.type==="success"?T.green:T.red,fontFamily:T.mono,fontWeight:600}}>{pwMsg.type==="success"?"✓":"✗"} {pwMsg.text}</div>}
-        <button onClick={changePw} disabled={!newPw||!confirmPw} style={{padding:"11px 20px",borderRadius:0,background:newPw&&confirmPw?T.black:"#E5E0D8",color:newPw&&confirmPw?"#fff":T.gray,border:`2px solid ${newPw&&confirmPw?T.black:"#E5E0D8"}`,fontSize:12,fontWeight:700,cursor:newPw&&confirmPw?"pointer":"not-allowed",fontFamily:T.mono,letterSpacing:1}}>UPDATE PASSWORD</button>
+        <button onClick={changePw} disabled={!newPw||!confirmPw} style={{padding:"11px 20px",background:newPw&&confirmPw?T.black:"#E5E0D8",color:newPw&&confirmPw?"#fff":T.gray,border:`2px solid ${newPw&&confirmPw?T.black:"#E5E0D8"}`,fontSize:12,fontWeight:700,cursor:newPw&&confirmPw?"pointer":"not-allowed",fontFamily:T.mono,letterSpacing:1}}>UPDATE PASSWORD</button>
       </div></Card>
     </div>
   );
@@ -1436,7 +1617,6 @@ const NAV=[
   {key:"culture",label:"Culture"},
   {key:"settings",label:"Settings"},
 ];
-
 const PAGE_ICONS={dashboard:"⚡",attendance:"🕐","ops-pulse":"📋",rfp:"📊","weekly-report":"📄","exec-comms":"✏️","daily-briefing":"☀️","team-performance":"👥","strategic-decision":"🧠","sequence-builder":"✉️","lead-research":"🔍","cold-email":"📧","call-script":"📞","after-call":"🗒️","influencer-outreach":"📲","campaign-brief":"📋","influencer-tracker":"👥","content-tracker":"📅","design-brief":"🎨","feedback-summary":"🖊",settings:"⚙️",culture:"🏛️"};
 
 function TopNav({page,navigate,isMobile,onLock}) {
@@ -1544,13 +1724,13 @@ export default function App() {
             <div style={{fontSize:10,color:"#444",fontFamily:T.mono,marginTop:8,letterSpacing:3}}>OPERATIONS HUB</div>
           </div>
           <div style={{fontSize:40,marginBottom:24}}>🔐</div>
-          <div style={{background:"#111",border:`2px solid ${error?T.red:"#222"}`,borderRadius:0,padding:"32px 28px",animation:shaking?"shake 0.4s ease":"none",transition:"border-color 0.2s"}}>
+          <div style={{background:"#111",border:`2px solid ${error?T.red:"#222"}`,padding:"32px 28px",animation:shaking?"shake 0.4s ease":"none",transition:"border-color 0.2s"}}>
             <div style={{fontSize:14,fontWeight:700,color:"#fff",fontFamily:T.mono,marginBottom:6,letterSpacing:2}}>RESTRICTED ACCESS</div>
             <div style={{fontSize:12,color:"#555",fontFamily:T.mono,marginBottom:24,letterSpacing:1}}>Enter password to continue</div>
             <input type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&pw&&attempt()} placeholder="Password" autoFocus
-              style={{width:"100%",background:"#1a1a1a",border:`2px solid ${error?T.red:"#333"}`,borderRadius:0,color:"#fff",fontSize:15,padding:"12px 16px",outline:"none",fontFamily:T.mono,letterSpacing:3,textAlign:"center",marginBottom:16,transition:"border-color 0.2s"}} />
+              style={{width:"100%",background:"#1a1a1a",border:`2px solid ${error?T.red:"#333"}`,color:"#fff",fontSize:15,padding:"12px 16px",outline:"none",fontFamily:T.mono,letterSpacing:3,textAlign:"center",marginBottom:16,transition:"border-color 0.2s"}} />
             {error&&<div style={{fontSize:12,color:T.red,fontFamily:T.mono,marginBottom:12,letterSpacing:1}}>✗ INCORRECT PASSWORD</div>}
-            <button onClick={attempt} disabled={!pw} style={{width:"100%",padding:"12px",borderRadius:0,background:pw?T.orange:"#222",color:pw?"#fff":"#444",border:`2px solid ${pw?T.orange:"#333"}`,fontSize:12,fontWeight:700,cursor:pw?"pointer":"not-allowed",letterSpacing:2,fontFamily:T.mono}}>UNLOCK →</button>
+            <button onClick={attempt} disabled={!pw} style={{width:"100%",padding:"12px",background:pw?T.orange:"#222",color:pw?"#fff":"#444",border:`2px solid ${pw?T.orange:"#333"}`,fontSize:12,fontWeight:700,cursor:pw?"pointer":"not-allowed",letterSpacing:2,fontFamily:T.mono}}>UNLOCK →</button>
           </div>
           <div style={{fontSize:10,color:"#333",fontFamily:T.mono,marginTop:20,letterSpacing:2}}>BUILDWITHLEVERAGE.COM</div>
         </div>
