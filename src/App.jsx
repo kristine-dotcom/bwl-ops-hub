@@ -1692,7 +1692,15 @@ function AttendanceTracker() {
 
 
   // Define ALL helper functions FIRST (before useEffect hooks use them)
-  const saveLogs=async(nl)=>{setLogs(nl);await storage.set("attendance-logs",JSON.stringify(nl));};
+  const saveLogs=async(nl)=>{
+    setLogs(nl);
+    try {
+      await storage.set("attendance-logs",JSON.stringify(nl));
+      console.log("✅ Logs saved:", nl.length, "entries");
+    } catch(error) {
+      console.error("❌ Error saving logs:", error);
+    }
+  };
 
 
   const getMemberToday=(member)=>logs.filter(l=>l.member===member&&l.date===todayStr());
@@ -1892,18 +1900,55 @@ function AttendanceTracker() {
 
 
   useEffect(()=>{
-    Promise.all([
-      storage.get("attendance-logs"),
-      storage.get(`sod-${todayStr()}`),
-      storage.get(`eod-${todayStr()}`),
-      storage.get("slack-webhook")
-    ]).then(([r,s,e,w])=>{
-      if(r) setLogs(JSON.parse(r.value));
-      if(s) setSodSubmissions(JSON.parse(s.value));
-      if(e) setEodSubmissions(JSON.parse(e.value));
-      if(w) setSlackWebhook(w.value);
-      setLoading(false);
-    });
+    const loadData = async () => {
+      try {
+        console.log("🔵 Loading all data from storage...");
+        
+        // Load attendance logs
+        const logsResult = await storage.get("attendance-logs");
+        if(logsResult?.value) {
+          const loadedLogs = JSON.parse(logsResult.value);
+          setLogs(loadedLogs);
+          console.log("✅ Loaded logs:", loadedLogs.length, "entries");
+        } else {
+          console.log("ℹ️ No logs found in storage");
+        }
+        
+        // Load SOD submissions for today
+        const sodResult = await storage.get(`sod-${todayStr()}`);
+        if(sodResult?.value) {
+          const loadedSod = JSON.parse(sodResult.value);
+          setSodSubmissions(loadedSod);
+          console.log("✅ Loaded SOD:", Object.keys(loadedSod).length, "submissions");
+        } else {
+          console.log("ℹ️ No SOD submissions found for today");
+        }
+        
+        // Load EOD submissions for today
+        const eodResult = await storage.get(`eod-${todayStr()}`);
+        if(eodResult?.value) {
+          const loadedEod = JSON.parse(eodResult.value);
+          setEodSubmissions(loadedEod);
+          console.log("✅ Loaded EOD:", Object.keys(loadedEod).length, "submissions");
+        } else {
+          console.log("ℹ️ No EOD submissions found for today");
+        }
+        
+        // Load Slack webhook (legacy)
+        const webhookResult = await storage.get("slack-webhook");
+        if(webhookResult?.value) {
+          setSlackWebhook(webhookResult.value);
+        }
+        
+        console.log("✅ All data loaded successfully");
+      } catch(error) {
+        console.error("❌ Error loading data from storage:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
     
     // Request notification permission
     requestNotificationPermission().then(granted => setNotificationsEnabled(granted));
@@ -1936,7 +1981,12 @@ function AttendanceTracker() {
   const handleSODSubmit=async(sod)=>{
     const updated={...sodSubmissions,[sod.member]:sod};
     setSodSubmissions(updated);
-    await storage.set(`sod-${todayStr()}`,JSON.stringify(updated));
+    try {
+      await storage.set(`sod-${todayStr()}`,JSON.stringify(updated));
+      console.log("✅ SOD saved for", sod.member, "- Total:", Object.keys(updated).length);
+    } catch(error) {
+      console.error("❌ Error saving SOD:", error);
+    }
     setShowSodForm(false);
     const ts=new Date().toISOString();
     const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
@@ -1963,7 +2013,12 @@ function AttendanceTracker() {
   const handleEODSubmit=async(eod)=>{
     const updated={...eodSubmissions,[eod.member]:eod};
     setEodSubmissions(updated);
-    await storage.set(`eod-${todayStr()}`,JSON.stringify(updated));
+    try {
+      await storage.set(`eod-${todayStr()}`,JSON.stringify(updated));
+      console.log("✅ EOD saved for", eod.member, "- Total:", Object.keys(updated).length);
+    } catch(error) {
+      console.error("❌ Error saving EOD:", error);
+    }
     setShowEodForm(false);
     const ts=new Date().toISOString();
     const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
@@ -3231,20 +3286,46 @@ function Dashboard({ navigate }) {
   const date=new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}).toUpperCase();
   const getGreeting=()=>{const now=new Date();const estHour=parseInt(now.toLocaleString("en-US",{timeZone:"America/New_York",hour:"numeric",hour12:false}));if(estHour>=5&&estHour<12) return "MORNING.";if(estHour>=12&&estHour<17) return "AFTERNOON.";if(estHour>=17&&estHour<21) return "EVENING.";return "NIGHT.";};
   const greeting=getGreeting();
-  const [announcements,setAnnouncements]=useState([{id:1,text:"Welcome to the Leverage Operations Hub. Use this space for team-wide notes and announcements.",author:"David Perlov",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}]);
+  const [announcements,setAnnouncements]=useState([]);
+  const [isLoadingAnnouncements,setIsLoadingAnnouncements]=useState(true);
   const [editing,setEditing]=useState(null);const [newNote,setNewNote]=useState("");const [showInput,setShowInput]=useState(false);const [authorName,setAuthorName]=useState("Kristine");
   
-  // Load announcements from storage
+  // Load announcements from storage on mount
   useEffect(()=>{
-    storage.get("announcements").then(r=>{
-      if(r?.value) setAnnouncements(JSON.parse(r.value));
-    });
+    const loadAnnouncements = async () => {
+      try {
+        const result = await storage.get("announcements");
+        if(result?.value) {
+          setAnnouncements(JSON.parse(result.value));
+        } else {
+          // Only set default if storage is empty (first time)
+          const defaultAnnouncement = [{
+            id:1,
+            text:"Welcome to the Leverage Operations Hub. Use this space for team-wide notes and announcements.",
+            author:"David Perlov",
+            date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
+          }];
+          setAnnouncements(defaultAnnouncement);
+          await storage.set("announcements", JSON.stringify(defaultAnnouncement));
+        }
+      } catch(error) {
+        console.error("Error loading announcements:", error);
+      } finally {
+        setIsLoadingAnnouncements(false);
+      }
+    };
+    loadAnnouncements();
   },[]);
   
   // Save announcements to storage
-  const saveAnnouncements=(newAnnouncements)=>{
+  const saveAnnouncements=async(newAnnouncements)=>{
     setAnnouncements(newAnnouncements);
-    storage.set("announcements",JSON.stringify(newAnnouncements));
+    try {
+      await storage.set("announcements",JSON.stringify(newAnnouncements));
+      console.log("✅ Announcements saved to storage");
+    } catch(error) {
+      console.error("❌ Error saving announcements:", error);
+    }
   };
   
   const addNote=()=>{
@@ -3302,19 +3383,29 @@ function Dashboard({ navigate }) {
           </div>
         )}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {announcements.map(a=>(
-            <div key={a.id} style={{background:T.surface,border:`2px solid ${T.black}`,borderLeft:`4px solid ${T.orange}`,padding:18}}>
-              {editing===a.id?(<EditNote note={a} onSave={saveEdit} onCancel={()=>setEditing(null)} />):(
-                <div>
-                  <p style={{fontSize:13,color:T.black,lineHeight:1.7,margin:"0 0 12px"}}>{a.text}</p>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:1}}>{a.author.toUpperCase()}</span><span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>· {a.date}</span></div>
-                    <div style={{display:"flex",gap:6}}><button onClick={()=>setEditing(a.id)} style={{background:"none",border:`2px solid ${T.black}`,padding:"3px 10px",fontSize:10,color:T.gray,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>EDIT</button><button onClick={()=>deleteNote(a.id)} style={{background:"none",border:`2px solid ${T.red}`,padding:"3px 10px",fontSize:10,color:T.red,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>DELETE</button></div>
-                  </div>
-                </div>
-              )}
+          {isLoadingAnnouncements ? (
+            <div style={{background:T.surface,border:`2px solid ${T.black}`,padding:24,textAlign:"center"}}>
+              <p style={{fontSize:13,color:T.gray,fontFamily:T.mono}}>Loading announcements...</p>
             </div>
-          ))}
+          ) : announcements.length === 0 ? (
+            <div style={{background:T.surface,border:`2px solid ${T.black}`,padding:24,textAlign:"center"}}>
+              <p style={{fontSize:13,color:T.gray,fontFamily:T.mono}}>No announcements yet. Click "+ ADD NOTE" to create one.</p>
+            </div>
+          ) : (
+            announcements.map(a=>(
+              <div key={a.id} style={{background:T.surface,border:`2px solid ${T.black}`,borderLeft:`4px solid ${T.orange}`,padding:18}}>
+                {editing===a.id?(<EditNote note={a} onSave={saveEdit} onCancel={()=>setEditing(null)} />):(
+                  <div>
+                    <p style={{fontSize:13,color:T.black,lineHeight:1.7,margin:"0 0 12px"}}>{a.text}</p>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:1}}>{a.author.toUpperCase()}</span><span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>· {a.date}</span></div>
+                      <div style={{display:"flex",gap:6}}><button onClick={()=>setEditing(a.id)} style={{background:"none",border:`2px solid ${T.black}`,padding:"3px 10px",fontSize:10,color:T.gray,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>EDIT</button><button onClick={()=>deleteNote(a.id)} style={{background:"none",border:`2px solid ${T.red}`,padding:"3px 10px",fontSize:10,color:T.red,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>DELETE</button></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </div>
       <div style={{borderTop:"3px solid #000",padding:"28px 32px",background:"#000",display:"flex",justifyContent:"space-between",alignItems:"center",gap:24}}>
