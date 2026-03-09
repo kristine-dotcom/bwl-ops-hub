@@ -1137,9 +1137,9 @@ function AdvancedAnalytics({ logs, sodSubmissions, eodSubmissions }) {
     const late = members.filter(m => {
       const firstIn = logs.find(l => l.member === m && l.date === date && l.type === "in");
       if (!firstIn) return false;
-      const [h, m] = firstIn.time.split(":").map(Number);
+      const [h, mins] = firstIn.time.split(":").map(Number);
       const [sh, sm] = SHIFT_START.split(":").map(Number);
-      return h > sh || (h === sh && m > sm);
+      return h > sh || (h === sh && mins > sm);
     }).length;
     return { date, count: late };
   });
