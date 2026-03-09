@@ -861,6 +861,711 @@ function exportAttendanceCSV(logs, weekDates, TEAM_OPS) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// KPI TRACKING SYSTEM - Features A + C + E
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── KPI CONFIGURATION ───────────────────────────────────────────────────────
+const KPI_CONFIG = {
+  "Caleb Bentil": {
+    name: "Caleb", role: "Outbound", color: "#6366f1", emoji: "📞",
+    metrics: [
+      { key: "calls", label: "Calls Dialed", target: 80, stretch: 100, regex: /calls?\s*(?:dialed)?:?\s*(\d+)/i, daily: true },
+      { key: "connects", label: "Live Connects", target: 8, stretch: 12, regex: /(?:live\s*)?connects?:?\s*(\d+)/i, daily: true },
+      { key: "meetings", label: "Meetings Booked", target: 3, stretch: 5, regex: /meetings?.*?:?\s*(\d+)/i, weekly: true }
+    ]
+  },
+  "Cyril Butanas": {
+    name: "Cyril", role: "Influencer Outreach", color: "#10b981", emoji: "🌟",
+    metrics: [
+      { key: "outreach", label: "Outreach Sent", target: 6, stretch: 10, regex: /outreach.*?:?\s*(\d+)/i, daily: true },
+      { key: "responses", label: "Responses", target: 1, stretch: 2, regex: /responses?:?\s*(\d+)/i, daily: true },
+      { key: "partnerships", label: "Partnerships", target: 3, stretch: 5, regex: /partner.*?:?\s*(\d+)/i, weekly: true }
+    ]
+  },
+  "Darlene Mae Malolos": {
+    name: "Darlene", role: "Designer", color: "#ec4899", emoji: "🎨",
+    metrics: [
+      { key: "designs", label: "Designs Delivered", target: 10, stretch: 15, regex: /(?:designs?|assets?).*?:?\s*(\d+)/i, weekly: true },
+      { key: "revisions", label: "Avg Revisions", target: 2, stretch: 1, regex: /revision.*?:?\s*(\d+)/i, weekly: true, inverse: true }
+    ]
+  }
+};
+
+// Extract metrics from EOD text
+const extractKPIs = (text, member) => {
+  const config = KPI_CONFIG[member];
+  if (!config) return {};
+  const metrics = {};
+  config.metrics.forEach(m => {
+    const match = text.match(m.regex);
+    if (match) metrics[m.key] = parseInt(match[1]);
+  });
+  return metrics;
+};
+
+// Calculate score (0-100)
+const calcKPIScore = (val, target, stretch, inverse = false) => {
+  if (val == null) return null;
+  if (inverse) {
+    if (val <= stretch) return 100;
+    if (val >= target) return 60;
+    return 60 + ((target - val) / (target - stretch)) * 40;
+  }
+  if (val >= stretch) return 100;
+  if (val < target * 0.6) return 0;
+  if (val < target) return (val / target) * 80;
+  return 80 + ((val - target) / (stretch - target)) * 20;
+};
+
+// Get color for score
+const kpiColor = (score) => {
+  if (!score) return "#9ca3af";
+  if (score >= 80) return "#10b981";
+  if (score >= 60) return "#f59e0b";
+  return "#ef4444";
+};
+
+// ─── LIVE KPI DASHBOARD (Feature A) ──────────────────────────────────────────
+function LiveKPIDashboard({ eodSubmissions }) {
+  const [member, setMember] = useState("Caleb Bentil");
+  const [period, setPeriod] = useState("week");
+  
+  const config = KPI_CONFIG[member];
+  if (!config) return <div>No config for {member}</div>;
+  
+  const getDateRange = () => {
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+    
+    if (period === "today") return [todayStr];
+    
+    if (period === "week") {
+      const dates = [];
+      const day = today.getDay();
+      const mon = new Date(today);
+      mon.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
+      for (let i = 0; i < 5; i++) {
+        const d = new Date(mon);
+        d.setDate(mon.getDate() + i);
+        dates.push(d.toISOString().split("T")[0]);
+      }
+      return dates;
+    }
+    
+    const dates = [];
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      dates.push(new Date(d).toISOString().split("T")[0]);
+    }
+    return dates;
+  };
+  
+  const dates = getDateRange();
+  
+  const totals = {};
+  dates.forEach(date => {
+    const eod = eodSubmissions[`${member}-${date}`];
+    if (eod) {
+      const extracted = extractKPIs(eod.summary || "", member);
+      Object.keys(extracted).forEach(key => {
+        totals[key] = (totals[key] || 0) + extracted[key];
+      });
+    }
+  });
+  
+  const scores = config.metrics.map(m => {
+    const val = totals[m.key];
+    const score = calcKPIScore(val, m.target, m.stretch, m.inverse);
+    return { ...m, value: val, score };
+  });
+  
+  const avgScore = scores.filter(s => s.score).reduce((sum, s) => sum + s.score, 0) / (scores.filter(s => s.score).length || 1);
+  
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>📊 Live KPI Dashboard</h2>
+          <p style={{ fontSize: 11, color: T.grayLight, margin: "3px 0 0 0" }}>Real-time tracking from EOD submissions</p>
+        </div>
+        <div style={{ display: "flex", gap: 5 }}>
+          {["today", "week", "month"].map(p => (
+            <button key={p} onClick={() => setPeriod(p)}
+              style={{
+                padding: "5px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer",
+                background: period === p ? T.black : T.bg,
+                color: period === p ? "#fff" : T.gray,
+                border: `2px solid ${T.black}`, fontFamily: T.mono
+              }}>
+              {p.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {Object.keys(KPI_CONFIG).map(m => {
+          const cfg = KPI_CONFIG[m];
+          return (
+            <button key={m} onClick={() => setMember(m)}
+              style={{
+                padding: "8px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                background: member === m ? cfg.color : T.bg,
+                color: member === m ? "#fff" : T.gray,
+                border: `2px solid ${member === m ? cfg.color : T.border}`,
+                display: "flex", alignItems: "center", gap: 6
+              }}>
+              <span>{cfg.emoji}</span> {cfg.name}
+            </button>
+          );
+        })}
+      </div>
+      
+      <Card style={{ background: T.black, padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 10, color: "#888", fontFamily: T.mono, letterSpacing: 2, marginBottom: 4 }}>PERFORMANCE SCORE</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: kpiColor(avgScore) }}>
+            {avgScore.toFixed(0)}%
+          </div>
+          <div style={{ fontSize: 10, color: "#666", marginTop: 3 }}>
+            {avgScore >= 80 ? "🎯 Exceeding!" : avgScore >= 60 ? "📈 On track" : "⚠️ Attention"}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#888", fontFamily: T.mono }}>PERIOD</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginTop: 3 }}>
+            {period.toUpperCase()}
+          </div>
+        </div>
+      </Card>
+      
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {scores.map((s, i) => {
+          const progress = s.value ? Math.min((s.value / s.stretch) * 100, 100) : 0;
+          const color = kpiColor(s.score);
+          
+          return (
+            <Card key={i} style={{ padding: "14px 18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{s.label}</div>
+                  <div style={{ fontSize: 9, color: T.grayLight, fontFamily: T.mono, marginTop: 1 }}>
+                    Target: {s.target} • Stretch: {s.stretch}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, color }}>{s.value ?? "—"}</div>
+                  {s.score && <div style={{ fontSize: 9, color: T.grayLight }}>{s.score.toFixed(0)}%</div>}
+                </div>
+              </div>
+              
+              <div style={{ width: "100%", height: 6, background: "#f3f4f6", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ width: `${progress}%`, height: "100%", background: color, transition: "width 0.3s" }} />
+              </div>
+              
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
+                <div style={{ fontSize: 8, color: s.value >= s.target ? color : "#ddd", fontWeight: 700, fontFamily: T.mono }}>
+                  {s.value >= s.target ? "✓ TARGET" : "TARGET"}
+                </div>
+                <div style={{ fontSize: 8, color: s.value >= s.stretch ? color : "#ddd", fontWeight: 700, fontFamily: T.mono }}>
+                  {s.value >= s.stretch ? "✓ STRETCH" : "STRETCH"}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      
+      {scores.filter(s => s.value).length === 0 && (
+        <Card style={{ padding: 30, textAlign: "center" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.gray }}>No data yet for {period}</div>
+          <div style={{ fontSize: 11, color: T.grayLight, marginTop: 4 }}>EOD submissions will populate this dashboard</div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── ADVANCED ANALYTICS (Feature C) ──────────────────────────────────────────
+function AdvancedAnalytics({ logs, sodSubmissions, eodSubmissions }) {
+  const [view, setView] = useState("30day");
+  
+  const getLast30Days = () => {
+    const dates = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split("T")[0]);
+    }
+    return dates;
+  };
+  
+  const getLast90Days = () => {
+    const dates = [];
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split("T")[0]);
+    }
+    return dates;
+  };
+  
+  const dates = view === "30day" ? getLast30Days() : getLast90Days();
+  const members = TEAM_OPS;
+  
+  const attendanceData = dates.map(date => {
+    const present = members.filter(m => 
+      logs.some(l => l.member === m && l.date === date && l.type === "in")
+    ).length;
+    return { date, rate: (present / members.length) * 100, present };
+  });
+  
+  const sodData = dates.map(date => {
+    const submitted = members.filter(m => sodSubmissions[`${m}-${date}`]).length;
+    return { date, rate: (submitted / members.length) * 100 };
+  });
+  
+  const eodData = dates.map(date => {
+    const submitted = members.filter(m => eodSubmissions[`${m}-${date}`]).length;
+    return { date, rate: (submitted / members.length) * 100 };
+  });
+  
+  const lateData = dates.map(date => {
+    const late = members.filter(m => {
+      const firstIn = logs.find(l => l.member === m && l.date === date && l.type === "in");
+      if (!firstIn) return false;
+      const [h, m] = firstIn.time.split(":").map(Number);
+      const [sh, sm] = SHIFT_START.split(":").map(Number);
+      return h > sh || (h === sh && m > sm);
+    }).length;
+    return { date, count: late };
+  });
+  
+  const avgAttendance = attendanceData.reduce((sum, d) => sum + d.rate, 0) / attendanceData.length;
+  const avgSOD = sodData.reduce((sum, d) => sum + d.rate, 0) / sodData.length;
+  const avgEOD = eodData.reduce((sum, d) => sum + d.rate, 0) / eodData.length;
+  const totalLate = lateData.reduce((sum, d) => sum + d.count, 0);
+  
+  const dayOfWeekStats = {};
+  dates.forEach(date => {
+    const d = new Date(date + "T12:00:00");
+    const dayName = d.toLocaleDateString("en-US", { weekday: "long" });
+    if (!dayOfWeekStats[dayName]) dayOfWeekStats[dayName] = { attendance: [], sod: [], eod: [] };
+    
+    const attData = attendanceData.find(a => a.date === date);
+    const sodDat = sodData.find(s => s.date === date);
+    const eodDat = eodData.find(e => e.date === date);
+    
+    if (attData) dayOfWeekStats[dayName].attendance.push(attData.rate);
+    if (sodDat) dayOfWeekStats[dayName].sod.push(sodDat.rate);
+    if (eodDat) dayOfWeekStats[dayName].eod.push(eodDat.rate);
+  });
+  
+  const dayAvg = Object.keys(dayOfWeekStats).map(day => ({
+    day,
+    attendance: dayOfWeekStats[day].attendance.reduce((s, v) => s + v, 0) / (dayOfWeekStats[day].attendance.length || 1)
+  })).sort((a, b) => b.attendance - a.attendance);
+  
+  const recent7 = attendanceData.slice(-7);
+  const prev7 = attendanceData.slice(-14, -7);
+  const recentAvg = recent7.reduce((s, d) => s + d.rate, 0) / 7;
+  const prevAvg = prev7.reduce((s, d) => s + d.rate, 0) / 7;
+  const trend = recentAvg > prevAvg ? "up" : recentAvg < prevAvg ? "down" : "flat";
+  const trendPercent = ((recentAvg - prevAvg) / prevAvg * 100).toFixed(1);
+  
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>📈 Advanced Analytics</h2>
+          <p style={{ fontSize: 11, color: T.grayLight, margin: "3px 0 0 0" }}>Trends, patterns & predictions</p>
+        </div>
+        <div style={{ display: "flex", gap: 5 }}>
+          {["30day", "90day", "patterns"].map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{
+                padding: "5px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer",
+                background: view === v ? T.black : T.bg,
+                color: view === v ? "#fff" : T.gray,
+                border: `2px solid ${T.black}`, fontFamily: T.mono
+              }}>
+              {v === "patterns" ? "INSIGHTS" : v.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+        <Card style={{ padding: "12px 14px", background: T.black }}>
+          <div style={{ fontSize: 9, color: "#888", fontFamily: T.mono, marginBottom: 4 }}>AVG ATTENDANCE</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: avgAttendance >= 90 ? T.green : T.yellow }}>
+            {avgAttendance.toFixed(0)}%
+          </div>
+          <div style={{ fontSize: 8, color: "#666", marginTop: 2 }}>Last {dates.length} days</div>
+        </Card>
+        
+        <Card style={{ padding: "12px 14px", background: T.black }}>
+          <div style={{ fontSize: 9, color: "#888", fontFamily: T.mono, marginBottom: 4 }}>AVG SOD RATE</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: avgSOD >= 90 ? T.green : T.yellow }}>
+            {avgSOD.toFixed(0)}%
+          </div>
+          <div style={{ fontSize: 8, color: "#666", marginTop: 2 }}>Last {dates.length} days</div>
+        </Card>
+        
+        <Card style={{ padding: "12px 14px", background: T.black }}>
+          <div style={{ fontSize: 9, color: "#888", fontFamily: T.mono, marginBottom: 4 }}>AVG EOD RATE</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: avgEOD >= 90 ? T.green : T.yellow }}>
+            {avgEOD.toFixed(0)}%
+          </div>
+          <div style={{ fontSize: 8, color: "#666", marginTop: 2 }}>Last {dates.length} days</div>
+        </Card>
+        
+        <Card style={{ padding: "12px 14px", background: T.black }}>
+          <div style={{ fontSize: 9, color: "#888", fontFamily: T.mono, marginBottom: 4 }}>LATE ARRIVALS</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: totalLate > 5 ? T.red : T.green }}>
+            {totalLate}
+          </div>
+          <div style={{ fontSize: 8, color: "#666", marginTop: 2 }}>Last {dates.length} days</div>
+        </Card>
+      </div>
+      
+      <Card style={{ padding: "14px 16px", background: trend === "up" ? "#f0fdf4" : trend === "down" ? "#fef2f2" : "#f9fafb", border: `2px solid ${trend === "up" ? T.green : trend === "down" ? T.red : T.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 24 }}>{trend === "up" ? "📈" : trend === "down" ? "📉" : "➡️"}</div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.black }}>
+              7-Day Trend: {trend === "up" ? "Improving" : trend === "down" ? "Declining" : "Stable"}
+            </div>
+            <div style={{ fontSize: 10, color: T.grayLight }}>
+              {trend !== "flat" && `${Math.abs(parseFloat(trendPercent))}% ${trend === "up" ? "increase" : "decrease"} vs previous week`}
+              {trend === "flat" && "No significant change detected"}
+            </div>
+          </div>
+        </div>
+      </Card>
+      
+      {view === "patterns" && (
+        <>
+          <Card style={{ padding: "16px 18px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>🎯 Best Performing Days</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {dayAvg.slice(0, 3).map((d, i) => (
+                <div key={d.day} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: i === 0 ? "#f0fdf4" : T.bg, borderRadius: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{d.day}</span>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: i === 0 ? T.green : T.black }}>{d.attendance.toFixed(0)}%</div>
+                    <div style={{ fontSize: 9, color: T.grayLight }}>attendance</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+          
+          <Card style={{ padding: "16px 18px", background: "#fffbeb", border: `2px solid ${T.yellow}` }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: T.black }}>💡 Predictive Insights</div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: T.darkGray, lineHeight: 1.6 }}>
+              {trend === "up" && <li>Team performance is improving - maintain current momentum</li>}
+              {trend === "down" && <li>Performance declining - consider team check-in or process review</li>}
+              {avgAttendance < 85 && <li>Attendance below target - review remote work policies or team wellness</li>}
+              {avgSOD < 80 && <li>SOD submission rate low - consider automated reminders at 8:30 AM</li>}
+              {totalLate > 10 && <li>Multiple late arrivals - review start time or flexibility options</li>}
+              {dayAvg[0] && <li>{dayAvg[0].day} is your strongest day - schedule important work then</li>}
+            </ul>
+          </Card>
+        </>
+      )}
+      
+      {view !== "patterns" && (
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>Attendance Trend ({dates.length} days)</div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 80 }}>
+            {attendanceData.map((d, i) => {
+              const height = (d.rate / 100) * 80;
+              const color = d.rate >= 90 ? T.green : d.rate >= 70 ? T.yellow : T.red;
+              return (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                  <div style={{ height: `${height}px`, background: color, borderRadius: "2px 2px 0 0" }} />
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: T.grayLight, fontFamily: T.mono }}>
+            <span>{new Date(dates[0] + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+            <span>{new Date(dates[dates.length - 1] + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── AUTO PERFORMANCE REVIEWS (Feature E) ────────────────────────────────────
+function AutoPerformanceReviews({ logs, sodSubmissions, eodSubmissions }) {
+  const [selectedMember, setSelectedMember] = useState("Caleb Bentil");
+  const [generating, setGenerating] = useState(false);
+  const [review, setReview] = useState(null);
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  
+  const generateReview = async () => {
+    setGenerating(true);
+    setReview(null);
+    
+    try {
+      const [year, monthNum] = month.split("-");
+      const startDate = new Date(year, monthNum - 1, 1);
+      const endDate = new Date(year, monthNum, 0);
+      
+      const dates = [];
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        dates.push(new Date(d).toISOString().split("T")[0]);
+      }
+      
+      const attendance = {
+        total_days: dates.length,
+        present: dates.filter(d => logs.some(l => l.member === selectedMember && l.date === d && l.type === "in")).length,
+        late: dates.filter(d => {
+          const firstIn = logs.find(l => l.member === selectedMember && l.date === d && l.type === "in");
+          if (!firstIn) return false;
+          const [h, m] = firstIn.time.split(":").map(Number);
+          const [sh, sm] = SHIFT_START.split(":").map(Number);
+          return h > sh || (h === sh && m > sm);
+        }).length
+      };
+      
+      const sodCount = dates.filter(d => sodSubmissions[`${selectedMember}-${d}`]).length;
+      const eodCount = dates.filter(d => eodSubmissions[`${selectedMember}-${d}`]).length;
+      
+      const kpiData = {};
+      dates.forEach(d => {
+        const eod = eodSubmissions[`${selectedMember}-${d}`];
+        if (eod) {
+          const extracted = extractKPIs(eod.summary || "", selectedMember);
+          Object.keys(extracted).forEach(key => {
+            kpiData[key] = (kpiData[key] || []);
+            kpiData[key].push(extracted[key]);
+          });
+        }
+      });
+      
+      const kpiSummary = {};
+      Object.keys(kpiData).forEach(key => {
+        const values = kpiData[key];
+        kpiSummary[key] = {
+          avg: (values.reduce((s, v) => s + v, 0) / values.length).toFixed(1),
+          min: Math.min(...values),
+          max: Math.max(...values)
+        };
+      });
+      
+      const prompt = `Generate a professional monthly performance review for ${selectedMember}.
+
+DATA FOR ${month}:
+
+ATTENDANCE:
+- Working days: ${attendance.total_days}
+- Days present: ${attendance.present} (${((attendance.present / attendance.total_days) * 100).toFixed(0)}%)
+- Late arrivals: ${attendance.late}
+
+SUBMISSIONS:
+- SOD submitted: ${sodCount}/${attendance.total_days} (${((sodCount / attendance.total_days) * 100).toFixed(0)}%)
+- EOD submitted: ${eodCount}/${attendance.total_days} (${((eodCount / attendance.total_days) * 100).toFixed(0)}%)
+
+KPI PERFORMANCE:
+${Object.keys(kpiSummary).map(k => `- ${k}: avg ${kpiSummary[k].avg}, range ${kpiSummary[k].min}-${kpiSummary[k].max}`).join("\n")}
+
+Generate a review with:
+1. Overall Score (0-100)
+2. Performance Summary (2-3 sentences)
+3. Key Strengths (2-3 bullet points)
+4. Areas for Improvement (2-3 bullet points)
+5. Trend Analysis (improving/stable/declining + explanation)
+6. Recommendations (2-3 actionable items)
+
+Format as JSON:
+{
+  "score": <number>,
+  "summary": "<text>",
+  "strengths": ["<point1>", "<point2>", ...],
+  "improvements": ["<point1>", "<point2>", ...],
+  "trend": "<up/stable/down>",
+  "trend_note": "<explanation>",
+  "recommendations": ["<rec1>", "<rec2>", ...]
+}`;
+      
+      const result = await callClaude(prompt, 1500);
+      const parsed = JSON.parse(result);
+      
+      setReview({
+        ...parsed,
+        member: selectedMember,
+        month,
+        generated_at: new Date().toISOString(),
+        data: { attendance, sodCount, eodCount, kpiSummary }
+      });
+      
+    } catch (error) {
+      console.error("Review generation error:", error);
+      alert("Failed to generate review. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+  
+  const exportReview = () => {
+    if (!review) return;
+    
+    const text = `
+MONTHLY PERFORMANCE REVIEW
+${review.member} — ${review.month}
+Generated: ${new Date(review.generated_at).toLocaleDateString()}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+OVERALL SCORE: ${review.score}/100
+
+PERFORMANCE SUMMARY:
+${review.summary}
+
+KEY STRENGTHS:
+${review.strengths.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+AREAS FOR IMPROVEMENT:
+${review.improvements.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+TREND ANALYSIS:
+${review.trend === "up" ? "↗️ Improving" : review.trend === "down" ? "↘️ Declining" : "→ Stable"} — ${review.trend_note}
+
+RECOMMENDATIONS:
+${review.recommendations.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DATA SUMMARY:
+- Attendance: ${review.data.attendance.present}/${review.data.attendance.total_days} days
+- SOD Submissions: ${review.data.sodCount}/${review.data.attendance.total_days}
+- EOD Submissions: ${review.data.eodCount}/${review.data.attendance.total_days}
+- Late Arrivals: ${review.data.attendance.late}
+`.trim();
+    
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `review-${review.member.replace(/\s+/g, "-")}-${review.month}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div>
+        <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>📝 Auto Performance Reviews</h2>
+        <p style={{ fontSize: 11, color: T.grayLight, margin: "3px 0 0 0" }}>AI-generated monthly summaries</p>
+      </div>
+      
+      <Card style={{ padding: "14px 16px" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 150 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: T.grayLight, fontFamily: T.mono, display: "block", marginBottom: 4 }}>TEAM MEMBER</label>
+            <select value={selectedMember} onChange={(e) => setSelectedMember(e.target.value)}
+              style={{ width: "100%", padding: "8px 10px", fontSize: 12, border: `2px solid ${T.border}`, fontFamily: T.font }}>
+              {Object.keys(KPI_CONFIG).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          
+          <div style={{ flex: 1, minWidth: 120 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: T.grayLight, fontFamily: T.mono, display: "block", marginBottom: 4 }}>MONTH</label>
+            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+              style={{ width: "100%", padding: "8px 10px", fontSize: 12, border: `2px solid ${T.border}`, fontFamily: T.font }} />
+          </div>
+          
+          <div style={{ paddingTop: 18 }}>
+            <button onClick={generateReview} disabled={generating}
+              style={{
+                padding: "8px 18px", fontSize: 11, fontWeight: 700, cursor: generating ? "not-allowed" : "pointer",
+                background: T.orange, color: "#fff", border: "none", fontFamily: T.mono
+              }}>
+              {generating ? "GENERATING..." : "🤖 GENERATE"}
+            </button>
+          </div>
+        </div>
+      </Card>
+      
+      {review && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Card style={{ background: T.black, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 10, color: "#888", fontFamily: T.mono, marginBottom: 4 }}>PERFORMANCE SCORE</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: review.score >= 80 ? T.green : review.score >= 60 ? T.yellow : T.red }}>
+                {review.score}/100
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 10, color: "#888", fontFamily: T.mono, marginBottom: 4 }}>TREND</div>
+              <div style={{ fontSize: 20 }}>
+                {review.trend === "up" ? "📈" : review.trend === "down" ? "📉" : "➡️"}
+              </div>
+              <div style={{ fontSize: 10, color: "#fff", marginTop: 2 }}>
+                {review.trend === "up" ? "Improving" : review.trend === "down" ? "Declining" : "Stable"}
+              </div>
+            </div>
+          </Card>
+          
+          <Card style={{ padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.orange, fontFamily: T.mono, marginBottom: 6 }}>SUMMARY</div>
+            <p style={{ fontSize: 12, lineHeight: 1.6, margin: 0, color: T.black }}>{review.summary}</p>
+          </Card>
+          
+          <Card style={{ padding: "14px 16px", background: "#f0fdf4", border: `2px solid ${T.green}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.green, fontFamily: T.mono, marginBottom: 8 }}>✅ STRENGTHS</div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.6, color: T.darkGray }}>
+              {review.strengths.map((s, i) => <li key={i}>{s}</li>)}
+            </ul>
+          </Card>
+          
+          <Card style={{ padding: "14px 16px", background: "#fffbeb", border: `2px solid ${T.yellow}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.yellow, fontFamily: T.mono, marginBottom: 8 }}>⚠️ AREAS FOR IMPROVEMENT</div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.6, color: T.darkGray }}>
+              {review.improvements.map((s, i) => <li key={i}>{s}</li>)}
+            </ul>
+          </Card>
+          
+          <Card style={{ padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.orange, fontFamily: T.mono, marginBottom: 8 }}>💡 RECOMMENDATIONS</div>
+            <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.6, color: T.darkGray }}>
+              {review.recommendations.map((s, i) => <li key={i}>{s}</li>)}
+            </ol>
+          </Card>
+          
+          <button onClick={exportReview}
+            style={{
+              padding: "10px 18px", fontSize: 11, fontWeight: 700, cursor: "pointer",
+              background: T.black, color: "#fff", border: "none", fontFamily: T.mono
+            }}>
+            💾 EXPORT AS TEXT
+          </button>
+        </div>
+      )}
+      
+      {!review && !generating && (
+        <Card style={{ padding: 30, textAlign: "center" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.gray }}>No review generated yet</div>
+          <div style={{ fontSize: 11, color: T.grayLight, marginTop: 4 }}>Select member and month, then click Generate</div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── ATTENDANCE TRACKER ───────────────────────────────────────────────────────
 function AttendanceTracker() {
   const [logs,setLogs]=useState([]);
@@ -1419,7 +2124,7 @@ function AttendanceTracker() {
       {/* VIEW TABS */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"space-between"}}>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["eod","📊 EOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],["performance","🎯 PERFORMANCE"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"]]:[] )].map(([v,l])=>(
+          {[["today","📋 TODAY"],["sod","📝 SOD TODAY"],["eod","📊 EOD TODAY"],["history","🗓 HISTORY"],["weekly","📊 WEEKLY"],["performance","🎯 PERFORMANCE"],["kpis","📊 LIVE KPIs"],["analytics","📈 ANALYTICS"],...(isCurrentUserAdmin?[["reports","📊 REPORTS"],["reviews","📝 REVIEWS"]]:[] )].map(([v,l])=>(
             <Pill key={v} label={l} active={view===v} onClick={()=>setView(v)} />
           ))}
         </div>
@@ -1811,6 +2516,21 @@ function AttendanceTracker() {
       {/* WEEKLY PERFORMANCE DASHBOARD */}
       {view==="performance"&&isCurrentUserAdmin&&(
         <WeeklyPerformanceDashboard logs={logs} sodSubmissions={sodSubmissions} eodSubmissions={eodSubmissions} />
+      )}
+
+      {/* LIVE KPI DASHBOARD */}
+      {view==="kpis"&&(
+        <LiveKPIDashboard eodSubmissions={eodSubmissions} />
+      )}
+
+      {/* ADVANCED ANALYTICS */}
+      {view==="analytics"&&(
+        <AdvancedAnalytics logs={logs} sodSubmissions={sodSubmissions} eodSubmissions={eodSubmissions} />
+      )}
+
+      {/* AUTO PERFORMANCE REVIEWS */}
+      {view==="reviews"&&isCurrentUserAdmin&&(
+        <AutoPerformanceReviews logs={logs} sodSubmissions={sodSubmissions} eodSubmissions={eodSubmissions} />
       )}
     </div>
   );
