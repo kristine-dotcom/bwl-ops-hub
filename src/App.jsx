@@ -1816,11 +1816,10 @@ function AttendanceTracker() {
               showNotification("⏰ SOD Reminder", `${currentUser.split(" ")[0]}, please submit your SOD`, "📋");
             }
           }
-          // Slack notification - load from storage to ensure it works
+          // Slack notification
           if (SLACK_BOT_TOKEN) {
-          sendToSlack(`⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
-            }
-          });
+            sendToSlack(`⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
+          }
         }
       }
     },60000);
@@ -1849,11 +1848,10 @@ function AttendanceTracker() {
               showNotification("⏰ EOD Reminder", `${currentUser.split(" ")[0]}, please submit your EOD before logout`, "📊");
             }
           }
-          // Slack notification - load from storage to ensure it works
+          // Slack notification
           if (SLACK_BOT_TOKEN) {
-          sendToSlack(`⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
-            }
-          });
+            sendToSlack(`⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          }
         }
       }
     },60000);
@@ -1883,11 +1881,10 @@ function AttendanceTracker() {
               showNotification("⚠️ Still Logged In", `${currentUser.split(" ")[0]}, please log out`, "🔴");
             }
           }
-          // Slack notification - load from storage to ensure it works
+          // Slack notification
           if (SLACK_BOT_TOKEN) {
-          sendToSlack(`⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
-            }
-          });
+            sendToSlack(`⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          }
         }
       }
     },60000);
