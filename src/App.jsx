@@ -1679,7 +1679,7 @@ function AttendanceTracker() {
       if(h===8&&m===55){
         const pending=TEAM_OPS.filter(mem=>!sodSubmissions[mem]);
         if(pending.length>0) {
-          // For individual users: only show notification if THEY haven't submitted
+          // Individual user only sees their own reminder
           if(isAdminMode) {
             // Admin sees all pending
             addNotification(`${pending.length} team member(s) haven't submitted SOD yet: ${pending.map(n=>n.split(" ")[0]).join(", ")}`,"warning");
@@ -1693,15 +1693,17 @@ function AttendanceTracker() {
               showNotification("⏰ SOD Reminder", `${currentUser.split(" ")[0]}, please submit your SOD`, "📋");
             }
           }
-          // Slack notification (ADMIN ONLY - goes to private admin channel)
-          if(slackWebhook) {
-            sendToSlack(slackWebhook, `⏰ *SOD Reminder* (Admin Alert)\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
-          }
+          // Slack notification - load from storage to ensure it works
+          storage.get("slack-webhook").then(w => {
+            if(w && w.value) {
+              sendToSlack(w.value, `⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
+            }
+          });
         }
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,sodSubmissions,notificationsEnabled,slackWebhook,currentUser,isAdminMode]);
+  },[now,sodSubmissions,notificationsEnabled,currentUser,isAdminMode]);
 
   // EOD reminder at 5:45 PM
   useEffect(()=>{
@@ -1724,15 +1726,17 @@ function AttendanceTracker() {
               showNotification("⏰ EOD Reminder", `${currentUser.split(" ")[0]}, please submit your EOD before logout`, "📊");
             }
           }
-          // Slack notification (ADMIN ONLY - goes to private admin channel)
-          if(slackWebhook) {
-            sendToSlack(slackWebhook, `⏰ *EOD Reminder* (Admin Alert)\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
-          }
+          // Slack notification - load from storage to ensure it works
+          storage.get("slack-webhook").then(w => {
+            if(w && w.value) {
+              sendToSlack(w.value, `⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+            }
+          });
         }
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,eodSubmissions,logs,notificationsEnabled,slackWebhook,currentUser,isAdminMode]);
+  },[now,eodSubmissions,logs,notificationsEnabled,currentUser,isAdminMode]);
 
   // Logout reminder at 6:30 PM
   useEffect(()=>{
@@ -1755,15 +1759,17 @@ function AttendanceTracker() {
               showNotification("⚠️ Still Logged In", `${currentUser.split(" ")[0]}, please log out`, "🔴");
             }
           }
-          // Slack notification (ADMIN ONLY - goes to private admin channel)
-          if(slackWebhook) {
-            sendToSlack(slackWebhook, `⚠️ *Still Logged In* (Admin Alert)\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
-          }
+          // Slack notification - load from storage to ensure it works
+          storage.get("slack-webhook").then(w => {
+            if(w && w.value) {
+              sendToSlack(w.value, `⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+            }
+          });
         }
       }
     },60000);
     return ()=>clearInterval(check);
-  },[now,logs,notificationsEnabled,slackWebhook,currentUser,isAdminMode]);
+  },[now,logs,notificationsEnabled,currentUser,isAdminMode]);
 
   useEffect(()=>{
     Promise.all([
@@ -1808,6 +1814,7 @@ function AttendanceTracker() {
   const handleSODSubmit=async(sod)=>{
     const updated={...sodSubmissions,[sod.member]:sod};
     setSodSubmissions(updated);
+    await storage.set(`sod-${todayStr()}`,JSON.stringify(updated));
     setShowSodForm(false);
     const ts=new Date().toISOString();
     const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
@@ -1816,11 +1823,17 @@ function AttendanceTracker() {
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
     
-    // Slack notification (ADMIN ONLY - private channel)
-    if(slackWebhook) {
-      const sodCount = Object.keys(updated).length;
-      sendToSlack(slackWebhook, `✅ *SOD Submitted* (Admin Alert)\n*${sod.member}* has submitted SOD (${sodCount}/${TEAM_OPS.length} complete)\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
-    }
+    // Load webhook from storage and send Slack notifications
+    storage.get("slack-webhook").then(w => {
+      if(w && w.value) {
+        const webhook = w.value;
+        const sodCount = Object.keys(updated).length;
+        // Login notification
+        sendToSlack(webhook, `🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`);
+        // SOD notification
+        sendToSlack(webhook, `✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
+      }
+    });
   };
 
   const handleEODSubmit=async(eod)=>{
@@ -1835,12 +1848,18 @@ function AttendanceTracker() {
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
     
-    // Slack notification (ADMIN ONLY - private channel)
-    if(slackWebhook) {
-      const eodCount = Object.keys(updated).length;
-      const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
-      sendToSlack(slackWebhook, `📊 *EOD Submitted* (Admin Alert)\n*${eod.member}* has logged out (${eodCount} EODs submitted)\n\n*Metrics:*\n${metricsText}`);
-    }
+    // Load webhook from storage and send Slack notifications
+    storage.get("slack-webhook").then(w => {
+      if(w && w.value) {
+        const webhook = w.value;
+        const eodCount = Object.keys(updated).length;
+        const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
+        // Logout notification
+        sendToSlack(webhook, `🔴 *LOGGED OUT*\n*${eod.member}* has logged out at ${time}`);
+        // EOD notification
+        sendToSlack(webhook, `📊 *EOD Submitted*\n*${eod.member}* - ${eodCount} EODs today\n\n*Metrics:*\n${metricsText}`);
+      }
+    });
   };
 
   const deleteLog=(id)=>{const nl=logs.filter(l=>l.id!==id);saveLogs(nl);};
