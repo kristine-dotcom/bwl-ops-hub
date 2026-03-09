@@ -885,11 +885,63 @@ function AttendanceTracker() {
   const [notificationsEnabled,setNotificationsEnabled]=useState(false);
   const [showExportMenu,setShowExportMenu]=useState(false);
 
+  // Define ALL helper functions FIRST (before useEffect hooks use them)
+  const saveLogs=async(nl)=>{setLogs(nl);await storage.set("attendance-logs",JSON.stringify(nl));};
+
+  const getMemberToday=(member)=>logs.filter(l=>l.member===member&&l.date===todayStr());
+  const getStatus=(member)=>{
+    const tl=getMemberToday(member);
+    if(!tl.length) return "absent";
+    return tl[tl.length-1].type==="in"?"in":"out";
+  };
+  const hasSodToday=(member)=>!!sodSubmissions[member];
+  const hasEodToday=(member)=>!!eodSubmissions[member];
+
+  const isLate=(member,date)=>{
+    const d=date||todayStr();
+    const firstIn=logs.find(l=>l.member===member&&l.date===d&&l.type==="in");
+    if(!firstIn) return false;
+    const [h,m]=firstIn.time.split(":").map(Number);
+    const [sh,sm]=SHIFT_START.split(":").map(Number);
+    return h>sh||(h===sh&&m>sm);
+  };
+
+  const getTotalHours=(member,date)=>{
+    const dl=logs.filter(l=>l.member===member&&l.date===date);
+    let total=0,inTime=null;
+    for(const log of dl){
+      if(log.type==="in") inTime=log.timestamp;
+      else if(log.type==="out"&&inTime){total+=(new Date(log.timestamp)-new Date(inTime))/3600000;inTime=null;}
+    }
+    if(inTime) total+=(new Date()-new Date(inTime))/3600000;
+    return total.toFixed(1);
+  };
+
+  const getWeekDates=()=>{
+    const d=new Date(),day=d.getDay(),mon=new Date(d);
+    mon.setDate(d.getDate()-(day===0?6:day-1));
+    return Array.from({length:5},(_, i)=>{const date=new Date(mon);date.setDate(mon.getDate()+i);return date.toISOString().split("T")[0];});
+  };
+
   const addNotification=(message,type="warning")=>{
     const id=Date.now();
     setNotifications(prev=>[...prev,{id,message,type}]);
     setTimeout(()=>setNotifications(prev=>prev.filter(n=>n.id!==id)),8000);
   };
+
+  const verifyAdminPassword=()=>{
+    if(adminPassword===ADMIN_PASSWORD){
+      setIsAdminMode(true);
+      setShowAdminAccess(false);
+      setAdminPassword("");
+    } else {
+      setAdminError(true);
+      setAdminPassword("");
+      setTimeout(()=>setAdminError(false),2000);
+    }
+  };
+
+  // NOW useEffect hooks can safely use these functions
 
   useEffect(()=>{
     const timer=setInterval(()=>setNow(new Date()),30000);
@@ -1025,49 +1077,6 @@ function AttendanceTracker() {
     // Request notification permission
     requestNotificationPermission().then(granted => setNotificationsEnabled(granted));
   },[]);
-
-  const saveLogs=async(nl)=>{setLogs(nl);await storage.set("attendance-logs",JSON.stringify(nl));};
-
-  const verifyAdminPassword=()=>{
-    if(adminPassword===ADMIN_PASSWORD){
-      setIsAdminMode(true);
-      setShowAdminAccess(false);
-      setAdminPassword("");
-    } else {
-      setAdminError(true);
-      setAdminPassword("");
-      setTimeout(()=>setAdminError(false),2000);
-    }
-  };
-
-  const getMemberToday=(member)=>logs.filter(l=>l.member===member&&l.date===todayStr());
-  const getStatus=(member)=>{
-    const tl=getMemberToday(member);
-    if(!tl.length) return "absent";
-    return tl[tl.length-1].type==="in"?"in":"out";
-  };
-  const hasSodToday=(member)=>!!sodSubmissions[member];
-  const hasEodToday=(member)=>!!eodSubmissions[member];
-
-  const isLate=(member,date)=>{
-    const d=date||todayStr();
-    const firstIn=logs.find(l=>l.member===member&&l.date===d&&l.type==="in");
-    if(!firstIn) return false;
-    const [h,m]=firstIn.time.split(":").map(Number);
-    const [sh,sm]=SHIFT_START.split(":").map(Number);
-    return h>sh||(h===sh&&m>sm);
-  };
-
-  const getTotalHours=(member,date)=>{
-    const dl=logs.filter(l=>l.member===member&&l.date===date);
-    let total=0,inTime=null;
-    for(const log of dl){
-      if(log.type==="in") inTime=log.timestamp;
-      else if(log.type==="out"&&inTime){total+=(new Date(log.timestamp)-new Date(inTime))/3600000;inTime=null;}
-    }
-    if(inTime) total+=(new Date()-new Date(inTime))/3600000;
-    return total.toFixed(1);
-  };
 
   const logAction=()=>{
     if(!selectedMember) return;
