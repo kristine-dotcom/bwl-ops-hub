@@ -1144,6 +1144,24 @@ function AttendanceTracker() {
   const isCurrentUserAdmin=isAdminMode;
   const viewMembers=isCurrentUserAdmin?TEAM_OPS:[currentUser];
 
+  // Calculate all variables needed for rendering (BEFORE any return statements)
+  const memberStatus=selectedMember?getStatus(selectedMember):"absent";
+  const isIn=memberStatus==="in";
+  const hoursToday=selectedMember?getTotalHours(selectedMember,todayStr()):0;
+  const weekDates=getWeekDates();
+  const nowTimeStr=now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true});
+  const presentToday=TEAM_OPS.filter(m=>getStatus(m)!=="absent").length;
+  const lateToday=TEAM_OPS.filter(m=>isLate(m)).length;
+  const inNow=TEAM_OPS.filter(m=>getStatus(m)==="in").length;
+  const sodCount=Object.keys(sodSubmissions).length;
+  const eodCount=Object.keys(eodSubmissions).length;
+  
+  // Weekly summary calculations for admin
+  const weeklyTotal=isCurrentUserAdmin?weekDates.reduce((sum,d)=>sum+TEAM_OPS.reduce((s,m)=>s+parseFloat(getTotalHours(m,d)),0),0):0;
+  const avgHoursPerDay=isCurrentUserAdmin?(weeklyTotal/(weekDates.length*TEAM_OPS.length)).toFixed(1):0;
+  const lateArrivals=isCurrentUserAdmin?weekDates.reduce((s,d)=>s+TEAM_OPS.filter(m=>isLate(m,d)).length,0):0;
+  const perfectAttendance=isCurrentUserAdmin?TEAM_OPS.filter(m=>weekDates.every(d=>!isLate(m,d)&&logs.some(l=>l.member===m&&l.date===d&&l.type==="in"))).length:0;
+
   // Admin Access Modal
   if(showAdminAccess) return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
@@ -1211,23 +1229,6 @@ function AttendanceTracker() {
       </Card>
     </div>
   );
-
-  const memberStatus=selectedMember?getStatus(selectedMember):"absent";
-  const isIn=memberStatus==="in";
-  const hoursToday=selectedMember?getTotalHours(selectedMember,todayStr()):0;
-  const weekDates=getWeekDates();
-  const nowTimeStr=now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true});
-  const presentToday=TEAM_OPS.filter(m=>getStatus(m)!=="absent").length;
-  const lateToday=TEAM_OPS.filter(m=>isLate(m)).length;
-  const inNow=TEAM_OPS.filter(m=>getStatus(m)==="in").length;
-  const sodCount=Object.keys(sodSubmissions).length;
-
-  // Weekly summary calculations for admin
-  const weeklyTotal=isCurrentUserAdmin?weekDates.reduce((sum,d)=>sum+TEAM_OPS.reduce((s,m)=>s+parseFloat(getTotalHours(m,d)),0),0):0;
-  const avgHoursPerDay=isCurrentUserAdmin?(weeklyTotal/(weekDates.length*TEAM_OPS.length)).toFixed(1):0;
-  const lateArrivals=isCurrentUserAdmin?weekDates.reduce((s,d)=>s+TEAM_OPS.filter(m=>isLate(m,d)).length,0):0;
-  const perfectAttendance=isCurrentUserAdmin?TEAM_OPS.filter(m=>weekDates.every(d=>!isLate(m,d)&&logs.some(l=>l.member===m&&l.date===d&&l.type==="in"))).length:0;
-  const eodCount=Object.keys(eodSubmissions).length;
 
   if(showSodForm&&selectedMember) return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
