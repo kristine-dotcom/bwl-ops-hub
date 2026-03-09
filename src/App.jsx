@@ -1,9 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-// ─── ENVIRONMENT VARIABLES ────────────────────────────────────────────────────
-const SLACK_BOT_TOKEN = import.meta.env.VITE_SLACK_BOT_TOKEN;
-const SLACK_CHANNEL = import.meta.env.VITE_SLACK_CHANNEL || "#attendance-admin";
-
 const T = {
   bg:"#F5F5F0", surface:"#FFFFFF", border:"#E5E0D8", borderDark:"#C8C2B8",
   black:"#000000", orange:"#FF3300", orangeHov:"#CC2900", orangeSoft:"#FFF0ED",
@@ -101,35 +97,27 @@ const showNotification = (title, body, icon = "🔔") => {
 
 // ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
 const sendToSlack = async (message) => {
-  if (!SLACK_BOT_TOKEN) {
-    console.log("❌ No bot token configured");
-    return;
-  }
-  
-  console.log("🔵 Sending to:", SLACK_CHANNEL);
+  console.log("🔵 Sending to Slack via API route");
   console.log("📝 Message:", message);
   
   try {
-    const response = await fetch("https://slack.com/api/chat.postMessage", {
+    const response = await fetch("/api/slack", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${SLACK_BOT_TOKEN}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        channel: SLACK_CHANNEL,
-        text: message
-      })
+      body: JSON.stringify({ message })
     });
     
     const data = await response.json();
-    console.log("✅ Slack response:", data);
     
-    if (!data.ok) {
+    if (response.ok) {
+      console.log("✅ Slack message sent:", data);
+    } else {
       console.error("❌ Slack error:", data.error);
     }
   } catch (error) {
-    console.error("❌ Slack error:", error);
+    console.error("❌ Slack fetch error:", error);
   }
 };
 
@@ -1817,8 +1805,7 @@ function AttendanceTracker() {
             }
           }
           // Slack notification
-          if (SLACK_BOT_TOKEN) {
-            sendToSlack(`⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
+          sendToSlack(`⏰ *SOD Reminder*\n${pending.length} team members haven't submitted SOD yet:\n${pending.map(n=>`• ${n}`).join("\n")}`);
           }
         }
       }
@@ -1849,8 +1836,7 @@ function AttendanceTracker() {
             }
           }
           // Slack notification
-          if (SLACK_BOT_TOKEN) {
-            sendToSlack(`⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          sendToSlack(`⏰ *EOD Reminder*\n${stillIn.length} team members still need to submit EOD:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
           }
         }
       }
@@ -1882,8 +1868,7 @@ function AttendanceTracker() {
             }
           }
           // Slack notification
-          if (SLACK_BOT_TOKEN) {
-            sendToSlack(`⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
+          sendToSlack(`⚠️ *Still Logged In*\n${stillIn.length} team members still logged in after shift:\n${stillIn.map(n=>`• ${n}`).join("\n")}`);
           }
         }
       }
@@ -1948,8 +1933,7 @@ function AttendanceTracker() {
     
     // Load webhook from storage and send Slack notifications
     // Slack notifications
-    if (SLACK_BOT_TOKEN) {
-      const sodCount = Object.keys(updated).length;
+    const sodCount = Object.keys(updated).length;
       sendToSlack(`🟢 *LOGGED IN*\n*${sod.member}* has logged in at ${time}`);
       sendToSlack(`✅ *SOD Submitted*\n*${sod.member}* - ${sodCount}/${TEAM_OPS.length} complete\n• ${sod.tasks.length} tasks planned\n• Target metrics: ${sod.metrics || "None specified"}`);
     }
@@ -1969,8 +1953,7 @@ function AttendanceTracker() {
     setTimeout(()=>setConfirmed(false),2500);
     
     // Slack notifications
-    if (SLACK_BOT_TOKEN) {
-      const eodCount = Object.keys(updated).length;
+    const eodCount = Object.keys(updated).length;
       const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
       sendToSlack(`🔴 *LOGGED OUT*\n*${eod.member}* has logged out at ${time}`);
       sendToSlack(`📊 *EOD Submitted*\n*${eod.member}* - ${eodCount} EODs today\n\n*Metrics:*\n${metricsText}`);
@@ -2140,19 +2123,18 @@ function AttendanceTracker() {
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{fontSize:12,color:T.grayLight,fontFamily:T.mono}}>Logged in as: <strong>{currentUser}</strong>{isCurrentUserAdmin&&<span style={{color:T.orange,marginLeft:6}}>🔑 ADMIN</span>}</div>
           {notificationsEnabled && <Badge label="🔔 NOTIF ON" color={T.green} />}
-          {SLACK_BOT_TOKEN && <Badge label="💬 SLACK ON" color={T.purple} />}
         </div>
         <div style={{display:"flex",gap:8}}>
           {isCurrentUserAdmin && (
-            <button onClick={()=>{
-              if(SLACK_BOT_TOKEN) {
-                sendToSlack(`🔔 *Slack Integration Test*\nTest message from ${currentUser} via ${SLACK_CHANNEL}`);
-                alert(`✅ Test message sent to ${SLACK_CHANNEL}!\n\nCheck your Slack channel.`);
-              } else {
-                alert("❌ Slack bot token not configured!\n\nAdd VITE_SLACK_BOT_TOKEN to your .env file or Vercel environment variables.");
+            <button onClick={async ()=>{
+              try {
+                await sendToSlack(`🔔 *Slack Integration Test*\nTest message from ${currentUser}`);
+                alert(`✅ Test message sent!\n\nCheck #attendance-admin channel in Slack.`);
+              } catch (error) {
+                alert(`❌ Failed to send test message.\n\nMake sure VITE_SLACK_BOT_TOKEN is configured in Vercel environment variables.`);
               }
             }}
-              style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:SLACK_BOT_TOKEN?T.purple:T.bg,color:SLACK_BOT_TOKEN?"#fff":T.gray,border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
+              style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:T.purple,color:"#fff",border:`2px solid ${T.black}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
               💬 TEST SLACK
             </button>
           )}
