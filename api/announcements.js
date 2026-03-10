@@ -1,46 +1,42 @@
 import { kv } from '@vercel/kv';
 
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
 };
 
-export default async function handler(req) {
+export default async function handler(req, res) {
   // CORS headers
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   // Handle OPTIONS (preflight)
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers });
+    return res.status(200).end();
   }
 
   try {
     if (req.method === 'GET') {
       // Get all announcements
       const announcements = await kv.get('announcements') || [];
-      return new Response(JSON.stringify({ success: true, announcements }), { status: 200, headers });
+      return res.status(200).json({ success: true, announcements });
     }
 
     if (req.method === 'POST') {
-      const body = await req.json();
-      const { action, announcements } = body;
+      const { action, announcements } = req.body;
 
       if (action === 'set') {
         // Replace all announcements
         await kv.set('announcements', announcements);
-        return new Response(JSON.stringify({ success: true, announcements }), { status: 200, headers });
+        return res.status(200).json({ success: true, announcements });
       }
 
-      return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400, headers });
+      return res.status(400).json({ error: 'Invalid action' });
     }
 
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Announcements API error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers });
+    return res.status(500).json({ error: error.message });
   }
 }
