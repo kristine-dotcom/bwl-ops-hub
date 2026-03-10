@@ -1,12 +1,28 @@
 {
   "crons": [
     {
-      "path": "/api/send-eod-summary?time=6pm",
-      "schedule": "0 18 * * *"
+      "path": "/api/send-daily-summary?type=sod&batch=flexi&force=false",
+      "schedule": "0 7 * * *"
     },
     {
-      "path": "/api/send-eod-summary?time=7pm",
-      "schedule": "0 19 * * *"
+      "path": "/api/send-daily-summary?type=sod&batch=flexi&force=true",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/send-daily-summary?type=sod&batch=regular&force=false",
+      "schedule": "30 13 * * *"
+    },
+    {
+      "path": "/api/send-daily-summary?type=sod&batch=regular&force=true",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/send-daily-summary?type=eod&force=false",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/send-daily-summary?type=eod&force=true",
+      "schedule": "0 23 * * *"
     }
   ]
 }
