@@ -1,8 +1,12 @@
 {
-  "functions": {
-    "api/slack.js": {
-      "memory": 1024,
-      "maxDuration": 10
+  "crons": [
+    {
+      "path": "/api/send-eod-summary?time=6pm",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/send-eod-summary?time=7pm",
+      "schedule": "0 19 * * *"
     }
-  }
+  ]
 }
