@@ -1,44 +1,39 @@
 import { kv } from '@vercel/kv';
 
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
 };
 
-export default async function handler(req) {
+export default async function handler(req, res) {
   // CORS headers
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   // Handle OPTIONS (preflight)
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers });
+    return res.status(200).end();
   }
 
   try {
     if (req.method === 'GET') {
       // Get SOD submissions for a specific date
-      const url = new URL(req.url);
-      const date = url.searchParams.get('date'); // e.g., "2026-03-10"
+      const { date } = req.query;
       
       if (!date) {
-        return new Response(JSON.stringify({ error: 'Date parameter required' }), { status: 400, headers });
+        return res.status(400).json({ error: 'Date parameter required' });
       }
 
       const key = `sod-${date}`;
       const submissions = await kv.get(key) || {};
-      return new Response(JSON.stringify({ success: true, submissions }), { status: 200, headers });
+      return res.status(200).json({ success: true, submissions });
     }
 
     if (req.method === 'POST') {
-      const body = await req.json();
-      const { date, member, sodData } = body;
+      const { date, member, sodData } = req.body;
 
       if (!date || !member || !sodData) {
-        return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400, headers });
+        return res.status(400).json({ error: 'Missing required fields' });
       }
 
       const key = `sod-${date}`;
@@ -57,16 +52,16 @@ export default async function handler(req) {
       
       console.log(`✅ SOD saved for ${member} on ${date} - Total: ${Object.keys(updatedData).length}`);
       
-      return new Response(JSON.stringify({ 
+      return res.status(200).json({ 
         success: true, 
         submissions: updatedData,
         count: Object.keys(updatedData).length 
-      }), { status: 200, headers });
+      });
     }
 
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('SOD API error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers });
+    return res.status(500).json({ error: error.message });
   }
 }
