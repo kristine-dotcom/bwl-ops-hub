@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/scan",
+      "schedule": "0 14 * * *"
+    },
+    {
       "path": "/api/send-daily-summary?type=sod&batch=flexi&force=false",
       "schedule": "0 7 * * *"
     },
@@ -24,5 +28,11 @@
       "path": "/api/send-daily-summary?type=eod&force=true",
       "schedule": "0 23 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/slack.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
 }
