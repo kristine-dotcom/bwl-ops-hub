@@ -1934,10 +1934,21 @@ function AttendanceTracker() {
         if(sodResult?.value) {
           const loadedSod = JSON.parse(sodResult.value);
           setSodSubmissions(loadedSod);
+          localStorage.setItem(`${sodKey}-backup`, sodResult.value); // Keep backup in sync
           console.log("✅ Loaded SOD from artifact storage:", Object.keys(loadedSod).length, "submissions");
           console.log("📋 SOD members:", Object.keys(loadedSod).join(", "));
         } else {
-          console.log("ℹ️ No SOD submissions found for today");
+          // Try localStorage backup (can restore if artifact storage cleared)
+          const backup = localStorage.getItem(`${sodKey}-backup`);
+          if(backup) {
+            const loadedSod = JSON.parse(backup);
+            setSodSubmissions(loadedSod);
+            await storage.set(sodKey, backup); // Restore to artifact storage
+            console.log("✅ Restored SOD from localStorage backup:", Object.keys(loadedSod).length, "submissions");
+            console.log("📋 SOD members:", Object.keys(loadedSod).join(", "));
+          } else {
+            console.log("ℹ️ No SOD submissions found for today");
+          }
         }
         
         // Load EOD submissions for today
@@ -1947,10 +1958,21 @@ function AttendanceTracker() {
         if(eodResult?.value) {
           const loadedEod = JSON.parse(eodResult.value);
           setEodSubmissions(loadedEod);
+          localStorage.setItem(`${eodKey}-backup`, eodResult.value); // Keep backup in sync
           console.log("✅ Loaded EOD from artifact storage:", Object.keys(loadedEod).length, "submissions");
           console.log("📋 EOD members:", Object.keys(loadedEod).join(", "));
         } else {
-          console.log("ℹ️ No EOD submissions found for today");
+          // Try localStorage backup (can restore if artifact storage cleared)
+          const backup = localStorage.getItem(`${eodKey}-backup`);
+          if(backup) {
+            const loadedEod = JSON.parse(backup);
+            setEodSubmissions(loadedEod);
+            await storage.set(eodKey, backup); // Restore to artifact storage
+            console.log("✅ Restored EOD from localStorage backup:", Object.keys(loadedEod).length, "submissions");
+            console.log("📋 EOD members:", Object.keys(loadedEod).join(", "));
+          } else {
+            console.log("ℹ️ No EOD submissions found for today");
+          }
         }
         
         // Load Slack webhook (legacy)
@@ -1998,16 +2020,35 @@ function AttendanceTracker() {
 
 
   const handleSODSubmit=async(sod)=>{
-    const updated={...sodSubmissions,[sod.member]:sod};
-    setSodSubmissions(updated);
+    // CRITICAL: Load latest data from storage FIRST to avoid overwriting other submissions
     const sodKey = `sod-${todayStr()}`;
+    let existingData = {};
+    try {
+      const latest = await storage.get(sodKey);
+      if(latest?.value) {
+        existingData = JSON.parse(latest.value);
+        console.log("📥 Loaded latest SOD data before save:", Object.keys(existingData).join(", "));
+      }
+    } catch(e) {
+      console.log("ℹ️ No existing SOD data, starting fresh");
+    }
+    
+    // Merge with existing data from storage (NOT just local state)
+    const updated={...existingData,[sod.member]:sod};
+    setSodSubmissions(updated);
     const sodData = JSON.stringify(updated);
     try {
       await storage.set(sodKey, sodData);
+      // CRITICAL: Save to localStorage as backup (this IS shared via artifact rendering)
+      localStorage.setItem(`${sodKey}-backup`, sodData);
       console.log("✅ SOD saved for", sod.member, "- Key:", sodKey, "- Total:", Object.keys(updated).length);
       console.log("📋 All SOD members:", Object.keys(updated).join(", "));
+      console.log("💾 Backup saved to localStorage");
     } catch(error) {
       console.error("❌ Error saving SOD:", error);
+      // Emergency fallback
+      localStorage.setItem(`${sodKey}-backup`, sodData);
+      console.log("⚠️ Emergency: Saved to localStorage backup only");
     }
     setShowSodForm(false);
     const ts=new Date().toISOString();
@@ -2034,16 +2075,35 @@ function AttendanceTracker() {
 
 
   const handleEODSubmit=async(eod)=>{
-    const updated={...eodSubmissions,[eod.member]:eod};
-    setEodSubmissions(updated);
+    // CRITICAL: Load latest data from storage FIRST to avoid overwriting other submissions
     const eodKey = `eod-${todayStr()}`;
+    let existingData = {};
+    try {
+      const latest = await storage.get(eodKey);
+      if(latest?.value) {
+        existingData = JSON.parse(latest.value);
+        console.log("📥 Loaded latest EOD data before save:", Object.keys(existingData).join(", "));
+      }
+    } catch(e) {
+      console.log("ℹ️ No existing EOD data, starting fresh");
+    }
+    
+    // Merge with existing data from storage (NOT just local state)
+    const updated={...existingData,[eod.member]:eod};
+    setEodSubmissions(updated);
     const eodData = JSON.stringify(updated);
     try {
       await storage.set(eodKey, eodData);
+      // CRITICAL: Save to localStorage as backup
+      localStorage.setItem(`${eodKey}-backup`, eodData);
       console.log("✅ EOD saved for", eod.member, "- Key:", eodKey, "- Total:", Object.keys(updated).length);
       console.log("📋 All EOD members:", Object.keys(updated).join(", "));
+      console.log("💾 Backup saved to localStorage");
     } catch(error) {
       console.error("❌ Error saving EOD:", error);
+      // Emergency fallback
+      localStorage.setItem(`${eodKey}-backup`, eodData);
+      console.log("⚠️ Emergency: Saved to localStorage backup only");
     }
     setShowEodForm(false);
     const ts=new Date().toISOString();
