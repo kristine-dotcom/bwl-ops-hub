@@ -1,54 +1,51 @@
 import { kv } from '@vercel/kv';
 
+// Use Node.js runtime (supports @vercel/kv package)
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
 };
 
-export default async function handler(req) {
+export default async function handler(req, res) {
   // CORS headers
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   // Handle OPTIONS (preflight)
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers });
+    return res.status(200).end();
   }
 
   try {
     if (req.method === 'GET') {
       // Get attendance logs
       const logs = await kv.get('attendance-logs') || [];
-      return new Response(JSON.stringify({ success: true, logs }), { status: 200, headers });
+      return res.status(200).json({ success: true, logs });
     }
 
     if (req.method === 'POST') {
-      const body = await req.json();
-      const { action, log, logs } = body;
+      const { action, log, logs } = req.body;
 
       if (action === 'add') {
         // Add single log entry
         const currentLogs = await kv.get('attendance-logs') || [];
         const updatedLogs = [...currentLogs, log];
         await kv.set('attendance-logs', updatedLogs);
-        return new Response(JSON.stringify({ success: true, logs: updatedLogs }), { status: 200, headers });
+        return res.status(200).json({ success: true, logs: updatedLogs });
       }
 
       if (action === 'set') {
         // Replace all logs (bulk update)
         await kv.set('attendance-logs', logs);
-        return new Response(JSON.stringify({ success: true, logs }), { status: 200, headers });
+        return res.status(200).json({ success: true, logs });
       }
 
-      return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400, headers });
+      return res.status(400).json({ error: 'Invalid action' });
     }
 
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Attendance API error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers });
+    return res.status(500).json({ error: error.message });
   }
 }
