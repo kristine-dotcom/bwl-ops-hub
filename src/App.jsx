@@ -2283,8 +2283,13 @@ function AttendanceTracker() {
           if (backup) {
             const migratedSod = JSON.parse(backup);
             setSodSubmissions(migratedSod);
-            // Migration will happen on next save
-            console.log("✅ Found SOD in localStorage:", Object.keys(migratedSod).length, "submissions");
+            
+            // CRITICAL: Actually migrate each submission to KV backend now!
+            console.log("🔄 Migrating SOD data to KV backend...");
+            for (const [member, sodData] of Object.entries(migratedSod)) {
+              await api.saveSOD(today, member, sodData);
+            }
+            console.log("✅ Migrated SOD from localStorage:", Object.keys(migratedSod).length, "submissions");
           } else {
             console.log("ℹ️ No SOD submissions found for today");
           }
@@ -2302,8 +2307,13 @@ function AttendanceTracker() {
           if (backup) {
             const migratedEod = JSON.parse(backup);
             setEodSubmissions(migratedEod);
-            // Migration will happen on next save
-            console.log("✅ Found EOD in localStorage:", Object.keys(migratedEod).length, "submissions");
+            
+            // CRITICAL: Actually migrate each submission to KV backend now!
+            console.log("🔄 Migrating EOD data to KV backend...");
+            for (const [member, eodData] of Object.entries(migratedEod)) {
+              await api.saveEOD(today, member, eodData);
+            }
+            console.log("✅ Migrated EOD from localStorage:", Object.keys(migratedEod).length, "submissions");
           } else {
             console.log("ℹ️ No EOD submissions found for today");
           }
