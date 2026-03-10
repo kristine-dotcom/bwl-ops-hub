@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
+
 const T = {
   bg:"#F5F5F0", surface:"#FFFFFF", border:"#E5E0D8", borderDark:"#C8C2B8",
   black:"#000000", orange:"#FF3300", orangeHov:"#CC2900", orangeSoft:"#FFF0ED",
@@ -12,12 +13,16 @@ const T = {
 };
 
 
+
+
 const CORRECT_PASSWORD = "leverage2025";
 const ADMIN_PASSWORD = "admin2025";
 const SHIFT_START = "09:00";
 const SHIFT_END = "17:00"; // ✅ 5 PM EST
 const PRIORITY_OPTIONS = ["High","Medium","Low"];
 const TIME_OPTIONS = ["9:00 AM","10:00 AM","11:00 AM","12:00 PM","1:00 PM","2:00 PM","3:00 PM","4:00 PM","5:00 PM","EOD"];
+
+
 
 
 const GlobalStyle = () => (
@@ -40,11 +45,15 @@ const GlobalStyle = () => (
 );
 
 
+
+
 const storage = {
   get: async (key) => { try { const r=await window.storage.get(key); if(!r) return null; return {value:typeof r.value==="string"?r.value:JSON.stringify(r.value)}; } catch { return null; } },
   set: async (key,value) => { try { await window.storage.set(key,value); } catch {} },
   delete: async (key) => { try { await window.storage.delete(key); } catch {} },
 };
+
+
 
 
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -60,6 +69,8 @@ const useIsMobile = () => {
 };
 
 
+
+
 async function claudeFetch(body) {
   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(body)});
   return r.json();
@@ -73,7 +84,11 @@ async function callClaude(prompt, maxTokens=2000) {
 }
 
 
+
+
 const priorityColor = p => ({High:T.red,Medium:T.yellow,Low:T.green,high:T.red,medium:T.yellow,low:T.green}[p]||T.gray);
+
+
 
 
 // ─── NOTIFICATION SYSTEM ──────────────────────────────────────────────────────
@@ -88,11 +103,15 @@ const requestNotificationPermission = async () => {
 };
 
 
+
+
 const showNotification = (title, body, icon = "🔔") => {
   if (Notification.permission === "granted") {
     new Notification(title, { body, icon: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${icon}</text></svg>` });
   }
 };
+
+
 
 
 // ─── SLACK INTEGRATION ────────────────────────────────────────────────────────
@@ -124,15 +143,175 @@ const sendToSlack = async (message, userId = null, isAnnouncement = false) => {
 };
 
 
+// ─── API BACKEND (Vercel KV) ─────────────────────────────────────────────────
+const api = {
+  // Attendance endpoints
+  getAttendance: async () => {
+    try {
+      const response = await fetch("/api/attendance");
+      const data = await response.json();
+      if (data.success) return data.logs;
+      console.error("API error:", data.error);
+      // Fallback to localStorage
+      const backup = localStorage.getItem("attendance-logs-backup");
+      return backup ? JSON.parse(backup) : [];
+    } catch (error) {
+      console.error("API fetch error:", error);
+      const backup = localStorage.getItem("attendance-logs-backup");
+      return backup ? JSON.parse(backup) : [];
+    }
+  },
+
+  saveAttendance: async (logs) => {
+    try {
+      const response = await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", logs })
+      });
+      const data = await response.json();
+      if (!data.success) {
+        console.error("API save error:", data.error);
+      }
+      // Always save to localStorage as backup
+      localStorage.setItem("attendance-logs-backup", JSON.stringify(logs));
+      return data.success;
+    } catch (error) {
+      console.error("API save error:", error);
+      localStorage.setItem("attendance-logs-backup", JSON.stringify(logs));
+      return false;
+    }
+  },
+
+  // SOD endpoints
+  getSOD: async (date) => {
+    try {
+      const response = await fetch(`/api/sod?date=${date}`);
+      const data = await response.json();
+      if (data.success) return data.submissions || {};
+      console.error("API error:", data.error);
+      // Fallback to localStorage
+      const backup = localStorage.getItem(`sod-${date}-backup`);
+      return backup ? JSON.parse(backup) : {};
+    } catch (error) {
+      console.error("API fetch error:", error);
+      const backup = localStorage.getItem(`sod-${date}-backup`);
+      return backup ? JSON.parse(backup) : {};
+    }
+  },
+
+  saveSOD: async (date, member, sodData) => {
+    try {
+      const response = await fetch("/api/sod", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, member, sodData })
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Save to localStorage backup
+        localStorage.setItem(`sod-${date}-backup`, JSON.stringify(data.submissions));
+        return data.submissions;
+      }
+      console.error("API save error:", data.error);
+      return null;
+    } catch (error) {
+      console.error("API save error:", error);
+      return null;
+    }
+  },
+
+  // EOD endpoints
+  getEOD: async (date) => {
+    try {
+      const response = await fetch(`/api/eod?date=${date}`);
+      const data = await response.json();
+      if (data.success) return data.submissions || {};
+      console.error("API error:", data.error);
+      // Fallback to localStorage
+      const backup = localStorage.getItem(`eod-${date}-backup`);
+      return backup ? JSON.parse(backup) : {};
+    } catch (error) {
+      console.error("API fetch error:", error);
+      const backup = localStorage.getItem(`eod-${date}-backup`);
+      return backup ? JSON.parse(backup) : {};
+    }
+  },
+
+  saveEOD: async (date, member, eodData) => {
+    try {
+      const response = await fetch("/api/eod", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, member, eodData })
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Save to localStorage backup
+        localStorage.setItem(`eod-${date}-backup`, JSON.stringify(data.submissions));
+        return data.submissions;
+      }
+      console.error("API save error:", data.error);
+      return null;
+    } catch (error) {
+      console.error("API save error:", error);
+      return null;
+    }
+  },
+
+  // Announcements endpoints
+  getAnnouncements: async () => {
+    try {
+      const response = await fetch("/api/announcements");
+      const data = await response.json();
+      if (data.success) return data.announcements || [];
+      console.error("API error:", data.error);
+      // Fallback to localStorage
+      const backup = localStorage.getItem("announcements-backup");
+      return backup ? JSON.parse(backup) : [];
+    } catch (error) {
+      console.error("API fetch error:", error);
+      const backup = localStorage.getItem("announcements-backup");
+      return backup ? JSON.parse(backup) : [];
+    }
+  },
+
+  saveAnnouncements: async (announcements) => {
+    try {
+      const response = await fetch("/api/announcements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", announcements })
+      });
+      const data = await response.json();
+      if (!data.success) {
+        console.error("API save error:", data.error);
+      }
+      // Always save to localStorage as backup
+      localStorage.setItem("announcements-backup", JSON.stringify(announcements));
+      return data.success;
+    } catch (error) {
+      console.error("API save error:", error);
+      localStorage.setItem("announcements-backup", JSON.stringify(announcements));
+      return false;
+    }
+  }
+};
+
+
 // ─── AI INSIGHTS ──────────────────────────────────────────────────────────────
 const generateInsights = async (memberData) => {
   const prompt = `Analyze this team member's performance data and provide 3 short, actionable insights:
+
+
 
 
 Member: ${memberData.name}
 Role: ${memberData.role}
 This Week:
 ${memberData.metrics.map(m => `- ${m.name}: ${m.value} (Target: ${m.target})`).join("\n")}
+
+
 
 
 Provide insights in JSON format:
@@ -145,6 +324,8 @@ Provide insights in JSON format:
 }`;
 
 
+
+
   try {
     return await callClaude(prompt, 1000);
   } catch (error) {
@@ -152,6 +333,8 @@ Provide insights in JSON format:
     return { insights: [] };
   }
 };
+
+
 
 
 // ─── EXPORT FUNCTIONS ─────────────────────────────────────────────────────────
@@ -167,6 +350,8 @@ const exportToCSV = (data, filename) => {
 };
 
 
+
+
 const exportToPDF = async (elementId, filename) => {
   // Simple PDF export using print functionality
   const printWindow = window.open("", "", "height=600,width=800");
@@ -180,6 +365,8 @@ const exportToPDF = async (elementId, filename) => {
   printWindow.document.close();
   printWindow.print();
 };
+
+
 
 
 // ─── SHARED UI ────────────────────────────────────────────────────────────────
@@ -251,6 +438,8 @@ const LoadingScreen = () => (
 );
 
 
+
+
 // ─── PROPOSAL HELPERS ─────────────────────────────────────────────────────────
 const isSectionHeader=(line)=>{if(line.length<5) return false;const twoDigits=line[0]>="0"&&line[0]<="9"&&line[1]>="0"&&line[1]<="9";return twoDigits&&line.indexOf("//")!==-1;};
 const parseSectionHeader=(line)=>{const slashIdx=line.indexOf("//");return {num:line.slice(0,2),title:line.slice(slashIdx+2).trim()};};
@@ -316,6 +505,8 @@ const BrandedProposal = ({proposal,rfp}) => {
 };
 
 
+
+
 // ─── TEAM / KPI DATA ──────────────────────────────────────────────────────────
 const TEAM_OPS=["Suki Santos","Kristine Mirabueno","Kristine Miel Zulaybar","Caleb Bentil","David Perlov","Cyril Butanas","Darlene Mae Malolos"];
 const ADMIN_USERS = ["Kristine Mirabueno", "David Perlov"];
@@ -360,8 +551,12 @@ const KPI_DATA = {
 };
 
 
+
+
 // ─── SOD FORM ─────────────────────────────────────────────────────────────────
 const emptyTask = () => ({task:"",priority:"High",eta:"EOD"});
+
+
 
 
 function SODForm({member, onSubmit}) {
@@ -371,10 +566,14 @@ function SODForm({member, onSubmit}) {
   const [submitting,setSubmitting]=useState(false);
 
 
+
+
   const updateTask=(i,field,val)=>setTasks(prev=>prev.map((t,idx)=>idx===i?{...t,[field]:val}:t));
   const addTask=()=>setTasks(prev=>[...prev,emptyTask()]);
   const removeTask=(i)=>setTasks(prev=>prev.filter((_,idx)=>idx!==i));
   const canSubmit=tasks.some(t=>t.task.trim());
+
+
 
 
   const handleSubmit=async()=>{
@@ -397,6 +596,8 @@ function SODForm({member, onSubmit}) {
   };
 
 
+
+
   if(submitting) return (
     <div style={{textAlign:"center",padding:"48px 20px"}}>
       <div style={{fontSize:48,marginBottom:12}}>✅</div>
@@ -406,12 +607,16 @@ function SODForm({member, onSubmit}) {
   );
 
 
+
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {/* Banner */}
       <div style={{background:"#fff8f0",border:`2px solid ${T.orange}`,padding:"12px 16px",fontSize:12,color:T.darkGray,lineHeight:1.6}}>
         📋 <strong>Submit your Start of Day report first.</strong> Once submitted, your <strong>Log In button will unlock</strong>. Your SOD will be visible to Kristine and David.
       </div>
+
+
 
 
       {/* Tasks */}
@@ -451,6 +656,8 @@ function SODForm({member, onSubmit}) {
       </div>
 
 
+
+
       {/* Metrics */}
       <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
         <div style={{background:T.black,padding:"10px 16px"}}><div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>TODAY'S METRICS TARGET</div></div>
@@ -459,12 +666,16 @@ function SODForm({member, onSubmit}) {
       </div>
 
 
+
+
       {/* Blockers */}
       <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
         <div style={{background:T.black,padding:"10px 16px"}}><div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>BLOCKERS OR CONCERNS</div></div>
         <textarea value={blockers} onChange={e=>setBlockers(e.target.value)} placeholder="Anything blocking you today? (optional)"
           style={{width:"100%",minHeight:60,background:"transparent",border:"none",padding:14,fontSize:13,outline:"none",fontFamily:T.body,lineHeight:1.7,resize:"vertical",color:T.black,display:"block"}} />
       </div>
+
+
 
 
       {/* Submit */}
@@ -494,8 +705,12 @@ function EODForm({member, onSubmit}) {
   },[member]);
 
 
+
+
   const updateMetric=(i,val)=>setMetrics(prev=>prev.map((m,idx)=>idx===i?{...m,value:val}:m));
   const canSubmit=eodReport.trim()&&metrics.every(m=>m.value.trim());
+
+
 
 
   const handleSubmit=async()=>{
@@ -511,6 +726,8 @@ function EODForm({member, onSubmit}) {
   };
 
 
+
+
   if(submitting) return (
     <div style={{textAlign:"center",padding:"48px 20px"}}>
       <div style={{fontSize:48,marginBottom:12}}>✅</div>
@@ -520,12 +737,16 @@ function EODForm({member, onSubmit}) {
   );
 
 
+
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {/* Banner */}
       <div style={{background:"#fff0f0",border:`2px solid ${T.red}`,padding:"12px 16px",fontSize:12,color:T.darkGray,lineHeight:1.6}}>
         📊 <strong>Submit your End of Day report and metrics.</strong> Once submitted, your <strong>Log Out button will unlock</strong>. Your EOD will be visible to Kristine and David.
       </div>
+
+
 
 
       {/* EOD Report */}
@@ -537,6 +758,8 @@ function EODForm({member, onSubmit}) {
           placeholder={kpiData?.eod?.join("\n") || "Describe your accomplishments, challenges, and tomorrow's plan…"}
           style={{width:"100%",minHeight:140,background:"transparent",border:"none",padding:14,fontSize:13,outline:"none",fontFamily:T.mono,lineHeight:1.7,resize:"vertical",color:T.black,display:"block"}} />
       </div>
+
+
 
 
       {/* Metrics */}
@@ -567,6 +790,8 @@ function EODForm({member, onSubmit}) {
       </div>
 
 
+
+
       {/* Submit */}
       <button onClick={handleSubmit} disabled={!canSubmit}
         style={{width:"100%",padding:"14px",background:canSubmit?T.red:"#E5E0D8",color:canSubmit?"#fff":T.gray,border:"none",fontSize:13,fontWeight:700,cursor:canSubmit?"pointer":"not-allowed",letterSpacing:2,fontFamily:T.font}}>
@@ -582,6 +807,8 @@ function CommentsPanel({member, date, type}) {
   const [loading, setLoading] = useState(true);
 
 
+
+
   useEffect(() => {
     const loadComments = async () => {
       const key = `comments-${type}-${member}-${date}`;
@@ -591,6 +818,8 @@ function CommentsPanel({member, date, type}) {
     };
     loadComments();
   }, [member, date, type]);
+
+
 
 
   const addComment = async () => {
@@ -608,7 +837,11 @@ function CommentsPanel({member, date, type}) {
   };
 
 
+
+
   if (loading) return <div style={{ padding: 16, textAlign: "center", color: T.grayLight, fontSize: 12 }}>Loading comments...</div>;
+
+
 
 
   return (
@@ -645,11 +878,15 @@ function CommentsPanel({member, date, type}) {
 }
 
 
+
+
 // ─── AI INSIGHTS PANEL ────────────────────────────────────────────────────────
 function AIInsightsPanel({member, memberData}) {
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(false);
   const [lastGenerated, setLastGenerated] = useState(null);
+
+
 
 
   const generate = async () => {
@@ -661,8 +898,12 @@ function AIInsightsPanel({member, memberData}) {
   };
 
 
+
+
   const iconMap = { positive: "✅", warning: "⚠️", neutral: "💡" };
   const colorMap = { positive: T.green, warning: T.orange, neutral: T.purple };
+
+
 
 
   return (
@@ -700,6 +941,8 @@ function AIInsightsPanel({member, memberData}) {
 }
 
 
+
+
 // ─── METRICS CHART COMPONENT ──────────────────────────────────────────────────
 function MetricsChart({data, title, color}) {
   // Simple bar chart visualization
@@ -726,11 +969,15 @@ function MetricsChart({data, title, color}) {
 }
 
 
+
+
 // ─── WEEKLY PERFORMANCE DASHBOARD ─────────────────────────────────────────────
 function WeeklyPerformanceDashboard({logs, sodSubmissions, eodSubmissions}) {
   const [selectedMember, setSelectedMember] = useState("Caleb Bentil");
   const [aiInsights, setAiInsights] = useState([]);
   const [loadingInsights, setLoadingInsights] = useState(false);
+
+
 
 
   const getWeekDates = () => {
@@ -744,8 +991,12 @@ function WeeklyPerformanceDashboard({logs, sodSubmissions, eodSubmissions}) {
   };
 
 
+
+
   const weekDates = getWeekDates();
   const trackedMembers = ["Caleb Bentil", "Darlene Mae Malolos", "Cyril Butanas"];
+
+
 
 
   // Calculate scores for each member
@@ -762,17 +1013,25 @@ function WeeklyPerformanceDashboard({logs, sodSubmissions, eodSubmissions}) {
   };
 
 
+
+
   const generateTeamInsights = async () => {
     setLoadingInsights(true);
     const prompt = `Analyze this team's weekly performance and provide 3 key insights:
+
+
 
 
 Team Members: ${trackedMembers.join(", ")}
 Week: ${weekLabel()}
 
 
+
+
 Performance Summary:
 ${trackedMembers.map(m => `- ${m}: ${calculateScore(m)}% score this week`).join("\n")}
+
+
 
 
 Provide insights in JSON format:
@@ -785,6 +1044,8 @@ Provide insights in JSON format:
 }`;
 
 
+
+
     try {
       const result = await callClaude(prompt, 1000);
       setAiInsights(result.insights || []);
@@ -795,11 +1056,15 @@ Provide insights in JSON format:
   };
 
 
+
+
   const memberScores = trackedMembers.map(m => ({
     member: m,
     score: calculateScore(m),
     color: calculateScore(m) >= 80 ? T.green : calculateScore(m) >= 60 ? T.yellow : T.red
   }));
+
+
 
 
   return (
@@ -817,6 +1082,8 @@ Provide insights in JSON format:
           </button>
         </div>
       </Card>
+
+
 
 
       {/* AI Team Insights */}
@@ -841,6 +1108,8 @@ Provide insights in JSON format:
       )}
 
 
+
+
       {/* Performance Scorecards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
         {memberScores.map(ms => (
@@ -851,6 +1120,8 @@ Provide insights in JSON format:
           </Card>
         ))}
       </div>
+
+
 
 
       {/* Member Details */}
@@ -881,6 +1152,8 @@ Provide insights in JSON format:
 }
 
 
+
+
 // ─── NOTIFICATION CENTER ──────────────────────────────────────────────────────
 function NotificationCenter({notifications, onDismiss}) {
   if(!notifications.length) return null;
@@ -901,6 +1174,8 @@ function NotificationCenter({notifications, onDismiss}) {
     </div>
   );
 }
+
+
 
 
 // ─── EXPORT CSV ───────────────────────────────────────────────────────────────
@@ -939,9 +1214,13 @@ function exportAttendanceCSV(logs, weekDates, TEAM_OPS) {
 }
 
 
+
+
 // ═════════════════════════════════════════════════════════════════════════════
 // KPI TRACKING SYSTEM - Features A + C + E
 // ═════════════════════════════════════════════════════════════════════════════
+
+
 
 
 // ─── KPI CONFIGURATION ───────────────────────────────────────────────────────
@@ -972,6 +1251,8 @@ const KPI_CONFIG = {
 };
 
 
+
+
 // Extract metrics from EOD text
 const extractKPIs = (text, member) => {
   const config = KPI_CONFIG[member];
@@ -983,6 +1264,8 @@ const extractKPIs = (text, member) => {
   });
   return metrics;
 };
+
+
 
 
 // Calculate score (0-100)
@@ -1000,6 +1283,8 @@ const calcKPIScore = (val, target, stretch, inverse = false) => {
 };
 
 
+
+
 // Get color for score
 const kpiColor = (score) => {
   if (!score) return "#9ca3af";
@@ -1007,6 +1292,8 @@ const kpiColor = (score) => {
   if (score >= 60) return "#f59e0b";
   return "#ef4444";
 };
+
+
 
 
 // ─── LIVE KPI DASHBOARD (Feature A) ──────────────────────────────────────────
@@ -1170,6 +1457,8 @@ function LiveKPIDashboard({ eodSubmissions }) {
     </div>
   );
 }
+
+
 
 
 // ─── ADVANCED ANALYTICS (Feature C) ──────────────────────────────────────────
@@ -1389,6 +1678,8 @@ function AdvancedAnalytics({ logs, sodSubmissions, eodSubmissions }) {
 }
 
 
+
+
 // ─── AUTO PERFORMANCE REVIEWS (Feature E) ────────────────────────────────────
 function AutoPerformanceReviews({ logs, sodSubmissions, eodSubmissions }) {
   const [selectedMember, setSelectedMember] = useState("Caleb Bentil");
@@ -1453,7 +1744,11 @@ function AutoPerformanceReviews({ logs, sodSubmissions, eodSubmissions }) {
       const prompt = `Generate a professional monthly performance review for ${selectedMember}.
 
 
+
+
 DATA FOR ${month}:
+
+
 
 
 ATTENDANCE:
@@ -1462,13 +1757,19 @@ ATTENDANCE:
 - Late arrivals: ${attendance.late}
 
 
+
+
 SUBMISSIONS:
 - SOD submitted: ${sodCount}/${attendance.total_days} (${((sodCount / attendance.total_days) * 100).toFixed(0)}%)
 - EOD submitted: ${eodCount}/${attendance.total_days} (${((eodCount / attendance.total_days) * 100).toFixed(0)}%)
 
 
+
+
 KPI PERFORMANCE:
 ${Object.keys(kpiSummary).map(k => `- ${k}: avg ${kpiSummary[k].avg}, range ${kpiSummary[k].min}-${kpiSummary[k].max}`).join("\n")}
+
+
 
 
 Generate a review with:
@@ -1478,6 +1779,8 @@ Generate a review with:
 4. Areas for Improvement (2-3 bullet points)
 5. Trend Analysis (improving/stable/declining + explanation)
 6. Recommendations (2-3 actionable items)
+
+
 
 
 Format as JSON:
@@ -1519,33 +1822,51 @@ ${review.member} — ${review.month}
 Generated: ${new Date(review.generated_at).toLocaleDateString()}
 
 
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
+
+
 OVERALL SCORE: ${review.score}/100
+
+
 
 
 PERFORMANCE SUMMARY:
 ${review.summary}
 
 
+
+
 KEY STRENGTHS:
 ${review.strengths.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+
 
 
 AREAS FOR IMPROVEMENT:
 ${review.improvements.map((s, i) => `${i + 1}. ${s}`).join("\n")}
 
 
+
+
 TREND ANALYSIS:
 ${review.trend === "up" ? "↗️ Improving" : review.trend === "down" ? "↘️ Declining" : "→ Stable"} — ${review.trend_note}
+
+
 
 
 RECOMMENDATIONS:
 ${review.recommendations.map((s, i) => `${i + 1}. ${s}`).join("\n")}
 
 
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
 
 
 DATA SUMMARY:
@@ -1666,6 +1987,8 @@ DATA SUMMARY:
 }
 
 
+
+
 // ─── ATTENDANCE TRACKER ───────────────────────────────────────────────────────
 function AttendanceTracker() {
   const [logs,setLogs]=useState([]);
@@ -1691,17 +2014,16 @@ function AttendanceTracker() {
   const [showExportMenu,setShowExportMenu]=useState(false);
 
 
+
+
   // Define ALL helper functions FIRST (before useEffect hooks use them)
   const saveLogs=async(nl)=>{
     setLogs(nl);
-    try {
-      await storage.set("attendance-logs",JSON.stringify(nl));
-      localStorage.setItem("attendance-logs-backup", JSON.stringify(nl)); // Backup
-      console.log("✅ Logs saved:", nl.length, "entries");
-    } catch(error) {
-      console.error("❌ Error saving logs:", error);
-    }
+    await api.saveAttendance(nl);
+    console.log("✅ Logs saved to KV backend:", nl.length, "entries");
   };
+
+
 
 
   const getMemberToday=(member)=>logs.filter(l=>l.member===member&&l.date===todayStr());
@@ -1712,6 +2034,8 @@ function AttendanceTracker() {
   };
   const hasSodToday=(member)=>!!sodSubmissions[member];
   const hasEodToday=(member)=>!!eodSubmissions[member];
+
+
 
 
   const isLate=(member,date)=>{
@@ -1726,6 +2050,8 @@ function AttendanceTracker() {
   };
 
 
+
+
   const getTotalHours=(member,date)=>{
     const dl=logs.filter(l=>l.member===member&&l.date===date);
     let total=0,inTime=null;
@@ -1738,6 +2064,8 @@ function AttendanceTracker() {
   };
 
 
+
+
   const getWeekDates=()=>{
     const d=new Date(),day=d.getDay(),mon=new Date(d);
     mon.setDate(d.getDate()-(day===0?6:day-1));
@@ -1745,11 +2073,15 @@ function AttendanceTracker() {
   };
 
 
+
+
   const addNotification=(message,type="warning")=>{
     const id=Date.now();
     setNotifications(prev=>[...prev,{id,message,type}]);
     setTimeout(()=>setNotifications(prev=>prev.filter(n=>n.id!==id)),8000);
   };
+
+
 
 
   const verifyAdminPassword=()=>{
@@ -1765,13 +2097,19 @@ function AttendanceTracker() {
   };
 
 
+
+
   // NOW useEffect hooks can safely use these functions
+
+
 
 
   useEffect(()=>{
     const timer=setInterval(()=>setNow(new Date()),30000);
     return ()=>clearInterval(timer);
   },[]);
+
+
 
 
   // Auto-logout
@@ -1792,6 +2130,8 @@ function AttendanceTracker() {
     },60000);
     return ()=>clearInterval(check);
   },[logs,autoLogoutSettings]);
+
+
 
 
   // SOD reminder at 8:55 AM
@@ -1829,6 +2169,8 @@ function AttendanceTracker() {
   },[now,sodSubmissions,notificationsEnabled,currentUser,isAdminMode]);
 
 
+
+
   // EOD reminder at 5:45 PM
   useEffect(()=>{
     const check=setInterval(()=>{
@@ -1862,6 +2204,8 @@ function AttendanceTracker() {
     },60000);
     return ()=>clearInterval(check);
   },[now,eodSubmissions,logs,notificationsEnabled,currentUser,isAdminMode]);
+
+
 
 
   // Logout reminder at 6:30 PM
@@ -1900,76 +2244,66 @@ function AttendanceTracker() {
   },[now,logs,notificationsEnabled,currentUser,isAdminMode]);
 
 
+
+
   useEffect(()=>{
     const loadData = async () => {
       try {
-        console.log("🔵 Loading all data from storage...");
+        console.log("🔵 Loading all data from KV backend...");
         const today = todayStr();
-        console.log("📅 Today's date key:", today);
+        console.log("📅 Today's date:", today);
         
-        // Load attendance logs
-        const logsResult = await storage.get("attendance-logs");
-        if(logsResult?.value) {
-          const loadedLogs = JSON.parse(logsResult.value);
+        // Load attendance logs from API
+        const loadedLogs = await api.getAttendance();
+        if (loadedLogs.length > 0) {
           setLogs(loadedLogs);
-          localStorage.setItem("attendance-logs-backup", logsResult.value); // Backup
-          console.log("✅ Loaded logs from storage:", loadedLogs.length, "entries");
+          console.log("✅ Loaded logs from API:", loadedLogs.length, "entries");
         } else {
-          // Try localStorage backup
+          // Try migrating from localStorage
           const backup = localStorage.getItem("attendance-logs-backup");
-          if(backup) {
-            const loadedLogs = JSON.parse(backup);
-            setLogs(loadedLogs);
-            await storage.set("attendance-logs", backup); // Restore to storage
-            console.log("✅ Restored logs from localStorage backup:", loadedLogs.length, "entries");
+          if (backup) {
+            const migratedLogs = JSON.parse(backup);
+            setLogs(migratedLogs);
+            await api.saveAttendance(migratedLogs);
+            console.log("✅ Migrated logs from localStorage:", migratedLogs.length, "entries");
           } else {
-            console.log("ℹ️ No logs found in storage or backup");
+            console.log("ℹ️ No logs found");
           }
         }
         
-        // Load SOD submissions for today
-        const sodKey = `sod-${today}`;
-        console.log("🔍 Looking for SOD with key:", sodKey);
-        const sodResult = await storage.get(sodKey);
-        if(sodResult?.value) {
-          const loadedSod = JSON.parse(sodResult.value);
+        // Load SOD submissions from API
+        const loadedSod = await api.getSOD(today);
+        if (Object.keys(loadedSod).length > 0) {
           setSodSubmissions(loadedSod);
-          localStorage.setItem(`${sodKey}-backup`, sodResult.value); // Keep backup in sync
-          console.log("✅ Loaded SOD from artifact storage:", Object.keys(loadedSod).length, "submissions");
+          console.log("✅ Loaded SOD from API:", Object.keys(loadedSod).length, "submissions");
           console.log("📋 SOD members:", Object.keys(loadedSod).join(", "));
         } else {
-          // Try localStorage backup (can restore if artifact storage cleared)
-          const backup = localStorage.getItem(`${sodKey}-backup`);
-          if(backup) {
-            const loadedSod = JSON.parse(backup);
-            setSodSubmissions(loadedSod);
-            await storage.set(sodKey, backup); // Restore to artifact storage
-            console.log("✅ Restored SOD from localStorage backup:", Object.keys(loadedSod).length, "submissions");
-            console.log("📋 SOD members:", Object.keys(loadedSod).join(", "));
+          // Try migrating from localStorage
+          const backup = localStorage.getItem(`sod-${today}-backup`);
+          if (backup) {
+            const migratedSod = JSON.parse(backup);
+            setSodSubmissions(migratedSod);
+            // Migration will happen on next save
+            console.log("✅ Found SOD in localStorage:", Object.keys(migratedSod).length, "submissions");
           } else {
             console.log("ℹ️ No SOD submissions found for today");
           }
         }
         
-        // Load EOD submissions for today
-        const eodKey = `eod-${today}`;
-        console.log("🔍 Looking for EOD with key:", eodKey);
-        const eodResult = await storage.get(eodKey);
-        if(eodResult?.value) {
-          const loadedEod = JSON.parse(eodResult.value);
+        // Load EOD submissions from API
+        const loadedEod = await api.getEOD(today);
+        if (Object.keys(loadedEod).length > 0) {
           setEodSubmissions(loadedEod);
-          localStorage.setItem(`${eodKey}-backup`, eodResult.value); // Keep backup in sync
-          console.log("✅ Loaded EOD from artifact storage:", Object.keys(loadedEod).length, "submissions");
+          console.log("✅ Loaded EOD from API:", Object.keys(loadedEod).length, "submissions");
           console.log("📋 EOD members:", Object.keys(loadedEod).join(", "));
         } else {
-          // Try localStorage backup (can restore if artifact storage cleared)
-          const backup = localStorage.getItem(`${eodKey}-backup`);
-          if(backup) {
-            const loadedEod = JSON.parse(backup);
-            setEodSubmissions(loadedEod);
-            await storage.set(eodKey, backup); // Restore to artifact storage
-            console.log("✅ Restored EOD from localStorage backup:", Object.keys(loadedEod).length, "submissions");
-            console.log("📋 EOD members:", Object.keys(loadedEod).join(", "));
+          // Try migrating from localStorage
+          const backup = localStorage.getItem(`eod-${today}-backup`);
+          if (backup) {
+            const migratedEod = JSON.parse(backup);
+            setEodSubmissions(migratedEod);
+            // Migration will happen on next save
+            console.log("✅ Found EOD in localStorage:", Object.keys(migratedEod).length, "submissions");
           } else {
             console.log("ℹ️ No EOD submissions found for today");
           }
@@ -1981,9 +2315,9 @@ function AttendanceTracker() {
           setSlackWebhook(webhookResult.value);
         }
         
-        console.log("✅ All data loaded successfully");
+        console.log("✅ All data loaded successfully from KV backend");
       } catch(error) {
-        console.error("❌ Error loading data from storage:", error);
+        console.error("❌ Error loading data:", error);
       } finally {
         setLoading(false);
       }
@@ -1994,6 +2328,8 @@ function AttendanceTracker() {
     // Request notification permission
     requestNotificationPermission().then(granted => setNotificationsEnabled(granted));
   },[]);
+
+
 
 
   const logAction=()=>{
@@ -2019,47 +2355,34 @@ function AttendanceTracker() {
   };
 
 
+
+
   const handleSODSubmit=async(sod)=>{
-    // CRITICAL: Load latest data from storage FIRST to avoid overwriting other submissions
-    const sodKey = `sod-${todayStr()}`;
-    let existingData = {};
-    try {
-      const latest = await storage.get(sodKey);
-      if(latest?.value) {
-        existingData = JSON.parse(latest.value);
-        console.log("📥 Loaded latest SOD data before save:", Object.keys(existingData).join(", "));
-      }
-    } catch(e) {
-      console.log("ℹ️ No existing SOD data, starting fresh");
+    const today = todayStr();
+    
+    // Save to KV backend (it handles merging with existing data)
+    const updatedSubmissions = await api.saveSOD(today, sod.member, sod);
+    
+    if (updatedSubmissions) {
+      setSodSubmissions(updatedSubmissions);
+      console.log("✅ SOD saved for", sod.member, "- Total:", Object.keys(updatedSubmissions).length);
+      console.log("📋 All SOD members:", Object.keys(updatedSubmissions).join(", "));
+    } else {
+      console.error("❌ Error saving SOD to backend");
+      // Still update local state
+      setSodSubmissions(prev => ({...prev, [sod.member]: sod}));
     }
     
-    // Merge with existing data from storage (NOT just local state)
-    const updated={...existingData,[sod.member]:sod};
-    setSodSubmissions(updated);
-    const sodData = JSON.stringify(updated);
-    try {
-      await storage.set(sodKey, sodData);
-      // CRITICAL: Save to localStorage as backup (this IS shared via artifact rendering)
-      localStorage.setItem(`${sodKey}-backup`, sodData);
-      console.log("✅ SOD saved for", sod.member, "- Key:", sodKey, "- Total:", Object.keys(updated).length);
-      console.log("📋 All SOD members:", Object.keys(updated).join(", "));
-      console.log("💾 Backup saved to localStorage");
-    } catch(error) {
-      console.error("❌ Error saving SOD:", error);
-      // Emergency fallback
-      localStorage.setItem(`${sodKey}-backup`, sodData);
-      console.log("⚠️ Emergency: Saved to localStorage backup only");
-    }
     setShowSodForm(false);
     const ts=new Date().toISOString();
     const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
-    const nl=[...logs,{id:Date.now(),member:sod.member,type:"in",date:todayStr(),time,timestamp:ts}];
+    const nl=[...logs,{id:Date.now(),member:sod.member,type:"in",date:today,time,timestamp:ts}];
     saveLogs(nl);
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
     
     // Slack notifications
-    const sodCount = Object.keys(updated).length;
+    const sodCount = updatedSubmissions ? Object.keys(updatedSubmissions).length : 1;
     const userSlackId = DEFAULT_SLACK_IDS[sod.member];
     
     // Personal DM to user
@@ -2074,47 +2397,34 @@ function AttendanceTracker() {
   };
 
 
+
+
   const handleEODSubmit=async(eod)=>{
-    // CRITICAL: Load latest data from storage FIRST to avoid overwriting other submissions
-    const eodKey = `eod-${todayStr()}`;
-    let existingData = {};
-    try {
-      const latest = await storage.get(eodKey);
-      if(latest?.value) {
-        existingData = JSON.parse(latest.value);
-        console.log("📥 Loaded latest EOD data before save:", Object.keys(existingData).join(", "));
-      }
-    } catch(e) {
-      console.log("ℹ️ No existing EOD data, starting fresh");
+    const today = todayStr();
+    
+    // Save to KV backend (it handles merging with existing data)
+    const updatedSubmissions = await api.saveEOD(today, eod.member, eod);
+    
+    if (updatedSubmissions) {
+      setEodSubmissions(updatedSubmissions);
+      console.log("✅ EOD saved for", eod.member, "- Total:", Object.keys(updatedSubmissions).length);
+      console.log("📋 All EOD members:", Object.keys(updatedSubmissions).join(", "));
+    } else {
+      console.error("❌ Error saving EOD to backend");
+      // Still update local state
+      setEodSubmissions(prev => ({...prev, [eod.member]: eod}));
     }
     
-    // Merge with existing data from storage (NOT just local state)
-    const updated={...existingData,[eod.member]:eod};
-    setEodSubmissions(updated);
-    const eodData = JSON.stringify(updated);
-    try {
-      await storage.set(eodKey, eodData);
-      // CRITICAL: Save to localStorage as backup
-      localStorage.setItem(`${eodKey}-backup`, eodData);
-      console.log("✅ EOD saved for", eod.member, "- Key:", eodKey, "- Total:", Object.keys(updated).length);
-      console.log("📋 All EOD members:", Object.keys(updated).join(", "));
-      console.log("💾 Backup saved to localStorage");
-    } catch(error) {
-      console.error("❌ Error saving EOD:", error);
-      // Emergency fallback
-      localStorage.setItem(`${eodKey}-backup`, eodData);
-      console.log("⚠️ Emergency: Saved to localStorage backup only");
-    }
     setShowEodForm(false);
     const ts=new Date().toISOString();
     const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
-    const nl=[...logs,{id:Date.now(),member:eod.member,type:"out",date:todayStr(),time,timestamp:ts}];
+    const nl=[...logs,{id:Date.now(),member:eod.member,type:"out",date:today,time,timestamp:ts}];
     saveLogs(nl);
     setConfirmed(true);
     setTimeout(()=>setConfirmed(false),2500);
     
     // Slack notifications
-    const eodCount = Object.keys(updated).length;
+    const eodCount = updatedSubmissions ? Object.keys(updatedSubmissions).length : 1;
     const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
     const userSlackId = DEFAULT_SLACK_IDS[eod.member];
     
@@ -2129,16 +2439,24 @@ function AttendanceTracker() {
   };
 
 
+
+
   const deleteLog=(id)=>{const nl=logs.filter(l=>l.id!==id);saveLogs(nl);};
   const statusColor=(s)=>({in:T.green,out:T.orange,absent:T.red}[s]||T.gray);
   const statusLabel=(s)=>({in:"LOGGED IN",out:"LOGGED OUT",absent:"ABSENT"}[s]||s);
 
 
+
+
   if(loading) return <LoadingScreen />;
+
+
 
 
   const isCurrentUserAdmin=isAdminMode;
   const viewMembers=isCurrentUserAdmin?TEAM_OPS:[currentUser];
+
+
 
 
   // Calculate all variables needed for rendering (BEFORE any return statements)
@@ -2158,6 +2476,8 @@ function AttendanceTracker() {
   const avgHoursPerDay=isCurrentUserAdmin?(weeklyTotal/(weekDates.length*TEAM_OPS.length)).toFixed(1):0;
   const lateArrivals=isCurrentUserAdmin?weekDates.reduce((s,d)=>s+TEAM_OPS.filter(m=>isLate(m,d)).length,0):0;
   const perfectAttendance=isCurrentUserAdmin?TEAM_OPS.filter(m=>weekDates.every(d=>!isLate(m,d)&&logs.some(l=>l.member===m&&l.date===d&&l.type==="in"))).length:0;
+
+
 
 
   // Admin Access Modal
@@ -2197,6 +2517,8 @@ function AttendanceTracker() {
   );
 
 
+
+
   // User selection screen
   if(showUserSelect||!currentUser) return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -2230,6 +2552,8 @@ function AttendanceTracker() {
   );
 
 
+
+
   if(showSodForm&&selectedMember) return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <NotificationCenter notifications={notifications} onDismiss={id=>setNotifications(prev=>prev.filter(n=>n.id!==id))} />
@@ -2243,6 +2567,8 @@ function AttendanceTracker() {
       <SODForm member={selectedMember} onSubmit={handleSODSubmit} />
     </div>
   );
+
+
 
 
   if(showEodForm&&selectedMember) return (
@@ -2260,9 +2586,13 @@ function AttendanceTracker() {
   );
 
 
+
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} id="attendance-main">
       <NotificationCenter notifications={notifications} onDismiss={id=>setNotifications(prev=>prev.filter(n=>n.id!==id))} />
+
+
 
 
       {/* STATS BAR */}
@@ -2284,6 +2614,8 @@ function AttendanceTracker() {
           ))
         )}
       </div>
+
+
 
 
       {/* SWITCH USER */}
@@ -2316,6 +2648,8 @@ function AttendanceTracker() {
       </div>
 
 
+
+
       {/* PENDING SOD WARNING */}
       {sodCount < TEAM_OPS.length && isCurrentUserAdmin && (
         <div style={{background:"#fef2f2",border:`2px solid ${T.red}`,padding:"10px 16px"}}>
@@ -2330,6 +2664,8 @@ function AttendanceTracker() {
           </div>
         </div>
       )}
+
+
 
 
       {/* MEMBER SELECTOR (ADMIN sees all, non-admin sees only self) */}
@@ -2353,6 +2689,8 @@ function AttendanceTracker() {
           <div style={{marginTop:10,fontSize:10,color:T.grayLight,fontFamily:T.mono}}>🔴 Red dot = no SOD submitted yet · Cannot log in without SOD</div>
         </Card>
       )}
+
+
 
 
       {/* LOG IN/OUT CARD */}
@@ -2379,6 +2717,8 @@ function AttendanceTracker() {
               ✓ {isIn?"LOGGED IN":"LOGGED OUT"} SUCCESSFULLY
             </div>
           )}
+
+
 
 
           {!hasSodToday(selectedMember)&&!isIn ? (
@@ -2411,6 +2751,8 @@ function AttendanceTracker() {
           )}
 
 
+
+
           {memberStatus!=="absent"&&(
             <div style={{marginTop:14,fontSize:11,color:T.grayLight,fontFamily:T.mono}}>
               {getMemberToday(selectedMember).map((l,i)=>(
@@ -2420,6 +2762,8 @@ function AttendanceTracker() {
           )}
         </Card>
       )}
+
+
 
 
       {/* VIEW TABS */}
@@ -2472,6 +2816,8 @@ function AttendanceTracker() {
           </div>
         )}
       </div>
+
+
 
 
       {/* ADMIN REPORTS VIEW */}
@@ -2529,6 +2875,8 @@ function AttendanceTracker() {
           </Card>
 
 
+
+
           <Card style={{padding:18}}>
             <CardLabel color={T.yellow}>OVERTIME TRACKER (8+ hr days)</CardLabel>
             <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:8}}>
@@ -2553,6 +2901,8 @@ function AttendanceTracker() {
           </Card>
         </div>
       )}
+
+
 
 
       {/* TODAY VIEW */}
@@ -2592,6 +2942,8 @@ function AttendanceTracker() {
           })}
         </div>
       )}
+
+
 
 
       {/* SOD TODAY VIEW */}
@@ -2647,6 +2999,8 @@ function AttendanceTracker() {
           })}
         </div>
       )}
+
+
 
 
       {/* EOD TODAY VIEW */}
@@ -2720,6 +3074,8 @@ function AttendanceTracker() {
       )}
 
 
+
+
       {/* HISTORY VIEW */}
       {view==="history"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -2762,6 +3118,8 @@ function AttendanceTracker() {
           {logs.length===0&&<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No attendance logs yet</div></Card>}
         </div>
       )}
+
+
 
 
       {/* WEEKLY SUMMARY */}
@@ -2822,10 +3180,14 @@ function AttendanceTracker() {
       )}
 
 
+
+
       {/* WEEKLY PERFORMANCE DASHBOARD */}
       {view==="performance"&&isCurrentUserAdmin&&(
         <WeeklyPerformanceDashboard logs={logs} sodSubmissions={sodSubmissions} eodSubmissions={eodSubmissions} />
       )}
+
+
 
 
       {/* LIVE KPI DASHBOARD */}
@@ -2834,10 +3196,14 @@ function AttendanceTracker() {
       )}
 
 
+
+
       {/* ADVANCED ANALYTICS */}
       {view==="analytics"&&isCurrentUserAdmin&&(
         <AdvancedAnalytics logs={logs} sodSubmissions={sodSubmissions} eodSubmissions={eodSubmissions} />
       )}
+
+
 
 
       {/* AUTO PERFORMANCE REVIEWS */}
@@ -2847,6 +3213,8 @@ function AttendanceTracker() {
     </div>
   );
 }
+
+
 
 
 // ─── OPS PULSE ────────────────────────────────────────────────────────────────
@@ -2873,6 +3241,8 @@ function OpsPulse({slackIds}) {
   const [expandedSod,setExpandedSod]=useState(null);
 
 
+
+
   useEffect(()=>{
     Promise.all([
       storage.get("ops-pulse-current"),
@@ -2889,6 +3259,8 @@ function OpsPulse({slackIds}) {
   },[]);
 
 
+
+
   // Refresh SOD every 30s
   useEffect(()=>{
     const t=setInterval(async()=>{
@@ -2899,7 +3271,11 @@ function OpsPulse({slackIds}) {
   },[]);
 
 
+
+
   const isOverdue=(dueDay)=>{if(!dueDay) return false;const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];return days.indexOf(dueDay)!==-1&&days.indexOf(dueDay)<new Date().getDay();};
+
+
 
 
   const saveToHistory=async(res,chk)=>{
@@ -2911,7 +3287,11 @@ function OpsPulse({slackIds}) {
   };
 
 
+
+
   const clearTasks=async()=>{if(result) await saveToHistory(result,checked);setResult(null);setChecked({});await storage.delete("ops-pulse-current");await storage.delete("ops-pulse-checked");};
+
+
 
 
   const sendDM=async(member,extraContext)=>{
@@ -2931,13 +3311,19 @@ function OpsPulse({slackIds}) {
   };
 
 
+
+
   const addTask=async(member)=>{const newTask={task:"New task",priority:"medium",due:"EOW",due_day:"Friday",type:"action"};const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks:[...(result.team_tasks[member]?.tasks||[]),newTask]}}};setResult(updated);await storage.set("ops-pulse-current",JSON.stringify(updated));};
   const deleteTask=async(member,idx)=>{const tasks=result.team_tasks[member].tasks.filter((_,i)=>i!==idx);const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks}}};setResult(updated);const newChecked={...checked};delete newChecked[`${member}-${idx}`];setChecked(newChecked);await storage.set("ops-pulse-current",JSON.stringify(updated));await storage.set("ops-pulse-checked",JSON.stringify(newChecked));};
   const saveTaskEdit=async(member,idx)=>{const tasks=[...result.team_tasks[member].tasks];tasks[idx]={...tasks[idx],task:editingTaskText};const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks}}};setResult(updated);setEditingTask(null);await storage.set("ops-pulse-current",JSON.stringify(updated));};
   const updateTaskField=async(member,idx,field,value)=>{const tasks=[...result.team_tasks[member].tasks];tasks[idx]={...tasks[idx],[field]:value};const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks}}};setResult(updated);await storage.set("ops-pulse-current",JSON.stringify(updated));};
 
 
+
+
   const hasInput=Object.values(inputs).some(v=>v.trim());
+
+
 
 
   const generate=async()=>{
@@ -2958,6 +3344,8 @@ function OpsPulse({slackIds}) {
   };
 
 
+
+
   const toggleCheck=async(member,idx)=>{const newChecked={...checked,[`${member}-${idx}`]:!checked[`${member}-${idx}`]};setChecked(newChecked);await storage.set("ops-pulse-checked",JSON.stringify(newChecked));};
   const getProgress=m=>{const t=result?.team_tasks?.[m]?.tasks||[];if(!t.length) return 0;return Math.round((t.filter((_,i)=>checked[`${m}-${i}`]).length/t.length)*100);};
   const teamProgress=()=>{if(!result) return 0;let total=0,done=0;TEAM_OPS.forEach(m=>{const t=result.team_tasks?.[m]?.tasks||[];total+=t.length;done+=t.filter((_,i)=>checked[`${m}-${i}`]).length;});return total?Math.round((done/total)*100):0;};
@@ -2965,15 +3353,23 @@ function OpsPulse({slackIds}) {
   const tIcon=t=>({action:"→","follow-up":"↻",proactive:"↑"}[t]||"·");
 
 
+
+
   const sodCount=Object.keys(sodSubmissions).length;
   const notSubmitted=TEAM_OPS.filter(m=>!sodSubmissions[m]);
+
+
 
 
   if(storageLoading) return <LoadingScreen />;
 
 
+
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+
 
 
       {/* VIEW TABS — SOD now first */}
@@ -2993,6 +3389,8 @@ function OpsPulse({slackIds}) {
       </div>
 
 
+
+
       {/* ── SOD VIEW (default) ── */}
       {view==="sod"&&(
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -3004,6 +3402,8 @@ function OpsPulse({slackIds}) {
               </div>
             ))}
           </div>
+
+
 
 
           {notSubmitted.length>0&&(
@@ -3018,6 +3418,8 @@ function OpsPulse({slackIds}) {
               </div>
             </div>
           )}
+
+
 
 
           {TEAM_OPS.map(member=>{
@@ -3069,6 +3471,8 @@ function OpsPulse({slackIds}) {
       )}
 
 
+
+
       {/* Generate input */}
       {view!=="sod"&&(showInput||!result)&&(
         <Card>
@@ -3088,6 +3492,8 @@ function OpsPulse({slackIds}) {
       )}
 
 
+
+
       {result&&view!=="sod"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <Card style={{padding:20}}>
@@ -3101,6 +3507,8 @@ function OpsPulse({slackIds}) {
             <ProgressBar value={teamProgress()} height={8} />
             <p style={{margin:"14px 0 0",color:T.darkGray,fontSize:13,lineHeight:1.7}}>{result.week_summary}</p>
           </Card>
+
+
 
 
           {view==="team"&&(
@@ -3148,6 +3556,8 @@ function OpsPulse({slackIds}) {
           )}
 
 
+
+
           {view==="person"&&(
             <div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
@@ -3178,6 +3588,8 @@ function OpsPulse({slackIds}) {
                     <ProgressBar value={p} height={7} />
 
 
+
+
                     {/* SOD summary inline */}
                     {sod&&(
                       <div style={{marginTop:14,background:T.bg,border:`2px solid ${T.green}`,padding:12}}>
@@ -3194,6 +3606,8 @@ function OpsPulse({slackIds}) {
                         </div>
                       </div>
                     )}
+
+
 
 
                     <div style={{marginTop:14,background:T.bg,border:`2px solid ${T.black}`,padding:12}}>
@@ -3325,6 +3739,8 @@ function OpsPulse({slackIds}) {
           )}
 
 
+
+
           {view==="history"&&(
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {history.length===0?(
@@ -3367,6 +3783,8 @@ function OpsPulse({slackIds}) {
 }
 
 
+
+
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard({ navigate, sendToSlack }) {
   const date=new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}).toUpperCase();
@@ -3380,19 +3798,21 @@ function Dashboard({ navigate, sendToSlack }) {
   useEffect(()=>{
     const loadAnnouncements = async () => {
       try {
-        const result = await storage.get("announcements");
-        if(result?.value) {
-          setAnnouncements(JSON.parse(result.value));
-          localStorage.setItem("announcements-backup", result.value); // Backup
+        const loadedAnnouncements = await api.getAnnouncements();
+        
+        if (loadedAnnouncements.length > 0) {
+          setAnnouncements(loadedAnnouncements);
+          console.log("✅ Loaded announcements from API:", loadedAnnouncements.length);
         } else {
-          // Try localStorage backup
+          // Try migrating from localStorage
           const backup = localStorage.getItem("announcements-backup");
-          if(backup) {
-            setAnnouncements(JSON.parse(backup));
-            await storage.set("announcements", backup); // Restore to storage
-            console.log("✅ Restored announcements from localStorage backup");
+          if (backup) {
+            const migratedAnnouncements = JSON.parse(backup);
+            setAnnouncements(migratedAnnouncements);
+            await api.saveAnnouncements(migratedAnnouncements);
+            console.log("✅ Migrated announcements from localStorage");
           } else {
-            // Only set default if storage AND backup are empty (first time)
+            // Only set default if both API and backup are empty (first time)
             const defaultAnnouncement = [{
               id:1,
               text:"Welcome to the Leverage Operations Hub. Use this space for team-wide notes and announcements.",
@@ -3400,9 +3820,7 @@ function Dashboard({ navigate, sendToSlack }) {
               date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
             }];
             setAnnouncements(defaultAnnouncement);
-            const defaultData = JSON.stringify(defaultAnnouncement);
-            await storage.set("announcements", defaultData);
-            localStorage.setItem("announcements-backup", defaultData);
+            await api.saveAnnouncements(defaultAnnouncement);
           }
         }
       } catch(error) {
@@ -3417,17 +3835,8 @@ function Dashboard({ navigate, sendToSlack }) {
   // Save announcements to storage
   const saveAnnouncements=async(newAnnouncements)=>{
     setAnnouncements(newAnnouncements);
-    const data = JSON.stringify(newAnnouncements);
-    try {
-      await storage.set("announcements", data);
-      localStorage.setItem("announcements-backup", data); // Backup
-      console.log("✅ Announcements saved to storage");
-    } catch(error) {
-      console.error("❌ Error saving announcements:", error);
-      // Save to localStorage anyway as fallback
-      localStorage.setItem("announcements-backup", data);
-      console.log("⚠️ Saved announcements to localStorage backup only");
-    }
+    await api.saveAnnouncements(newAnnouncements);
+    console.log("✅ Announcements saved to KV backend");
   };
   
   const addNote=()=>{
@@ -3528,6 +3937,8 @@ function EditNote({note,onSave,onCancel}) {
 }
 
 
+
+
 // ─── CULTURE ──────────────────────────────────────────────────────────────────
 function CultureDashboard() {
   const [activeTab,setActiveTab]=useState('ethos');
@@ -3554,6 +3965,8 @@ function CultureDashboard() {
     </div>
   );
 }
+
+
 
 
 // ─── RFP ENGINE ───────────────────────────────────────────────────────────────
@@ -3652,6 +4065,8 @@ function RFPEngine() {
 }
 
 
+
+
 // ─── COS TOOLS ────────────────────────────────────────────────────────────────
 function WeeklyReport() {
   const [updates,setUpdates]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
@@ -3682,6 +4097,8 @@ function StrategicDecision() {
 }
 
 
+
+
 // ─── OUTBOUND ─────────────────────────────────────────────────────────────────
 function SequenceBuilder() {
   const [icp,setIcp]=useState("");const [goal,setGoal]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
@@ -3708,6 +4125,8 @@ function AfterCallAutomation() {
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`SDR at BuildWithLeverage. After-call automation: ${callNotes}. Return ONLY valid JSON: {"call_summary":"summary","outcome":"connected|no_answer|left_voicemail|not_interested|interested|meeting_booked","crm_notes":"CRM note","follow_up_email":{"subject":"s","body":"email"},"next_action":"next action"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Call Notes" value={callNotes} onChange={setCallNotes} placeholder="What happened on the call?" /><Btn onClick={gen} disabled={!callNotes.trim()} loading={loading} label="Generate After-Call Pack" icon="🗒️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Summary</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.call_summary}</p></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>CRM Notes</CardLabel><CopyBtn text={result.crm_notes} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.crm_notes}</div></div></>}</div>);
 }
+
+
 
 
 // ─── INFLUENCER ───────────────────────────────────────────────────────────────
@@ -3767,6 +4186,8 @@ function ContentTracker() {
 }
 
 
+
+
 // ─── DESIGN ───────────────────────────────────────────────────────────────────
 function DesignBrief() {
   const [request,setRequest]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
@@ -3778,6 +4199,8 @@ function FeedbackSummary() {
   const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Summarize design feedback for BuildWithLeverage. Feedback: ${feedback}. Return ONLY valid JSON: {"summary":"overview","required_changes":["c"],"nice_to_have":["n"],"keep_as_is":["k"],"designer_message":"message to designer"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
   return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Feedback" value={feedback} onChange={setFeedback} placeholder="Paste raw feedback…" /><Btn onClick={gen} disabled={!feedback.trim()} loading={loading} label="Summarize Feedback" icon="🖊" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Required Changes" items={result.required_changes} color={T.red} /><Bullets label="Nice to Have" items={result.nice_to_have} color={T.yellow} /></div><Bullets label="Keep As Is" items={result.keep_as_is} color={T.green} /></>}</div>);
 }
+
+
 
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
@@ -3896,6 +4319,8 @@ function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePasswor
 }
 
 
+
+
 // ─── NAV ──────────────────────────────────────────────────────────────────────
 const NAV=[
   {key:"dashboard",label:"Dashboard"},
@@ -3907,6 +4332,8 @@ const NAV=[
   {key:"settings",label:"Settings"},
 ];
 const PAGE_ICONS={dashboard:"⚡",attendance:"🕐","ops-pulse":"📋",rfp:"📊","weekly-report":"📄","exec-comms":"✏️","daily-briefing":"☀️","team-performance":"👥","strategic-decision":"🧠","sequence-builder":"✉️","lead-research":"🔍","cold-email":"📧","call-script":"📞","after-call":"🗒️","influencer-outreach":"📲","campaign-brief":"📋","influencer-tracker":"👥","content-tracker":"📅","design-brief":"🎨","feedback-summary":"🖊",settings:"⚙️",culture:"🏛️"};
+
+
 
 
 function TopNav({page,navigate,isMobile,onLock}) {
@@ -3969,6 +4396,8 @@ function TopNav({page,navigate,isMobile,onLock}) {
 }
 
 
+
+
 function PageWrapper({page,children}) {
   const allPages=NAV.flatMap(n=>n.children?n.children:[n]);
   const current=allPages.find(n=>n.key===page);
@@ -3986,6 +4415,8 @@ function PageWrapper({page,children}) {
 }
 
 
+
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [unlocked,setUnlocked]=useState(false);
@@ -3997,16 +4428,22 @@ export default function App() {
   const [pw,setPw]=useState("");const [error,setError]=useState(false);const [shaking,setShaking]=useState(false);
 
 
+
+
   useEffect(()=>{
     storage.get("app-password").then(r=>{if(r?.value) setCurrentPassword(r.value);});
     Promise.all([storage.get("slack-token"),storage.get("slack-ids")]).then(([t,ids])=>{if(t) setSlackToken(t.value);if(ids) setSlackIds(JSON.parse(ids.value));});
   },[]);
 
 
+
+
   const attempt=()=>{
     if(pw===currentPassword){setUnlocked(true);}
     else{setError(true);setShaking(true);setPw("");setTimeout(()=>setShaking(false),500);setTimeout(()=>setError(false),2000);}
   };
+
+
 
 
   if(!unlocked) return (
@@ -4034,7 +4471,11 @@ export default function App() {
   );
 
 
+
+
   const navigate=(key)=>{setPage(key);window.scrollTo({top:0,behavior:"smooth"});};
+
+
 
 
   const renderPage=()=>{
@@ -4053,6 +4494,8 @@ export default function App() {
       default: return <Dashboard navigate={navigate} />;
     }
   };
+
+
 
 
   return (
