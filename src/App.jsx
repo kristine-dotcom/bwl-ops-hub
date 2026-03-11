@@ -4347,7 +4347,7 @@ function CoSInsights() {
   // Main dashboard
   return (
     <div>
-      <CoSHeader onRefresh={() => generateInsights(setLoading, setInsights, setLastRefresh, setError)} lastRefresh={lastRefresh} loading={loading} />
+      <CoSHeader onRefresh={() => generateCoSInsights(setLoading, setInsights, setLastRefresh, setError)} lastRefresh={lastRefresh} loading={loading} />
       
       {error && <ErrorBanner error={error} />}
       
@@ -4365,7 +4365,7 @@ function CoSInsights() {
       )}
       
       {!loading && !insights && (
-        <EmptyState onGenerate={() => generateInsights(setLoading, setInsights, setLastRefresh, setError)} />
+        <EmptyState onGenerate={() => generateCoSInsights(setLoading, setInsights, setLastRefresh, setError)} />
       )}
     </div>
   );
@@ -4930,7 +4930,7 @@ function ActionItems({ items }) {
 }
 
 // ─── AI ANALYSIS ENGINE ───────────────────────────────────────────────────────
-async function generateInsights(setLoading, setInsights, setLastRefresh, setError) {
+async function generateCoSInsights(setLoading, setInsights, setLastRefresh, setError) {
   setLoading(true);
   setError(null);
 
