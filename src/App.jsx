@@ -23,6 +23,7 @@ const T = {
 
 const CORRECT_PASSWORD = "leverage2025";
 const ADMIN_PASSWORD = "admin2025";
+const COS_PASSWORD = "cos2025";
 const SHIFT_START = "09:00";
 const SHIFT_END = "17:00"; // ✅ 5 PM EST
 const PRIORITY_OPTIONS = ["High","Medium","Low"];
@@ -4323,15 +4324,747 @@ function TaskManagement() {
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// COS AI INSIGHTS COMPONENT
+// Private AI Chief of Staff Dashboard - Kristine Only
+// ═══════════════════════════════════════════════════════════════════════════
+// COS AI INSIGHTS COMPONENT
+// Private AI Chief of Staff Dashboard - Kristine Only
+// ═══════════════════════════════════════════════════════════════════════════
+
+function CoSInsights() {
+  const [unlocked, setUnlocked] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [insights, setInsights] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Password gate
+  if (!unlocked) {
+    return <CoSPasswordGate onUnlock={() => setUnlocked(true)} />;
+  }
+
+  // Main dashboard
+  return (
+    <div>
+      <CoSHeader onRefresh={() => generateInsights(setLoading, setInsights, setLastRefresh, setError)} lastRefresh={lastRefresh} loading={loading} />
+      
+      {error && <ErrorBanner error={error} />}
+      
+      {loading && <LoadingState />}
+      
+      {!loading && insights && (
+        <>
+          <PerformanceSummary summary={insights.summary} />
+          <RedFlags flags={insights.redFlags} />
+          <GreenFlags flags={insights.greenFlags} />
+          <Recommendations recs={insights.recommendations} />
+          <TrendAnalysis trends={insights.trends} />
+          <ActionItems items={insights.actionItems} />
+        </>
+      )}
+      
+      {!loading && !insights && (
+        <EmptyState onGenerate={() => generateInsights(setLoading, setInsights, setLastRefresh, setError)} />
+      )}
+    </div>
+  );
+}
+
+// ─── PASSWORD GATE ────────────────────────────────────────────────────────────
+function CoSPasswordGate({ onUnlock }) {
+  const [pw, setPw] = useState("");
+  const [error, setError] = useState(false);
+  const [shaking, setShaking] = useState(false);
+  
+  const attempt = () => {
+    if (pw === COS_PASSWORD) {
+      onUnlock();
+    } else {
+      setError(true);
+      setShaking(true);
+      setPw("");
+      setTimeout(() => setShaking(false), 500);
+      setTimeout(() => setError(false), 2000);
+    }
+  };
+  
+  return (
+    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 400, background: T.surface, border: `2px solid ${T.black}`, padding: 32 }}>
+        <div style={{ fontSize: 40, marginBottom: 12, textAlign: "center" }}>🤖</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: T.black, fontFamily: T.mono, marginBottom: 6, letterSpacing: 2, textAlign: "center" }}>
+          COS AI INSIGHTS
+        </div>
+        <div style={{ fontSize: 11, color: T.gray, fontFamily: T.mono, marginBottom: 24, textAlign: "center", lineHeight: 1.6 }}>
+          Private AI Chief of Staff Dashboard<br/>Kristine's eyes only
+        </div>
+        
+        <input
+          type="password"
+          value={pw}
+          onChange={e => setPw(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && pw && attempt()}
+          placeholder="CoS Password"
+          autoFocus
+          style={{
+            width: "100%",
+            background: T.bg,
+            border: `2px solid ${error ? T.red : T.black}`,
+            color: T.black,
+            fontSize: 14,
+            padding: "10px 14px",
+            outline: "none",
+            fontFamily: T.mono,
+            letterSpacing: 2,
+            textAlign: "center",
+            marginBottom: 12,
+            animation: shaking ? "shake 0.4s ease" : "none"
+          }}
+        />
+        
+        {error && (
+          <div style={{ fontSize: 11, color: T.red, fontFamily: T.mono, marginBottom: 12, textAlign: "center", letterSpacing: 1 }}>
+            ✗ INCORRECT PASSWORD
+          </div>
+        )}
+        
+        <button
+          onClick={attempt}
+          disabled={!pw}
+          style={{
+            width: "100%",
+            padding: "10px",
+            background: pw ? T.purple : T.border,
+            color: pw ? "#fff" : T.gray,
+            border: `2px solid ${pw ? T.purple : T.black}`,
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: pw ? "pointer" : "not-allowed",
+            letterSpacing: 2,
+            fontFamily: T.mono
+          }}
+        >
+          UNLOCK →
+        </button>
+        
+        <div style={{ marginTop: 20, padding: 12, background: T.purple + "10", border: `1px solid ${T.purple}`, fontSize: 10, color: T.darkGray, fontFamily: T.mono, lineHeight: 1.6 }}>
+          ℹ️ This dashboard uses Claude API to analyze team performance. Cost: ~₱84/month.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── HEADER ───────────────────────────────────────────────────────────────────
+function CoSHeader({ onRefresh, lastRefresh, loading }) {
+  return (
+    <div style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 24,
+      paddingBottom: 16,
+      borderBottom: `2px solid ${T.black}`
+    }}>
+      <div>
+        <h1 style={{
+          fontSize: 24,
+          fontWeight: 700,
+          color: T.black,
+          margin: "0 0 4px 0",
+          fontFamily: T.font,
+          letterSpacing: -1
+        }}>
+          🤖 AI CHIEF OF STAFF INSIGHTS
+        </h1>
+        <p style={{ fontSize: 12, color: T.gray, margin: 0, fontFamily: T.mono }}>
+          {lastRefresh 
+            ? `Last updated: ${new Date(lastRefresh).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`
+            : "Private strategic analysis powered by Claude AI"
+          }
+        </p>
+      </div>
+      
+      <button
+        onClick={onRefresh}
+        disabled={loading}
+        style={{
+          padding: "10px 20px",
+          background: loading ? T.border : T.purple,
+          color: loading ? T.gray : "#fff",
+          border: `2px solid ${T.black}`,
+          fontSize: 11,
+          fontWeight: 700,
+          cursor: loading ? "not-allowed" : "pointer",
+          letterSpacing: 2,
+          fontFamily: T.mono,
+          display: "flex",
+          alignItems: "center",
+          gap: 8
+        }}
+      >
+        {loading ? "ANALYZING..." : "🔄 REFRESH"}
+      </button>
+    </div>
+  );
+}
+
+// ─── LOADING STATE ────────────────────────────────────────────────────────────
+function LoadingState() {
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      padding: 40,
+      textAlign: "center"
+    }}>
+      <div style={{ fontSize: 48, marginBottom: 16, animation: "pulse 2s infinite" }}>🤖</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: T.black, marginBottom: 8, fontFamily: T.mono }}>
+        ANALYZING TEAM PERFORMANCE...
+      </div>
+      <div style={{ fontSize: 12, color: T.gray, fontFamily: T.mono, lineHeight: 1.6 }}>
+        Reviewing SOD/EOD submissions, attendance logs, and task progress.<br/>
+        This may take 10-15 seconds.
+      </div>
+    </div>
+  );
+}
+
+// ─── EMPTY STATE ──────────────────────────────────────────────────────────────
+function EmptyState({ onGenerate }) {
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      padding: 40,
+      textAlign: "center"
+    }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: T.black, marginBottom: 8 }}>
+        No Insights Generated Yet
+      </div>
+      <div style={{ fontSize: 13, color: T.gray, marginBottom: 24, lineHeight: 1.6 }}>
+        Click below to analyze current team performance and generate AI insights.
+      </div>
+      <button
+        onClick={onGenerate}
+        style={{
+          padding: "12px 24px",
+          background: T.purple,
+          color: "#fff",
+          border: `2px solid ${T.black}`,
+          fontSize: 11,
+          fontWeight: 700,
+          cursor: "pointer",
+          letterSpacing: 2,
+          fontFamily: T.mono
+        }}
+      >
+        GENERATE INSIGHTS
+      </button>
+    </div>
+  );
+}
+
+// ─── ERROR BANNER ─────────────────────────────────────────────────────────────
+function ErrorBanner({ error }) {
+  return (
+    <div style={{
+      background: T.red + "10",
+      border: `2px solid ${T.red}`,
+      padding: 16,
+      marginBottom: 20,
+      fontSize: 12,
+      color: T.darkGray,
+      fontFamily: T.mono,
+      lineHeight: 1.6
+    }}>
+      <strong style={{ color: T.red }}>⚠️ Error generating insights:</strong> {error}
+    </div>
+  );
+}
+
+// ─── PERFORMANCE SUMMARY ──────────────────────────────────────────────────────
+function PerformanceSummary({ summary }) {
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      marginBottom: 20,
+      overflow: "hidden"
+    }}>
+      <div style={{
+        background: T.black,
+        color: "#fff",
+        padding: "10px 16px",
+        fontSize: 10,
+        fontWeight: 700,
+        fontFamily: T.mono,
+        letterSpacing: 2
+      }}>
+        📊 PERFORMANCE SUMMARY
+      </div>
+      <div style={{ padding: 20 }}>
+        <div style={{ fontSize: 14, color: T.black, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+          {summary}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── RED FLAGS ────────────────────────────────────────────────────────────────
+function RedFlags({ flags }) {
+  if (!flags || flags.length === 0) {
+    return (
+      <div style={{
+        background: T.green + "10",
+        border: `2px solid ${T.green}`,
+        padding: 20,
+        marginBottom: 20,
+        textAlign: "center"
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.green, fontFamily: T.mono }}>
+          NO RED FLAGS DETECTED
+        </div>
+        <div style={{ fontSize: 12, color: T.gray, marginTop: 4 }}>
+          Team is performing well across all metrics
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      marginBottom: 20,
+      overflow: "hidden"
+    }}>
+      <div style={{
+        background: T.red,
+        color: "#fff",
+        padding: "10px 16px",
+        fontSize: 10,
+        fontWeight: 700,
+        fontFamily: T.mono,
+        letterSpacing: 2,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+        <span>⚠️ RED FLAGS - ISSUES DETECTED</span>
+        <span style={{
+          background: "#fff",
+          color: T.red,
+          padding: "2px 8px",
+          fontSize: 11,
+          fontWeight: 700,
+          border: "1px solid #fff"
+        }}>
+          {flags.length}
+        </span>
+      </div>
+      <div style={{ padding: 20 }}>
+        {flags.map((flag, i) => (
+          <div
+            key={i}
+            style={{
+              background: T.red + "10",
+              border: `2px solid ${T.red}`,
+              padding: 14,
+              marginBottom: i < flags.length - 1 ? 12 : 0,
+              borderLeft: `4px solid ${T.red}`
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.red, marginBottom: 6, fontFamily: T.mono }}>
+              ⚠️ {flag.title}
+            </div>
+            <div style={{ fontSize: 12, color: T.darkGray, lineHeight: 1.6 }}>
+              {flag.description}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── GREEN FLAGS ──────────────────────────────────────────────────────────────
+function GreenFlags({ flags }) {
+  if (!flags || flags.length === 0) return null;
+
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      marginBottom: 20,
+      overflow: "hidden"
+    }}>
+      <div style={{
+        background: T.green,
+        color: "#fff",
+        padding: "10px 16px",
+        fontSize: 10,
+        fontWeight: 700,
+        fontFamily: T.mono,
+        letterSpacing: 2,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+        <span>✅ GREEN FLAGS - WINS & STRENGTHS</span>
+        <span style={{
+          background: "#fff",
+          color: T.green,
+          padding: "2px 8px",
+          fontSize: 11,
+          fontWeight: 700,
+          border: "1px solid #fff"
+        }}>
+          {flags.length}
+        </span>
+      </div>
+      <div style={{ padding: 20 }}>
+        {flags.map((flag, i) => (
+          <div
+            key={i}
+            style={{
+              background: T.green + "10",
+              border: `2px solid ${T.green}`,
+              padding: 14,
+              marginBottom: i < flags.length - 1 ? 12 : 0,
+              borderLeft: `4px solid ${T.green}`
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.green, marginBottom: 6, fontFamily: T.mono }}>
+              ✅ {flag.title}
+            </div>
+            <div style={{ fontSize: 12, color: T.darkGray, lineHeight: 1.6 }}>
+              {flag.description}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── RECOMMENDATIONS ──────────────────────────────────────────────────────────
+function Recommendations({ recs }) {
+  if (!recs || recs.length === 0) return null;
+
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      marginBottom: 20,
+      overflow: "hidden"
+    }}>
+      <div style={{
+        background: T.purple,
+        color: "#fff",
+        padding: "10px 16px",
+        fontSize: 10,
+        fontWeight: 700,
+        fontFamily: T.mono,
+        letterSpacing: 2,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+        <span>💡 STRATEGIC RECOMMENDATIONS</span>
+        <span style={{
+          background: "#fff",
+          color: T.purple,
+          padding: "2px 8px",
+          fontSize: 11,
+          fontWeight: 700,
+          border: "1px solid #fff"
+        }}>
+          {recs.length}
+        </span>
+      </div>
+      <div style={{ padding: 20 }}>
+        {recs.map((rec, i) => (
+          <div
+            key={i}
+            style={{
+              background: T.purple + "10",
+              border: `2px solid ${T.purple}`,
+              padding: 14,
+              marginBottom: i < recs.length - 1 ? 12 : 0,
+              borderLeft: `4px solid ${T.purple}`
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.purple, marginBottom: 6, fontFamily: T.mono }}>
+              💡 {rec.title}
+            </div>
+            <div style={{ fontSize: 12, color: T.darkGray, lineHeight: 1.6, marginBottom: 8 }}>
+              {rec.description}
+            </div>
+            {rec.action && (
+              <div style={{
+                fontSize: 11,
+                color: T.purple,
+                fontFamily: T.mono,
+                fontWeight: 600,
+                marginTop: 8
+              }}>
+                → Action: {rec.action}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── TREND ANALYSIS ───────────────────────────────────────────────────────────
+function TrendAnalysis({ trends }) {
+  if (!trends || trends.length === 0) return null;
+
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      marginBottom: 20,
+      overflow: "hidden"
+    }}>
+      <div style={{
+        background: T.orange,
+        color: "#fff",
+        padding: "10px 16px",
+        fontSize: 10,
+        fontWeight: 700,
+        fontFamily: T.mono,
+        letterSpacing: 2
+      }}>
+        📈 TREND ANALYSIS
+      </div>
+      <div style={{ padding: 20 }}>
+        {trends.map((trend, i) => (
+          <div
+            key={i}
+            style={{
+              background: T.bg,
+              border: `2px solid ${T.border}`,
+              padding: 14,
+              marginBottom: i < trends.length - 1 ? 12 : 0
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.black, marginBottom: 4 }}>
+              {trend.metric}
+            </div>
+            <div style={{ fontSize: 12, color: T.gray, lineHeight: 1.6 }}>
+              {trend.observation}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── ACTION ITEMS ─────────────────────────────────────────────────────────────
+function ActionItems({ items }) {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div style={{
+      background: T.surface,
+      border: `2px solid ${T.black}`,
+      marginBottom: 20,
+      overflow: "hidden"
+    }}>
+      <div style={{
+        background: T.black,
+        color: "#fff",
+        padding: "10px 16px",
+        fontSize: 10,
+        fontWeight: 700,
+        fontFamily: T.mono,
+        letterSpacing: 2
+      }}>
+        🎯 ACTION ITEMS
+      </div>
+      <div style={{ padding: 20 }}>
+        {items.map((item, i) => (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              gap: 12,
+              marginBottom: i < items.length - 1 ? 12 : 0,
+              padding: 14,
+              background: T.bg,
+              border: `2px solid ${T.border}`,
+              borderLeft: `4px solid ${T.orange}`
+            }}
+          >
+            <div style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: T.orange,
+              fontFamily: T.mono,
+              flexShrink: 0
+            }}>
+              {String(i + 1).padStart(2, '0')}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.black, marginBottom: 4 }}>
+                {item.task}
+              </div>
+              <div style={{ fontSize: 11, color: T.gray, fontFamily: T.mono }}>
+                Priority: {item.priority} | Owner: {item.owner}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── AI ANALYSIS ENGINE ───────────────────────────────────────────────────────
+async function generateInsights(setLoading, setInsights, setLastRefresh, setError) {
+  setLoading(true);
+  setError(null);
+
+  try {
+    // Fetch all data
+    const today = new Date().toISOString().split("T")[0];
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+    const [sodRes, eodRes, attendanceRes, tasksRes] = await Promise.all([
+      fetch(`/api/attendance/sod?date=${today}`),
+      fetch(`/api/attendance/eod?date=${today}`),
+      fetch(`/api/attendance`),
+      fetch(`/api/tasks`)
+    ]);
+
+    const sodData = await sodRes.json();
+    const eodData = await eodRes.json();
+    const attendanceData = await attendanceRes.json();
+    const tasksData = await tasksRes.json();
+
+    // Prepare analysis prompt
+    const prompt = `You are an AI Chief of Staff analyzing team performance data for BuildWithLeverage, a growth marketing agency.
+
+TEAM MEMBERS:
+- Suki Santos (Operations Lead)
+- Kristine Mirabueno (Chief of Staff / EA)
+- Kristine Miel Zulaybar (Specialist)
+- Caleb Bentil (Outbound Specialist - KPIs: Calls Dialed, Live Connects, Meetings Booked)
+- David Perlov (Founder/CEO)
+- Cyril Butanas (Influencer Outreach Specialist - KPIs: Influencers Sourced, Outreach Sent, Partnerships)
+- Darlene Mae Malolos (Graphic Designer - KPIs: Assets Completed, Revision Rounds, Turnaround Time)
+
+TODAY'S DATA:
+
+SOD Submissions (${today}):
+${JSON.stringify(sodData, null, 2)}
+
+EOD Submissions (${today}):
+${JSON.stringify(eodData, null, 2)}
+
+Recent Attendance:
+${JSON.stringify(attendanceData.success ? attendanceData.logs.slice(-20) : [], null, 2)}
+
+Active Tasks:
+${JSON.stringify(tasksData.success ? tasksData.tasks : [], null, 2)}
+
+ANALYSIS REQUIREMENTS:
+Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
+
+{
+  "summary": "2-3 sentence high-level performance summary",
+  "redFlags": [
+    {"title": "Issue name", "description": "Specific concern with data backing"}
+  ],
+  "greenFlags": [
+    {"title": "Win/strength name", "description": "What's working well"}
+  ],
+  "recommendations": [
+    {
+      "title": "Recommendation name",
+      "description": "Why this matters",
+      "action": "Specific next step"
+    }
+  ],
+  "trends": [
+    {"metric": "Metric name", "observation": "What the data shows"}
+  ],
+  "actionItems": [
+    {
+      "task": "Specific action to take",
+      "priority": "High/Medium/Low",
+      "owner": "Team member name"
+    }
+  ]
+}
+
+FOCUS ON:
+1. SOD/EOD compliance rates
+2. Task completion patterns
+3. Performance vs KPIs (for role-specific metrics)
+4. Attendance consistency
+5. Workload distribution
+6. Quality indicators (revision rates, connect rates, etc.)
+
+Be specific, actionable, and data-driven. Flag real issues but also celebrate wins.`;
+
+    // Call Claude API
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        messages: [{
+          role: "user",
+          content: prompt
+        }]
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error.message);
+    }
+
+    // Parse AI response
+    const text = data.content?.find(b => b.type === "text")?.text || "";
+    const clean = text.replace(/```json|```/g, "").trim();
+    const insights = JSON.parse(clean.slice(clean.indexOf("{"), clean.lastIndexOf("}") + 1));
+
+    setInsights(insights);
+    setLastRefresh(new Date().toISOString());
+    setLoading(false);
+  } catch (error) {
+    console.error("Error generating insights:", error);
+    setError(error.message);
+    setLoading(false);
+  }
+}
 // ─── NAV ──────────────────────────────────────────────────────────────────────
 const NAV=[
   {key:"dashboard",label:"Dashboard"},
   {key:"attendance",label:"Attendance"},
   {key:"tasks",label:"Tasks"},
+  {key:"cos-insights",label:"CoS Insights"},
   {key:"culture",label:"Culture"},
   {key:"settings",label:"Settings"},
 ];
-const PAGE_ICONS={dashboard:"⚡",attendance:"🕐",tasks:"🎯",settings:"⚙️",culture:"🏛️"};
+const PAGE_ICONS={dashboard:"⚡",attendance:"🕐",tasks:"🎯","cos-insights":"🤖",settings:"⚙️",culture:"🏛️"};
 
 
 
@@ -4515,6 +5248,7 @@ export default function App() {
       case "dashboard": return <Dashboard navigate={navigate} sendToSlack={sendToSlack} />;
       case "attendance": return <AttendanceTracker />;
       case "tasks": return <TaskManagement />;
+      case "cos-insights": return <CoSInsights />;
       case "culture": return <CultureDashboard />;
       case "settings": return <Settings slackToken={slackToken} setSlackToken={setSlackToken} slackIds={slackIds} setSlackIds={setSlackIds} onChangePassword={setCurrentPassword} sendToSlack={sendToSlack} />;
       default: return <Dashboard navigate={navigate} />;
