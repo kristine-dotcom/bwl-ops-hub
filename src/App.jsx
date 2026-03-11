@@ -3517,6 +3517,7 @@ function CultureDashboard() {
       </div>
     </div>
   );
+}
 
 
 
