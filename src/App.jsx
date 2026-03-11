@@ -2925,9 +2925,14 @@ function AttendanceTracker() {
     
     // AUTO-IMPORT: Create tasks from SOD
     try {
+      console.log(`🎯 SOD Auto-Import: Processing ${sod.tasks.length} tasks for ${sod.member}`);
+      
+      let createdCount = 0;
       for (const task of sod.tasks) {
         if (task.task && task.task.trim().length > 0) {
-          await fetch("/api/tasks", {
+          console.log(`  → Creating task: "${task.task}" [${task.priority}]`);
+          
+          const response = await fetch("/api/tasks", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
@@ -2944,11 +2949,20 @@ function AttendanceTracker() {
               }
             })
           });
+          
+          const result = await response.json();
+          if (result.success) {
+            createdCount++;
+            console.log(`  ✅ Task created: ${result.task.id}`);
+          } else {
+            console.error(`  ❌ Failed to create task:`, result.error);
+          }
         }
       }
-      console.log(`✅ Auto-created ${sod.tasks.length} tasks from ${sod.member}'s SOD`);
+      
+      console.log(`✅ Auto-Import Complete: Created ${createdCount}/${sod.tasks.length} tasks`);
     } catch (error) {
-      console.error("Failed to auto-import tasks from SOD:", error);
+      console.error("❌ SOD Auto-Import Error:", error);
     }
   };
 
@@ -2999,6 +3013,8 @@ function AttendanceTracker() {
     
     // AUTO-COMPLETE: Mark tasks done from EOD
     try {
+      console.log(`🎯 EOD Auto-Complete: Checking tasks for ${eod.member}`);
+      
       // Get all tasks for this member
       const tasksRes = await fetch("/api/tasks");
       const tasksData = await tasksRes.json();
@@ -3009,11 +3025,15 @@ function AttendanceTracker() {
           t.status !== "done"
         );
         
+        console.log(`  Found ${userTasks.length} pending tasks for ${eod.member}`);
+        
         const eodText = (eod.eodReport || "").toLowerCase();
         const completionIndicators = [
           "completed", "finished", "done", "shipped", "delivered", 
           "sent", "submitted", "✓", "✅", "☑", "accomplished"
         ];
+        
+        let completedCount = 0;
         
         // Check each task if it's mentioned as completed in EOD
         for (const task of userTasks) {
@@ -3028,8 +3048,10 @@ function AttendanceTracker() {
             });
             
             if (isCompleted) {
+              console.log(`  → Marking done: "${task.title}"`);
+              
               // Mark task as done
-              await fetch("/api/tasks", {
+              const updateRes = await fetch("/api/tasks", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
@@ -3040,13 +3062,24 @@ function AttendanceTracker() {
                   }
                 })
               });
-              console.log(`✅ Auto-completed task: "${task.title}" for ${eod.member}`);
+              
+              const updateResult = await updateRes.json();
+              if (updateResult.success) {
+                completedCount++;
+                console.log(`  ✅ Task marked as done: ${task.id}`);
+              } else {
+                console.error(`  ❌ Failed to mark done:`, updateResult.error);
+              }
             }
           }
         }
+        
+        console.log(`✅ Auto-Complete: Marked ${completedCount}/${userTasks.length} tasks as done`);
+      } else {
+        console.error("❌ Failed to fetch tasks:", tasksData.error);
       }
     } catch (error) {
-      console.error("Failed to auto-complete tasks from EOD:", error);
+      console.error("❌ EOD Auto-Complete Error:", error);
     }
     
     // Check if all present members completed both SOD & EOD
@@ -4939,6 +4972,8 @@ async function generateCoSInsights(setLoading, setInsights, setLastRefresh, setE
     const today = new Date().toISOString().split("T")[0];
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
+    console.log("🤖 CoS Insights: Fetching data...");
+
     const [sodRes, eodRes, attendanceRes, tasksRes] = await Promise.all([
       fetch(`/api/attendance/sod?date=${today}`),
       fetch(`/api/attendance/eod?date=${today}`),
@@ -4950,6 +4985,13 @@ async function generateCoSInsights(setLoading, setInsights, setLastRefresh, setE
     const eodData = await eodRes.json();
     const attendanceData = await attendanceRes.json();
     const tasksData = await tasksRes.json();
+
+    console.log("📊 Data fetched:", { 
+      sod: sodData.success, 
+      eod: eodData.success, 
+      attendance: attendanceData.success, 
+      tasks: tasksData.success 
+    });
 
     // Prepare analysis prompt
     const prompt = `You are an AI Chief of Staff analyzing team performance data for BuildWithLeverage, a growth marketing agency.
@@ -4963,13 +5005,13 @@ TEAM MEMBERS:
 - Cyril Butanas (Influencer Outreach Specialist - KPIs: Influencers Sourced, Outreach Sent, Partnerships)
 - Darlene Mae Malolos (Graphic Designer - KPIs: Assets Completed, Revision Rounds, Turnaround Time)
 
-TODAY'S DATA:
+TODAY'S DATA (${today}):
 
-SOD Submissions (${today}):
-${JSON.stringify(sodData, null, 2)}
+SOD Submissions:
+${JSON.stringify(sodData.success ? sodData.submissions : {}, null, 2)}
 
-EOD Submissions (${today}):
-${JSON.stringify(eodData, null, 2)}
+EOD Submissions:
+${JSON.stringify(eodData.success ? eodData.submissions : {}, null, 2)}
 
 Recent Attendance:
 ${JSON.stringify(attendanceData.success ? attendanceData.logs.slice(-20) : [], null, 2)}
