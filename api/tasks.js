@@ -1,29 +1,6 @@
 import { kv } from "@vercel/kv";
 
-// Helper to get all tasks
-async function getAllTasks() {
-  try {
-    const tasks = await kv.get("tasks");
-    return tasks || [];
-  } catch (error) {
-    console.error("Error getting tasks:", error);
-    return [];
-  }
-}
-
-// Helper to save tasks
-async function saveTasks(tasks) {
-  try {
-    await kv.set("tasks", tasks);
-    return true;
-  } catch (error) {
-    console.error("Error saving tasks:", error);
-    return false;
-  }
-}
-
 export default async function handler(req, res) {
-  // Enable CORS
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
@@ -37,7 +14,7 @@ export default async function handler(req, res) {
   try {
     // GET - Fetch all tasks
     if (req.method === "GET") {
-      const tasks = await getAllTasks();
+      const tasks = await kv.get("tasks") || [];
       return res.status(200).json({ success: true, tasks });
     }
 
@@ -48,11 +25,12 @@ export default async function handler(req, res) {
       if (!task || !task.title || !task.assignee) {
         return res.status(400).json({ 
           success: false, 
-          error: "Missing required fields: title, assignee" 
+          error: "Task title and assignee are required" 
         });
       }
 
-      const tasks = await getAllTasks();
+      const tasks = await kv.get("tasks") || [];
+      
       const newTask = {
         id: Date.now(),
         title: task.title,
@@ -62,31 +40,31 @@ export default async function handler(req, res) {
         priority: task.priority || "medium",
         dueDate: task.dueDate || null,
         blockedBy: task.blockedBy || null,
-        comments: task.comments || [],
+        comments: [],
         createdAt: new Date().toISOString(),
-        createdBy: task.createdBy || "Admin",
+        createdBy: task.createdBy || "Manual",
         completedAt: null,
         source: task.source || "manual"
       };
 
       tasks.push(newTask);
-      await saveTasks(tasks);
+      await kv.set("tasks", tasks);
 
-      return res.status(201).json({ success: true, task: newTask });
+      return res.status(200).json({ success: true, task: newTask });
     }
 
-    // PUT - Update task
+    // PUT - Update existing task
     if (req.method === "PUT") {
       const { taskId, updates } = req.body;
-
+      
       if (!taskId) {
         return res.status(400).json({ 
           success: false, 
-          error: "Missing taskId" 
+          error: "Task ID is required" 
         });
       }
 
-      const tasks = await getAllTasks();
+      const tasks = await kv.get("tasks") || [];
       const taskIndex = tasks.findIndex(t => t.id === taskId);
 
       if (taskIndex === -1) {
@@ -96,18 +74,13 @@ export default async function handler(req, res) {
         });
       }
 
-      // Auto-set completedAt when status changes to "done"
-      if (updates.status === "done" && tasks[taskIndex].status !== "done") {
+      // Auto-set completedAt when status changes to done
+      if (updates.status === "done" && !updates.completedAt) {
         updates.completedAt = new Date().toISOString();
       }
 
-      // Clear completedAt if moving out of done
-      if (updates.status !== "done" && tasks[taskIndex].status === "done") {
-        updates.completedAt = null;
-      }
-
       tasks[taskIndex] = { ...tasks[taskIndex], ...updates };
-      await saveTasks(tasks);
+      await kv.set("tasks", tasks);
 
       return res.status(200).json({ success: true, task: tasks[taskIndex] });
     }
@@ -115,15 +88,15 @@ export default async function handler(req, res) {
     // DELETE - Remove task
     if (req.method === "DELETE") {
       const { taskId } = req.body;
-
+      
       if (!taskId) {
         return res.status(400).json({ 
           success: false, 
-          error: "Missing taskId" 
+          error: "Task ID is required" 
         });
       }
 
-      const tasks = await getAllTasks();
+      const tasks = await kv.get("tasks") || [];
       const filteredTasks = tasks.filter(t => t.id !== taskId);
 
       if (filteredTasks.length === tasks.length) {
@@ -133,9 +106,9 @@ export default async function handler(req, res) {
         });
       }
 
-      await saveTasks(filteredTasks);
+      await kv.set("tasks", filteredTasks);
 
-      return res.status(200).json({ success: true, taskId });
+      return res.status(200).json({ success: true });
     }
 
     return res.status(405).json({ 
@@ -144,7 +117,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error("API Error:", error);
+    console.error("Tasks API Error:", error);
     return res.status(500).json({ 
       success: false, 
       error: error.message 
