@@ -2921,6 +2921,34 @@ function AttendanceTracker() {
     // Admin summary to channel
     const tasksList = sod.tasks.map((t,i)=>`${i+1}. ${t.task} [${t.priority}]`).join("\n");
     sendToSlack(`📋 *SOD Update:* ${sod.member} submitted SOD (${sodCount}/${TEAM_OPS.length} complete)\n\n*Tasks for today:*\n${tasksList}\n\n*Metrics:* ${sod.metrics || "None specified"}`);
+    
+    // AUTO-IMPORT: Create tasks from SOD
+    try {
+      for (const task of sod.tasks) {
+        if (task.task && task.task.trim().length > 0) {
+          await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              task: {
+                title: task.task,
+                description: `Auto-imported from ${sod.member}'s SOD on ${today}`,
+                assignee: sod.member,
+                status: "pending",
+                priority: task.priority.toLowerCase() || "medium",
+                dueDate: null,
+                blockedBy: null,
+                createdBy: "System (SOD)",
+                source: "sod"
+              }
+            })
+          });
+        }
+      }
+      console.log(`✅ Auto-created ${sod.tasks.length} tasks from ${sod.member}'s SOD`);
+    } catch (error) {
+      console.error("Failed to auto-import tasks from SOD:", error);
+    }
   };
 
 
@@ -2967,6 +2995,58 @@ function AttendanceTracker() {
     
     // Admin summary to channel
     sendToSlack(`📊 *EOD Update:* ${eod.member} submitted EOD (${eodCount} today)\n\n*Today's Metrics:*\n${metricsText}`);
+    
+    // AUTO-COMPLETE: Mark tasks done from EOD
+    try {
+      // Get all tasks for this member
+      const tasksRes = await fetch("/api/tasks");
+      const tasksData = await tasksRes.json();
+      
+      if (tasksData.success) {
+        const userTasks = tasksData.tasks.filter(t => 
+          t.assignee === eod.member && 
+          t.status !== "done"
+        );
+        
+        const eodText = (eod.eodReport || "").toLowerCase();
+        const completionIndicators = [
+          "completed", "finished", "done", "shipped", "delivered", 
+          "sent", "submitted", "✓", "✅", "☑", "accomplished"
+        ];
+        
+        // Check each task if it's mentioned as completed in EOD
+        for (const task of userTasks) {
+          const taskTitle = task.title.toLowerCase();
+          
+          // Check if task title appears in EOD
+          if (eodText.includes(taskTitle)) {
+            // Check if mentioned with completion indicator
+            const isCompleted = completionIndicators.some(indicator => {
+              const regex = new RegExp(`${indicator}.*${taskTitle}|${taskTitle}.*${indicator}`, 'i');
+              return eodText.match(regex);
+            });
+            
+            if (isCompleted) {
+              // Mark task as done
+              await fetch("/api/tasks", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                  taskId: task.id, 
+                  updates: { 
+                    status: "done",
+                    completedAt: new Date().toISOString()
+                  }
+                })
+              });
+              console.log(`✅ Auto-completed task: "${task.title}" for ${eod.member}`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to auto-complete tasks from EOD:", error);
+    }
     
     // Check if all present members completed both SOD & EOD
     setTimeout(async () => {
