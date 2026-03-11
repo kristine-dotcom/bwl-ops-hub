@@ -1,97 +1,153 @@
-// /api/tasks.js
-// Task Management API for BWL Ops Hub
+import { kv } from "@vercel/kv";
 
-import { kv } from '@vercel/kv';
+// Helper to get all tasks
+async function getAllTasks() {
+  try {
+    const tasks = await kv.get("tasks");
+    return tasks || [];
+  } catch (error) {
+    console.error("Error getting tasks:", error);
+    return [];
+  }
+}
 
-export const config = {
-  runtime: 'nodejs'
-};
+// Helper to save tasks
+async function saveTasks(tasks) {
+  try {
+    await kv.set("tasks", tasks);
+    return true;
+  } catch (error) {
+    console.error("Error saving tasks:", error);
+    return false;
+  }
+}
 
 export default async function handler(req, res) {
+  // Enable CORS
+  res.setHeader("Access-Control-Allow-Credentials", true);
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
   try {
-    const { method } = req;
-    
-    if (method === 'GET') {
-      // Get all tasks
-      const tasks = await kv.get('tasks') || [];
+    // GET - Fetch all tasks
+    if (req.method === "GET") {
+      const tasks = await getAllTasks();
       return res.status(200).json({ success: true, tasks });
     }
-    
-    if (method === 'POST') {
-      const { action, task, taskId, comment } = req.body;
+
+    // POST - Create new task
+    if (req.method === "POST") {
+      const { task } = req.body;
       
-      const tasks = await kv.get('tasks') || [];
-      
-      if (action === 'create') {
-        // Create new task
-        const newTask = {
-          id: `task_${Date.now()}`,
-          ...task,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          comments: []
-        };
-        
-        tasks.push(newTask);
-        await kv.set('tasks', tasks);
-        
-        return res.status(200).json({ success: true, task: newTask });
+      if (!task || !task.title || !task.assignee) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Missing required fields: title, assignee" 
+        });
       }
-      
-      if (action === 'update') {
-        // Update existing task
-        const index = tasks.findIndex(t => t.id === taskId);
-        if (index === -1) {
-          return res.status(404).json({ success: false, error: 'Task not found' });
-        }
-        
-        tasks[index] = {
-          ...tasks[index],
-          ...task,
-          updatedAt: new Date().toISOString()
-        };
-        
-        await kv.set('tasks', tasks);
-        
-        return res.status(200).json({ success: true, task: tasks[index] });
-      }
-      
-      if (action === 'delete') {
-        // Delete task
-        const filtered = tasks.filter(t => t.id !== taskId);
-        await kv.set('tasks', filtered);
-        
-        return res.status(200).json({ success: true });
-      }
-      
-      if (action === 'comment') {
-        // Add comment to task
-        const index = tasks.findIndex(t => t.id === taskId);
-        if (index === -1) {
-          return res.status(404).json({ success: false, error: 'Task not found' });
-        }
-        
-        const newComment = {
-          id: `comment_${Date.now()}`,
-          ...comment,
-          timestamp: new Date().toISOString()
-        };
-        
-        tasks[index].comments.push(newComment);
-        tasks[index].updatedAt = new Date().toISOString();
-        
-        await kv.set('tasks', tasks);
-        
-        return res.status(200).json({ success: true, task: tasks[index] });
-      }
-      
-      return res.status(400).json({ success: false, error: 'Invalid action' });
+
+      const tasks = await getAllTasks();
+      const newTask = {
+        id: Date.now(),
+        title: task.title,
+        description: task.description || "",
+        assignee: task.assignee,
+        status: task.status || "pending",
+        priority: task.priority || "medium",
+        dueDate: task.dueDate || null,
+        blockedBy: task.blockedBy || null,
+        comments: task.comments || [],
+        createdAt: new Date().toISOString(),
+        createdBy: task.createdBy || "Admin",
+        completedAt: null,
+        source: task.source || "manual"
+      };
+
+      tasks.push(newTask);
+      await saveTasks(tasks);
+
+      return res.status(201).json({ success: true, task: newTask });
     }
-    
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
-    
+
+    // PUT - Update task
+    if (req.method === "PUT") {
+      const { taskId, updates } = req.body;
+
+      if (!taskId) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Missing taskId" 
+        });
+      }
+
+      const tasks = await getAllTasks();
+      const taskIndex = tasks.findIndex(t => t.id === taskId);
+
+      if (taskIndex === -1) {
+        return res.status(404).json({ 
+          success: false, 
+          error: "Task not found" 
+        });
+      }
+
+      // Auto-set completedAt when status changes to "done"
+      if (updates.status === "done" && tasks[taskIndex].status !== "done") {
+        updates.completedAt = new Date().toISOString();
+      }
+
+      // Clear completedAt if moving out of done
+      if (updates.status !== "done" && tasks[taskIndex].status === "done") {
+        updates.completedAt = null;
+      }
+
+      tasks[taskIndex] = { ...tasks[taskIndex], ...updates };
+      await saveTasks(tasks);
+
+      return res.status(200).json({ success: true, task: tasks[taskIndex] });
+    }
+
+    // DELETE - Remove task
+    if (req.method === "DELETE") {
+      const { taskId } = req.body;
+
+      if (!taskId) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Missing taskId" 
+        });
+      }
+
+      const tasks = await getAllTasks();
+      const filteredTasks = tasks.filter(t => t.id !== taskId);
+
+      if (filteredTasks.length === tasks.length) {
+        return res.status(404).json({ 
+          success: false, 
+          error: "Task not found" 
+        });
+      }
+
+      await saveTasks(filteredTasks);
+
+      return res.status(200).json({ success: true, taskId });
+    }
+
+    return res.status(405).json({ 
+      success: false, 
+      error: "Method not allowed" 
+    });
+
   } catch (error) {
-    console.error('Tasks API error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error("API Error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
   }
 }
