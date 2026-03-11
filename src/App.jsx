@@ -2365,6 +2365,109 @@ function AttendanceTracker() {
   };
 
 
+  // ─── EOD SUMMARY FUNCTIONS ────────────────────────────────────────────────
+  const getPresentMembers = () => {
+    // Get members who logged IN today
+    const today = todayStr();
+    const todayLogs = logs.filter(l => l.date === today && l.type === "in");
+    return [...new Set(todayLogs.map(l => l.member))];
+  };
+
+  const checkAllCompleted = async () => {
+    const today = todayStr();
+    const presentMembers = getPresentMembers();
+    
+    if (presentMembers.length === 0) return false;
+    
+    // Load latest SOD and EOD data
+    const sodData = await api.getSOD(today);
+    const eodData = await api.getEOD(today);
+    
+    // Check if all present members have both SOD and EOD
+    for (const member of presentMembers) {
+      if (!sodData[member] || !eodData[member]) {
+        return false; // Not everyone completed
+      }
+    }
+    
+    return true; // All present members completed both!
+  };
+
+  const generateDailySummary = async () => {
+    const today = todayStr();
+    const presentMembers = getPresentMembers();
+    const sodData = await api.getSOD(today);
+    const eodData = await api.getEOD(today);
+    
+    const date = new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric", year: "numeric"});
+    
+    let summary = `📊 *DAILY EOD SUMMARY - ${date}*\n`;
+    summary += `✅ All ${presentMembers.length}/${presentMembers.length} members completed EOD\n\n`;
+    summary += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    for (const member of presentMembers) {
+      const sod = sodData[member];
+      const eod = eodData[member];
+      
+      summary += `👤 *${member.toUpperCase()}*\n`;
+      
+      // Role-specific icons
+      const roleIcons = {
+        "Caleb Bentil": "📞 Outbound Specialist",
+        "Cyril Butanas": "🌟 Influencer Outreach",
+        "Suki Santos": "🔧 Lead Operations",
+        "Kristine Miel Zulaybar": "📊 Lead Enrichment",
+        "Darlene Mae Malolos": "🎨 Graphic Designer",
+        "Kristine Mirabueno": "👑 Operations Manager"
+      };
+      
+      if (roleIcons[member]) {
+        summary += `${roleIcons[member]}\n\n`;
+      }
+      
+      // SOD - Tasks planned
+      if (sod && sod.tasks && sod.tasks.length > 0) {
+        summary += `📋 *Planned Tasks:*\n`;
+        sod.tasks.slice(0, 3).forEach(task => {
+          summary += `• ${task.task}\n`;
+        });
+        summary += `\n`;
+      }
+      
+      // EOD - Accomplishments
+      if (eod && eod.metrics && eod.metrics.length > 0) {
+        summary += `🎯 *Key Accomplishments:*\n`;
+        eod.metrics.forEach(metric => {
+          summary += `• *${metric.name}:* ${metric.value}\n`;
+        });
+      }
+      
+      summary += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    }
+    
+    summary += `📎 View full details: https://bwl-ops-hub.vercel.app`;
+    
+    return summary;
+  };
+
+  const sendDailySummary = async () => {
+    console.log("🎉 All present members completed SOD & EOD! Sending summary...");
+    
+    const summary = await generateDailySummary();
+    
+    // Send to David (DM)
+    const davidSlackId = DEFAULT_SLACK_IDS["David Perlov"];
+    if (davidSlackId) {
+      await sendToSlack(summary, davidSlackId);
+      console.log("✅ Summary sent to David");
+    }
+    
+    // Send to #attendance-admin channel
+    await sendToSlack(summary);
+    console.log("✅ Summary sent to #attendance-admin");
+  };
+
+
 
 
   const handleSODSubmit=async(sod)=>{
@@ -2446,6 +2549,14 @@ function AttendanceTracker() {
     
     // Admin summary to channel
     sendToSlack(`📊 *EOD Update:* ${eod.member} submitted EOD (${eodCount} today)\n\n*Today's Metrics:*\n${metricsText}`);
+    
+    // Check if all present members completed both SOD & EOD
+    setTimeout(async () => {
+      const allCompleted = await checkAllCompleted();
+      if (allCompleted) {
+        await sendDailySummary();
+      }
+    }, 1000); // Small delay to ensure state updates
   };
 
 
@@ -3227,574 +3338,6 @@ function AttendanceTracker() {
 
 
 
-// ─── OPS PULSE ────────────────────────────────────────────────────────────────
-function OpsPulse({slackIds}) {
-  const [inputs,setInputs]=useState({transcript:"",sod:"",email:"",slack:""});
-  const [activeTab,setActiveTab]=useState("transcript");
-  const [result,setResult]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState(null);
-  const [checked,setChecked]=useState({});
-  const [selectedMember,setSelectedMember]=useState(null);
-  const [view,setView]=useState("sod");
-  const [slackStatus,setSlackStatus]=useState({});
-  const [showInput,setShowInput]=useState(false);
-  const [storageLoading,setStorageLoading]=useState(true);
-  const [history,setHistory]=useState([]);
-  const [dmContext,setDmContext]=useState({});
-  const [showDmContext,setShowDmContext]=useState({});
-  const [editingTask,setEditingTask]=useState(null);
-  const [editingTaskText,setEditingTaskText]=useState("");
-  const [showKpi,setShowKpi]=useState(true);
-  const [showEod,setShowEod]=useState(false);
-  const [sodSubmissions,setSodSubmissions]=useState({});
-  const [expandedSod,setExpandedSod]=useState(null);
-
-
-
-
-  useEffect(()=>{
-    Promise.all([
-      storage.get("ops-pulse-current"),
-      storage.get("ops-pulse-checked"),
-      storage.get("ops-pulse-history"),
-      storage.get(`sod-${todayStr()}`)
-    ]).then(([r,c,h,s])=>{
-      if(r) setResult(JSON.parse(r.value));
-      if(c) setChecked(JSON.parse(c.value));
-      if(h) setHistory(JSON.parse(h.value));
-      if(s) setSodSubmissions(JSON.parse(s.value));
-      setStorageLoading(false);
-    });
-  },[]);
-
-
-
-
-  // Refresh SOD every 30s
-  useEffect(()=>{
-    const t=setInterval(async()=>{
-      const s=await storage.get(`sod-${todayStr()}`);
-      if(s) setSodSubmissions(JSON.parse(s.value));
-    },30000);
-    return ()=>clearInterval(t);
-  },[]);
-
-
-
-
-  const isOverdue=(dueDay)=>{if(!dueDay) return false;const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];return days.indexOf(dueDay)!==-1&&days.indexOf(dueDay)<new Date().getDay();};
-
-
-
-
-  const saveToHistory=async(res,chk)=>{
-    const weekKey=(()=>{const d=new Date();const day=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));return mon.toISOString().split("T")[0];})();
-    const memberStats=TEAM_OPS.map(m=>{const tasks=res?.team_tasks?.[m]?.tasks||[];const done=tasks.filter((_,i)=>chk[`${m}-${i}`]).length;const overdue=tasks.filter((t,i)=>!chk[`${m}-${i}`]&&isOverdue(t.due_day)).length;return {name:m,total:tasks.length,done,overdue,blockers:res?.team_tasks?.[m]?.blockers||[]};});
-    const total=memberStats.reduce((a,m)=>a+m.total,0);const done=memberStats.reduce((a,m)=>a+m.done,0);
-    const snapshot={weekKey,weekLabel:weekLabel(),savedAt:new Date().toISOString(),teamCompletion:total?Math.round((done/total)*100):0,totalTasks:total,doneTasks:done,overdueCount:memberStats.reduce((a,m)=>a+m.overdue,0),memberStats,blockers:memberStats.flatMap(m=>m.blockers),summary:res?.week_summary||""};
-    const existing=await storage.get("ops-pulse-history");let hist=existing?JSON.parse(existing.value):[];hist=hist.filter(h=>h.weekKey!==weekKey);hist=[snapshot,...hist].slice(0,4);setHistory(hist);await storage.set("ops-pulse-history",JSON.stringify(hist));
-  };
-
-
-
-
-  const clearTasks=async()=>{if(result) await saveToHistory(result,checked);setResult(null);setChecked({});await storage.delete("ops-pulse-current");await storage.delete("ops-pulse-checked");};
-
-
-
-
-  const sendDM=async(member,extraContext)=>{
-    const userId=slackIds?.[member];if(!userId){setSlackStatus(p=>({...p,[member]:"NO ID"}));return;}
-    const tokenData=await storage.get("slack-token");const token=tokenData?.value;if(!token){setSlackStatus(p=>({...p,[member]:"NO TOKEN"}));return;}
-    const tasks=result?.team_tasks?.[member]?.tasks||[];
-    const taskLines=tasks.map((t,i)=>`${i+1}. [${t.priority?.toUpperCase()}] ${t.task}${t.due?` (${t.due})`:""}`).join("\n");
-    const contextNote=extraContext?.trim()?`\n\n📌 *Note from Kristine:*\n${extraContext}`:"";
-    const text=`*Your Tasks — ${weekLabel()}*\nHi ${member.split(" ")[0]}! Here are your tasks for this week:\n\n${taskLines}${contextNote}\n\n_Sent from BWL Operations Hub_`;
-    setSlackStatus(p=>({...p,[member]:"SENDING…"}));
-    try {
-      const res=await fetch("https://slack.com/api/chat.postMessage",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({channel:userId,text})});
-      const data=await res.json();if(!data.ok) throw new Error(data.error);
-      setSlackStatus(p=>({...p,[member]:"SENT ✓"}));setShowDmContext(p=>({...p,[member]:false}));setDmContext(p=>({...p,[member]:""}));
-    } catch {setSlackStatus(p=>({...p,[member]:"FAILED"}));}
-    setTimeout(()=>setSlackStatus(p=>({...p,[member]:null})),3000);
-  };
-
-
-
-
-  const addTask=async(member)=>{const newTask={task:"New task",priority:"medium",due:"EOW",due_day:"Friday",type:"action"};const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks:[...(result.team_tasks[member]?.tasks||[]),newTask]}}};setResult(updated);await storage.set("ops-pulse-current",JSON.stringify(updated));};
-  const deleteTask=async(member,idx)=>{const tasks=result.team_tasks[member].tasks.filter((_,i)=>i!==idx);const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks}}};setResult(updated);const newChecked={...checked};delete newChecked[`${member}-${idx}`];setChecked(newChecked);await storage.set("ops-pulse-current",JSON.stringify(updated));await storage.set("ops-pulse-checked",JSON.stringify(newChecked));};
-  const saveTaskEdit=async(member,idx)=>{const tasks=[...result.team_tasks[member].tasks];tasks[idx]={...tasks[idx],task:editingTaskText};const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks}}};setResult(updated);setEditingTask(null);await storage.set("ops-pulse-current",JSON.stringify(updated));};
-  const updateTaskField=async(member,idx,field,value)=>{const tasks=[...result.team_tasks[member].tasks];tasks[idx]={...tasks[idx],[field]:value};const updated={...result,team_tasks:{...result.team_tasks,[member]:{...result.team_tasks[member],tasks}}};setResult(updated);await storage.set("ops-pulse-current",JSON.stringify(updated));};
-
-
-
-
-  const hasInput=Object.values(inputs).some(v=>v.trim());
-
-
-
-
-  const generate=async()=>{
-    setLoading(true);setResult(null);setError(null);setChecked({});
-    await storage.delete("ops-pulse-current");await storage.delete("ops-pulse-checked");
-    const context=INPUT_TYPES.filter(t=>inputs[t.key].trim()).map(t=>`=== ${t.label} ===\n${inputs[t.key]}`).join("\n\n");
-    const today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
-    const prompt=`You are AI Chief of Staff for BuildWithLeverage. Today is ${today}. Generate weekly tasks per team member. Team: ${TEAM_OPS.join(", ")}. IMPORTANT: SOD Report tasks belong to Kristine Mirabueno unless stated otherwise. For each task include due_day (Monday/Tuesday/Wednesday/Thursday/Friday/EOW). INPUTS:\n${context}\nReturn ONLY valid JSON: {"week_summary":"...","team_tasks":{"Suki Santos":{"role":"...","tasks":[{"task":"...","priority":"high|medium|low","due":"...","due_day":"Monday","type":"action|follow-up|proactive"}],"blockers":[]},"Kristine Mirabueno":{"role":"...","tasks":[],"blockers":[]},"Kristine Miel Zulaybar":{"role":"...","tasks":[],"blockers":[]},"Caleb Bentil":{"role":"...","tasks":[],"blockers":[]},"David Perlov":{"role":"...","tasks":[],"blockers":[]},"Cyril Butanas":{"role":"...","tasks":[],"blockers":[]},"Darlene Mae Malolos":{"role":"...","tasks":[],"blockers":[]}},"follow_ups_needed":["..."],"risks":["..."]}`;
-    try {
-      const data=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:8000,messages:[{role:"user",content:prompt}]});
-      if(data.error) throw new Error(data.error.message);
-      const text=data.content?.find(b=>b.type==="text")?.text||"";
-      const clean=text.replace(/```json|```/g,"").trim();
-      const parsed=JSON.parse(clean.slice(clean.indexOf("{"),clean.lastIndexOf("}")+1));
-      setResult(parsed);setShowInput(false);await storage.set("ops-pulse-current",JSON.stringify(parsed));
-    } catch(e){setError(e.message);}
-    setLoading(false);
-  };
-
-
-
-
-  const toggleCheck=async(member,idx)=>{const newChecked={...checked,[`${member}-${idx}`]:!checked[`${member}-${idx}`]};setChecked(newChecked);await storage.set("ops-pulse-checked",JSON.stringify(newChecked));};
-  const getProgress=m=>{const t=result?.team_tasks?.[m]?.tasks||[];if(!t.length) return 0;return Math.round((t.filter((_,i)=>checked[`${m}-${i}`]).length/t.length)*100);};
-  const teamProgress=()=>{if(!result) return 0;let total=0,done=0;TEAM_OPS.forEach(m=>{const t=result.team_tasks?.[m]?.tasks||[];total+=t.length;done+=t.filter((_,i)=>checked[`${m}-${i}`]).length;});return total?Math.round((done/total)*100):0;};
-  const pColor=p=>({high:T.red,medium:T.yellow,low:T.green}[p]||T.gray);
-  const tIcon=t=>({action:"→","follow-up":"↻",proactive:"↑"}[t]||"·");
-
-
-
-
-  const sodCount=Object.keys(sodSubmissions).length;
-  const notSubmitted=TEAM_OPS.filter(m=>!sodSubmissions[m]);
-
-
-
-
-  if(storageLoading) return <LoadingScreen />;
-
-
-
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-
-
-
-
-      {/* VIEW TABS — SOD now first */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        {[["sod",`📝 SOD TODAY (${sodCount}/${TEAM_OPS.length})`],["team","👥 TASKS"],["person","👤 MEMBER"],["history","📋 HISTORY"]].map(([v,l])=>(
-          <Pill key={v} label={l} active={view===v} onClick={()=>{setView(v);if(v==="team") setSelectedMember(null);}} />
-        ))}
-        {view!=="sod"&&(
-          <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-            <button onClick={()=>setShowInput(!showInput)}
-              style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:showInput?T.black:T.orange,color:"#fff",border:`2px solid ${showInput?T.black:T.orange}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
-              {showInput?"✕ CLOSE":result?"+ NEW WEEK":"+ GENERATE TASKS"}
-            </button>
-            {result&&<button onClick={clearTasks} style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:"#FEF2F2",color:T.red,border:`2px solid ${T.red}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>CLEAR</button>}
-          </div>
-        )}
-      </div>
-
-
-
-
-      {/* ── SOD VIEW (default) ── */}
-      {view==="sod"&&(
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-            {[["SOD SUBMITTED",sodCount,sodCount===TEAM_OPS.length?T.green:T.yellow],["PENDING",notSubmitted.length,notSubmitted.length>0?T.red:T.green],["DATE",new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),T.orange]].map(([l,v,c])=>(
-              <div key={l} style={{background:T.black,padding:"14px 18px"}}>
-                <div style={{fontSize:9,color:"#555",fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>{l}</div>
-                <div style={{fontSize:26,fontWeight:900,color:c,fontFamily:T.font,lineHeight:1}}>{v}</div>
-              </div>
-            ))}
-          </div>
-
-
-
-
-          {notSubmitted.length>0&&(
-            <div style={{background:"#fef2f2",border:`2px solid ${T.red}`,padding:"10px 16px"}}>
-              <div style={{fontSize:10,fontWeight:700,color:T.red,fontFamily:T.mono,letterSpacing:2,marginBottom:6}}>⚠ WAITING FOR SOD — CANNOT LOG IN</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {notSubmitted.map(m=>(
-                  <div key={m} style={{display:"flex",alignItems:"center",gap:6,background:"#fff",border:`1px solid ${T.red}`,padding:"3px 10px"}}>
-                    <Avatar name={m} size={18} muted /><span style={{fontSize:11,fontWeight:600,color:T.red}}>{m.split(" ")[0]}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-
-
-
-          {TEAM_OPS.map(member=>{
-            const sod=sodSubmissions[member];
-            const isExpanded=expandedSod===member;
-            return (
-              <Card key={member} style={{overflow:"hidden",borderLeft:`4px solid ${sod?T.green:T.red}`}}>
-                <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:sod?"pointer":"default"}} onClick={()=>sod&&setExpandedSod(isExpanded?null:member)}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <Avatar name={member} size={36} muted={!sod} />
-                    <div>
-                      <div style={{fontWeight:700,fontSize:14}}>{member}</div>
-                      {sod
-                        ?<div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginTop:2}}>Submitted @ {sod.submittedAt} · {sod.tasks.length} task{sod.tasks.length!==1?"s":""}{sod.blockers?" · ⚠ blocker":""}</div>
-                        :<div style={{fontSize:10,color:T.red,fontFamily:T.mono,marginTop:2}}>No SOD submitted yet</div>
-                      }
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    {sod?<Badge label="SOD ✓" color={T.green} />:<Badge label="PENDING" color={T.red} />}
-                    {sod&&<span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{isExpanded?"▲":"▼"}</span>}
-                  </div>
-                </div>
-                {sod&&isExpanded&&(
-                  <div style={{borderTop:`2px solid ${T.black}`,padding:14,background:T.bg,display:"flex",flexDirection:"column",gap:6}}>
-                    {sod.tasks.map((t,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:T.surface,borderLeft:`3px solid ${priorityColor(t.priority)}`}}>
-                        <div style={{flex:1,fontSize:12,color:T.black}}>{t.task}</div>
-                        <Badge label={t.priority} color={priorityColor(t.priority)} />
-                        <span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{t.eta}</span>
-                      </div>
-                    ))}
-                    {sod.metrics&&(
-                      <div style={{padding:"8px 12px",background:"#f0fdf4",borderLeft:`3px solid ${T.green}`,fontSize:12,color:T.darkGray}}>
-                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.green,display:"block",marginBottom:2}}>METRICS TARGET</span>{sod.metrics}
-                      </div>
-                    )}
-                    {sod.blockers&&(
-                      <div style={{padding:"8px 12px",background:"#fff8f0",borderLeft:`3px solid ${T.orange}`,fontSize:12,color:T.darkGray}}>
-                        <span style={{fontSize:9,fontWeight:700,fontFamily:T.mono,color:T.orange,display:"block",marginBottom:2}}>BLOCKERS</span>{sod.blockers}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-
-
-
-      {/* Generate input */}
-      {view!=="sod"&&(showInput||!result)&&(
-        <Card>
-          <div style={{display:"flex",borderBottom:`2px solid ${T.black}`}}>
-            {INPUT_TYPES.map(t=>(
-              <button key={t.key} onClick={()=>setActiveTab(t.key)}
-                style={{flex:1,padding:"12px 8px",fontSize:11,fontWeight:700,background:activeTab===t.key?T.black:"transparent",color:activeTab===t.key?T.orange:T.gray,border:"none",borderBottom:activeTab===t.key?`3px solid ${T.orange}`:"3px solid transparent",cursor:"pointer",transition:"all 0.15s",fontFamily:T.mono,letterSpacing:1,textTransform:"uppercase"}}>
-                {t.label}{inputs[t.key].trim()&&<span style={{marginLeft:4,color:T.green,fontSize:14}}>·</span>}
-              </button>
-            ))}
-          </div>
-          <textarea value={inputs[activeTab]} onChange={e=>setInputs(p=>({...p,[activeTab]:e.target.value}))} placeholder={`Paste ${INPUT_TYPES.find(t=>t.key===activeTab)?.label} here…`}
-            style={{width:"100%",minHeight:140,background:"transparent",border:"none",color:T.black,fontSize:13,padding:18,resize:"vertical",outline:"none",fontFamily:T.body,lineHeight:1.7,display:"block"}} />
-          <div style={{padding:"0 16px 16px"}}><Btn onClick={generate} disabled={!hasInput} loading={loading} label={`Generate Ops Pulse — ${weekLabel()}`} icon="⚡" /></div>
-          {error&&<div style={{padding:"0 16px 16px"}}><Err msg={error} /></div>}
-        </Card>
-      )}
-
-
-
-
-      {result&&view!=="sod"&&(
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <Card style={{padding:20}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-              <CardLabel color={T.orange}>{weekLabel()}</CardLabel>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:28,fontWeight:900,color:teamProgress()===100?T.green:T.orange,fontFamily:T.font,lineHeight:1}}>{teamProgress()}%</div>
-                <div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>TEAM DONE</div>
-              </div>
-            </div>
-            <ProgressBar value={teamProgress()} height={8} />
-            <p style={{margin:"14px 0 0",color:T.darkGray,fontSize:13,lineHeight:1.7}}>{result.week_summary}</p>
-          </Card>
-
-
-
-
-          {view==="team"&&(
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {TEAM_OPS.map(member=>{
-                const d=result.team_tasks?.[member];if(!d) return null;
-                const tasks=d.tasks||[],p=getProgress(member);
-                const overdueCount=tasks.filter((t,i)=>!checked[`${member}-${i}`]&&isOverdue(t.due_day)).length;
-                const hasSod=!!sodSubmissions[member];
-                return (
-                  <Card key={member} hover>
-                    <div onClick={()=>{setSelectedMember(member);setView("person");}} style={{padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
-                      <Avatar name={member} muted={!hasSod} />
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,flexWrap:"wrap"}}>
-                          <span style={{fontWeight:600,fontSize:14}}>{member}</span>
-                          <span style={{fontSize:11,color:T.grayLight}}>{d.role}</span>
-                          {!hasSod&&<Badge label="NO SOD" color={T.red} />}
-                          {overdueCount>0&&<Badge label={`${overdueCount} overdue`} color={T.red} />}
-                        </div>
-                        <ProgressBar value={p} height={5} />
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-                        <span style={{fontSize:14,fontWeight:800,color:p===100?T.green:T.orange,fontFamily:T.font,minWidth:36,textAlign:"right"}}>{p}%</span>
-                        <button onClick={e=>{e.stopPropagation();sendDM(member,"");}}
-                          style={{background:slackStatus[member]?T.green:T.black,color:"#fff",border:"none",borderRadius:0,padding:"5px 12px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",fontFamily:T.mono,letterSpacing:1}}>
-                          {slackStatus[member]||"DM"}
-                        </button>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-              <div style={{marginLeft:"auto"}}>
-                <button onClick={()=>TEAM_OPS.forEach(m=>{if(result?.team_tasks?.[m]?.tasks?.length) sendDM(m,"");})}
-                  style={{padding:"6px 14px",fontSize:10,fontWeight:700,background:"#1a1a2e",color:"#a78bfa",border:"2px solid #2a2a4a",cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>
-                  SLACK ALL
-                </button>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:4}}>
-                <Bullets label="Follow-ups Needed" items={result.follow_ups_needed} color={T.green} />
-                <Bullets label="Risks" items={result.risks} color={T.red} />
-              </div>
-            </div>
-          )}
-
-
-
-
-          {view==="person"&&(
-            <div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
-                {TEAM_OPS.map(m=><Pill key={m} label={`${m.split(" ")[0]} ${getProgress(m)}%`} active={selectedMember===m} onClick={()=>setSelectedMember(m)} />)}
-              </div>
-              {selectedMember&&(()=>{
-                const d=result.team_tasks?.[selectedMember];if(!d) return null;
-                const tasks=d.tasks||[],done=tasks.filter((_,i)=>checked[`${selectedMember}-${i}`]).length,p=tasks.length?Math.round((done/tasks.length)*100):0;
-                const hasSod=!!sodSubmissions[selectedMember];
-                const sod=sodSubmissions[selectedMember];
-                return (
-                  <Card style={{padding:20}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-                      <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                        <Avatar name={selectedMember} size={44} muted={!hasSod} />
-                        <div>
-                          <div style={{fontWeight:700,fontSize:16}}>{selectedMember}</div>
-                          <div style={{fontSize:12,color:T.grayLight,marginTop:2}}>{d.role}</div>
-                          {hasSod&&<div style={{fontSize:10,color:T.green,fontFamily:T.mono,marginTop:3}}>SOD @ {sod.submittedAt}</div>}
-                          {!hasSod&&<div style={{fontSize:10,color:T.red,fontFamily:T.mono,marginTop:3}}>No SOD submitted</div>}
-                        </div>
-                      </div>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:26,fontWeight:900,color:p===100?T.green:T.orange,fontFamily:T.font,lineHeight:1}}>{p}%</div>
-                        <div style={{fontSize:10,color:T.grayLight,fontFamily:T.mono}}>{done}/{tasks.length} DONE</div>
-                      </div>
-                    </div>
-                    <ProgressBar value={p} height={7} />
-
-
-
-
-                    {/* SOD summary inline */}
-                    {sod&&(
-                      <div style={{marginTop:14,background:T.bg,border:`2px solid ${T.green}`,padding:12}}>
-                        <div style={{fontSize:9,fontWeight:700,color:T.green,fontFamily:T.mono,letterSpacing:2,marginBottom:8}}>TODAY'S SOD</div>
-                        <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                          {sod.tasks.map((t,i)=>(
-                            <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.darkGray}}>
-                              <span style={{color:priorityColor(t.priority)}}>·</span>{t.task}
-                              <span style={{fontSize:10,color:T.grayLight,fontFamily:T.mono,marginLeft:"auto"}}>{t.eta}</span>
-                            </div>
-                          ))}
-                          {sod.metrics&&<div style={{fontSize:11,color:T.green,fontFamily:T.mono,marginTop:4}}>📊 {sod.metrics}</div>}
-                          {sod.blockers&&<div style={{fontSize:11,color:T.orange,fontFamily:T.mono,marginTop:2}}>⚠ {sod.blockers}</div>}
-                        </div>
-                      </div>
-                    )}
-
-
-
-
-                    <div style={{marginTop:14,background:T.bg,border:`2px solid ${T.black}`,padding:12}}>
-                      {showDmContext[selectedMember]?(
-                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                          <div style={{fontSize:11,color:T.gray,fontWeight:700,letterSpacing:1,fontFamily:T.mono}}>ADD NOTE TO SLACK DM (OPTIONAL)</div>
-                          <textarea value={dmContext[selectedMember]||""} onChange={e=>setDmContext(p=>({...p,[selectedMember]:e.target.value}))} placeholder="e.g. Please prioritize the first 2 tasks this week…"
-                            style={{width:"100%",minHeight:70,background:T.surface,border:`2px solid ${T.black}`,borderRadius:0,color:T.black,fontSize:13,padding:"10px 12px",outline:"none",fontFamily:T.body,resize:"vertical"}} />
-                          <div style={{display:"flex",gap:8}}>
-                            <button onClick={()=>sendDM(selectedMember,dmContext[selectedMember])} style={{flex:1,padding:"9px 0",background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>{slackStatus[selectedMember]||"SEND DM"}</button>
-                            <button onClick={()=>setShowDmContext(p=>({...p,[selectedMember]:false}))} style={{padding:"9px 16px",background:T.surface,color:T.gray,border:`2px solid ${T.black}`,fontSize:11,cursor:"pointer",fontFamily:T.mono}}>CANCEL</button>
-                          </div>
-                        </div>
-                      ):(
-                        <div style={{display:"flex",gap:8}}>
-                          <button onClick={()=>setShowDmContext(p=>({...p,[selectedMember]:true}))} style={{flex:1,padding:"9px 0",background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>📩 SEND SLACK DM</button>
-                          <button onClick={()=>addTask(selectedMember)} style={{padding:"9px 16px",background:T.surface,color:T.orange,border:`2px solid ${T.orange}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>+ ADD TASK</button>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:8}}>
-                      {tasks.map((t,i)=>{
-                        const key=`${selectedMember}-${i}`,isDone=checked[key],overdue=!isDone&&isOverdue(t.due_day);
-                        const isEditingThis=editingTask===key;
-                        return (
-                          <div key={i} style={{background:isDone?"#F0FDF4":overdue?"#FFF7F5":T.bg,padding:"12px 14px",border:`2px solid ${isDone?T.green:overdue?T.orange:T.black}`}}>
-                            <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                              <div onClick={()=>!isEditingThis&&toggleCheck(selectedMember,i)} style={{width:20,height:20,border:`2px solid ${isDone?T.green:overdue?T.orange:T.black}`,background:isDone?T.green:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,cursor:"pointer"}}>
-                                {isDone&&<span style={{color:"#fff",fontSize:11,fontWeight:900}}>✓</span>}
-                              </div>
-                              <div style={{flex:1}}>
-                                {isEditingThis?(
-                                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                                    <input autoFocus value={editingTaskText} onChange={e=>setEditingTaskText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter") saveTaskEdit(selectedMember,i);if(e.key==="Escape") setEditingTask(null);}}
-                                      style={{width:"100%",background:T.surface,border:`2px solid ${T.orange}`,color:T.black,fontSize:13,padding:"6px 10px",outline:"none",fontFamily:T.body}} />
-                                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                                      <select value={t.priority} onChange={e=>updateTaskField(selectedMember,i,"priority",e.target.value)} style={{background:T.surface,border:`2px solid ${T.black}`,color:T.black,fontSize:11,padding:"4px 8px",outline:"none"}}>{["high","medium","low"].map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}</select>
-                                      <select value={t.due_day} onChange={e=>updateTaskField(selectedMember,i,"due_day",e.target.value)} style={{background:T.surface,border:`2px solid ${T.black}`,color:T.black,fontSize:11,padding:"4px 8px",outline:"none"}}>{["Monday","Tuesday","Wednesday","Thursday","Friday","EOW"].map(d=><option key={d} value={d}>{d}</option>)}</select>
-                                      <button onClick={()=>saveTaskEdit(selectedMember,i)} style={{background:T.green,color:"#fff",border:`2px solid ${T.green}`,padding:"4px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE</button>
-                                      <button onClick={()=>setEditingTask(null)} style={{background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"4px 12px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>CANCEL</button>
-                                    </div>
-                                  </div>
-                                ):(
-                                  <>
-                                    <div style={{fontSize:13,color:isDone?T.grayLight:T.black,textDecoration:isDone?"line-through":"none",lineHeight:1.5}}><span style={{opacity:0.5,marginRight:6}}>{tIcon(t.type)}</span>{t.task}</div>
-                                    <div style={{display:"flex",gap:8,marginTop:5,flexWrap:"wrap"}}>
-                                      <Badge label={t.priority} color={pColor(t.priority)} />
-                                      {t.due_day&&<span style={{fontSize:10,color:overdue?T.orange:T.grayLight,fontFamily:T.mono}}>{overdue?"⚠ OVERDUE · ":""}{t.due_day}</span>}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                              {!isEditingThis&&(
-                                <div style={{display:"flex",gap:2,flexShrink:0}}>
-                                  <button onClick={()=>{setEditingTask(key);setEditingTaskText(t.task);}} style={{background:"transparent",border:"none",color:T.grayLight,fontSize:14,cursor:"pointer",padding:"2px 6px"}}>✏️</button>
-                                  <button onClick={()=>deleteTask(selectedMember,i)} style={{background:"transparent",border:"none",color:T.grayLight,fontSize:14,cursor:"pointer",padding:"2px 6px"}}>🗑</button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {d.blockers?.length>0&&(
-                      <div style={{background:T.orangeSoft,border:`2px solid ${T.orange}`,padding:"12px 16px",marginTop:14}}>
-                        <CardLabel color={T.orange}>Blockers</CardLabel>
-                        <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>{d.blockers.map((b,i)=><div key={i} style={{fontSize:13,color:T.darkGray}}>· {b}</div>)}</div>
-                      </div>
-                    )}
-                    {KPI_DATA[selectedMember]&&(()=>{
-                      const kpi=KPI_DATA[selectedMember];
-                      return (
-                        <div style={{marginTop:14}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:T.black,padding:"10px 14px",cursor:"pointer"}} onClick={()=>setShowKpi(!showKpi)}>
-                            <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <span style={{fontSize:14}}>{kpi.emoji}</span>
-                              <span style={{fontSize:10,fontWeight:700,letterSpacing:2,color:kpi.color,fontFamily:T.mono}}>KPI TARGETS</span>
-                              <span style={{fontSize:10,color:"#555",fontFamily:T.mono}}>{kpi.role}</span>
-                            </div>
-                            <span style={{fontSize:10,color:"#555",fontFamily:T.mono}}>{showKpi?"▲ HIDE":"▼ SHOW"}</span>
-                          </div>
-                          {showKpi&&(
-                            <div style={{border:`2px solid ${T.black}`,borderTop:"none",padding:14,display:"flex",flexDirection:"column",gap:12}}>
-                              {kpi.categories.map((cat,ci)=>(
-                                <div key={ci}>
-                                  <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:T.grayLight,fontFamily:T.mono,marginBottom:8}}>{cat.name.toUpperCase()}</div>
-                                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                                    {cat.metrics.map((m,mi)=>(
-                                      <div key={mi} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 12px",background:T.bg,borderLeft:`3px solid ${kpi.color}`}}>
-                                        <div style={{flex:1}}>
-                                          <div style={{fontSize:12,fontWeight:700,color:T.black}}>{m.name}</div>
-                                          <div style={{fontSize:10,color:T.grayLight,marginTop:2,fontFamily:T.mono}}>{m.notes}</div>
-                                        </div>
-                                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                                          <span style={{fontSize:10,fontWeight:700,color:kpi.color,fontFamily:T.mono,background:kpi.color+"18",padding:"2px 6px",letterSpacing:1}}>TARGET: {m.target}</span>
-                                          <span style={{fontSize:9,color:T.yellow,fontFamily:T.mono,background:T.yellow+"18",padding:"2px 6px",letterSpacing:1}}>STRETCH: {m.stretch}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                              <div style={{borderTop:`1px solid ${T.border}`,paddingTop:10}}>
-                                <button onClick={e=>{e.stopPropagation();setShowEod(!showEod);}} style={{background:"transparent",border:`2px solid ${T.black}`,padding:"6px 14px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1,color:T.darkGray}}>
-                                  📝 {showEod?"HIDE":"VIEW"} EOD TEMPLATE
-                                </button>
-                                {showEod&&(
-                                  <div style={{marginTop:10,background:"#1a1a1a",padding:14}}>
-                                    <div style={{fontSize:9,color:kpi.color,fontWeight:700,letterSpacing:2,fontFamily:T.mono,marginBottom:10}}>END-OF-DAY UPDATE FORMAT</div>
-                                    {kpi.eod.map((line,li)=>(
-                                      <div key={li} style={{fontSize:12,color:"#ccc",fontFamily:T.mono,marginBottom:8,lineHeight:1.6}}><span style={{color:kpi.color,marginRight:6}}>·</span>{line}</div>
-                                    ))}
-                                    <div style={{marginTop:10,padding:"8px 12px",background:"#2a1a1a",borderLeft:`3px solid ${T.orange}`}}>
-                                      <div style={{fontSize:10,color:T.orange,fontFamily:T.mono,lineHeight:1.6}}>📌 If there's a blocker: name the issue → 3 solutions → 1 recommendation.</div>
-                                    </div>
-                                    <button onClick={()=>navigator.clipboard.writeText(kpi.eod.join("\n"))} style={{marginTop:10,background:T.black,color:"#fff",border:`1px solid #333`,padding:"5px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>COPY TEMPLATE</button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </Card>
-                );
-              })()}
-            </div>
-          )}
-
-
-
-
-          {view==="history"&&(
-            <div style={{display:"flex",flexDirection:"column",gap:14}}>
-              {history.length===0?(
-                <Card style={{padding:40,textAlign:"center"}}>
-                  <div style={{fontSize:32,marginBottom:12}}>📋</div>
-                  <div style={{fontSize:14,fontWeight:600,color:T.black,marginBottom:6}}>No history yet</div>
-                  <div style={{fontSize:13,color:T.grayLight}}>History is saved automatically when you start a new week.</div>
-                </Card>
-              ):history.map((h,hi)=>(
-                <Card key={hi}>
-                  <div style={{background:T.black,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                      <div style={{fontSize:16,fontWeight:800,color:"#fff",fontFamily:T.font}}>{h.weekLabel.toUpperCase()}</div>
-                      <div style={{fontSize:11,color:T.gray,fontFamily:T.mono,marginTop:2}}>{new Date(h.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:30,fontWeight:900,color:h.teamCompletion===100?T.green:T.orange,fontFamily:T.font,lineHeight:1}}>{h.teamCompletion}%</div>
-                      <div style={{fontSize:10,color:T.gray,fontFamily:T.mono}}>{h.doneTasks}/{h.totalTasks} DONE</div>
-                    </div>
-                  </div>
-                  <div style={{padding:16}}>
-                    <ProgressBar value={h.teamCompletion} height={5} />
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:14}}>
-                      {[["TASKS",`${h.doneTasks}/${h.totalTasks}`,T.orange],["OVERDUE",h.overdueCount,h.overdueCount>0?T.red:T.green],["BLOCKERS",h.blockers.length,h.blockers.length>0?T.yellow:T.green]].map(([l,v,c])=>(
-                        <div key={l} style={{background:T.bg,border:`2px solid ${T.black}`,padding:"10px 12px"}}>
-                          <div style={{fontSize:9,color:T.grayLight,fontFamily:T.mono,letterSpacing:2,marginBottom:4}}>{l}</div>
-                          <div style={{fontSize:20,fontWeight:900,color:c,fontFamily:T.font}}>{v}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-
-
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard({ navigate, sendToSlack }) {
   const date=new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}).toUpperCase();
@@ -3974,241 +3517,6 @@ function CultureDashboard() {
       </div>
     </div>
   );
-}
-
-
-
-
-// ─── RFP ENGINE ───────────────────────────────────────────────────────────────
-const urgencyTag=(deadline)=>{if(!deadline) return null;const d=new Date(deadline),now=new Date(),diff=Math.ceil((d-now)/86400000);if(isNaN(diff)) return null;if(diff<0) return {label:"EXPIRED",color:T.gray};if(diff<=7) return {label:`${diff}d left`,color:T.red};if(diff<=21) return {label:`${diff}d left`,color:T.yellow};return {label:`${diff}d left`,color:T.green};};
-function RFPEngine() {
-  const [keywords,setKeywords]=useState("");const [rfps,setRfps]=useState([]);const [selected,setSelected]=useState(null);const [proposal,setProposal]=useState(null);const [loading,setLoading]=useState({search:false,proposal:false});const [error,setError]=useState(null);const [view,setView]=useState("search");const [tracker,setTracker]=useState([]);const [expandedScore,setExpandedScore]=useState(null);const [editedProposalText,setEditedProposalText]=useState("");
-  useEffect(()=>{storage.get("rfp-tracker").then(s=>{if(s) setTracker(JSON.parse(s.value));});},[]);
-  const setLoad=(k,v)=>setLoading(p=>({...p,[k]:v}));
-  const persist=async(list)=>{setTracker(list);await storage.set("rfp-tracker",JSON.stringify(list));};
-  const saveToTracker=(rfp,pt)=>{const e={id:Date.now(),title:rfp.title,organization:rfp.organization,type:rfp.type||"Other",budget:rfp.budget,deadline:rfp.deadline||"",services:rfp.services_needed||[],score:rfp.relevance_score,proposal:pt,status:"draft",revenue:"",notes:"",source_url:rfp.source_url||"",created_at:new Date().toISOString()};persist([e,...tracker]);};
-  const updateStatus=(id,status)=>persist(tracker.map(t=>t.id===id?{...t,status}:t));
-  const del=(id)=>persist(tracker.filter(t=>t.id!==id));
-  const search=async()=>{
-    setLoad("search",true);setError(null);setRfps([]);setSelected(null);setProposal(null);
-    const prompt=`RFP research specialist for BuildWithLeverage. Find RFPs for: ${keywords}. Today is ${new Date().toISOString().split("T")[0]}. Return ONLY valid JSON: {"rfps":[{"id":"1","title":"...","organization":"...","type":"Government|Corporate|Nonprofit|Other","budget":"...","deadline":"YYYY-MM-DD or empty string","description":"2-3 sentences","relevance_score":85,"score_breakdown":{"strengths":["s1"],"gaps":["g1"],"overall":"1 sentence"},"why_bwl_can_win":"...","services_needed":["Outbound"],"source_url":"","source":""}]}`;
-    try {
-      const data=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:4000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]});
-      if(data.error) throw new Error(data.error.message);
-      const raw=data.content?.find(b=>b.type==="text")?.text||"";
-      const clean=raw.replace(/```json|```/g,"").trim();
-      setRfps(JSON.parse(clean.slice(clean.indexOf("{"),clean.lastIndexOf("}")+1)).rfps||[]);
-    } catch(e){setError(e.message);}
-    setLoad("search",false);
-  };
-  const genProposal=async(rfp)=>{
-    setSelected(rfp);setProposal(null);setLoad("proposal",true);setError(null);
-    try {
-      const metaPrompt=`Proposal writer for BuildWithLeverage. RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")} Return ONLY valid JSON: {"subject_line":"A NEW [X] FOR [ORG]","why_bwl":["reason"],"relevant_results":["result"],"investment":"price","timeline":"timeline","requirements_checklist":[{"requirement":"req","addressed":true,"how":"how"}]}`;
-      const d1=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:metaPrompt}]});
-      if(d1.error) throw new Error(d1.error.message);
-      const t1=(d1.content?.find(b=>b.type==="text")?.text||"").replace(/```json|```/g,"").trim();
-      const meta=JSON.parse(t1.slice(t1.indexOf("{"),t1.lastIndexOf("}")+1));
-      const textPrompt=`Senior proposal writer for LEVERAGE. Stats: $125M revenue, 11X ROAS, 20+ companies. RFP: ${rfp.title} | Org: ${rfp.organization} | Type: ${rfp.type} | Budget: ${rfp.budget} | Services: ${(rfp.services_needed||[]).join(", ")}\nWrite full proposal with sections: 01 // THE OPPORTUNITY, 02 // WHAT WE BUILD, 03 // THE PILOT, 04 // THE MATH (pipe table), 05 // INVESTMENT (pipe table), 06 // NEXT STEPS. Use // KEY INSIGHT for standout points. Plain text only.`;
-      const d2=await claudeFetch({model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:textPrompt}]});
-      if(d2.error) throw new Error(d2.error.message);
-      const proposalText=d2.content?.find(b=>b.type==="text")?.text||"";
-      setProposal({...meta,full_proposal_text:proposalText});setEditedProposalText(proposalText);
-    } catch(e){setError(e.message);}
-    setLoad("proposal",false);
-  };
-  const sc=s=>s>=80?T.green:s>=60?T.yellow:T.red;
-  const ss=s=>({draft:{color:T.gray,label:"DRAFT"},submitted:{color:T.yellow,label:"SUBMITTED"},won:{color:T.green,label:"WON"},lost:{color:T.red,label:"LOST"}}[s]||{color:T.gray,label:s});
-  const won=tracker.filter(t=>t.status==="won");
-  const submitted=tracker.filter(t=>["submitted","won","lost"].includes(t.status));
-  const winRate=submitted.length?Math.round((won.length/submitted.length)*100):0;
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{display:"flex",gap:8}}><Pill label="🔍 FIND RFPs" active={view==="search"} onClick={()=>setView("search")} /><Pill label={`📊 PIPELINE (${tracker.length})`} active={view==="tracker"} onClick={()=>setView("tracker")} /></div>
-      {view==="search"&&(
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <Card><SectionHeader label="Search RFPs" /><div style={{padding:16,display:"flex",gap:10}}><Input value={keywords} onChange={setKeywords} placeholder="e.g. marketing services, digital advertising…" style={{flex:1}} onKeyDown={e=>e.key==="Enter"&&keywords.trim()&&search()} /><button onClick={search} disabled={!keywords.trim()||loading.search} style={{background:keywords.trim()?T.black:"#E5E0D8",color:keywords.trim()?"#fff":T.gray,border:`2px solid ${keywords.trim()?T.black:"#E5E0D8"}`,padding:"10px 20px",fontSize:12,fontWeight:700,cursor:keywords.trim()?"pointer":"not-allowed",whiteSpace:"nowrap",fontFamily:T.mono,letterSpacing:1}}>{loading.search?"SEARCHING…":"SEARCH"}</button></div></Card>
-          <Err msg={error} />
-          {rfps.length>0&&!proposal&&(
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {rfps.map((rfp,i)=>{
-                const urg=urgencyTag(rfp.deadline),isExp=expandedScore===rfp.id;
-                return (
-                  <Card key={i} style={{padding:18}} hover>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                      <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15,marginBottom:6}}>{rfp.title}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><span style={{fontSize:12,color:T.gray}}>{rfp.organization}</span><Badge label={rfp.type} color={T.gray} />{urg&&<Badge label={urg.label} color={urg.color} />}{rfp.budget&&<Badge label={rfp.budget} color={T.green} />}</div></div>
-                      <div style={{textAlign:"center",marginLeft:14}}><div style={{fontSize:28,fontWeight:900,color:sc(rfp.relevance_score),fontFamily:T.font,lineHeight:1}}>{rfp.relevance_score}</div><button onClick={()=>setExpandedScore(isExp?null:rfp.id)} style={{fontSize:10,color:T.orange,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:T.mono}}>{isExp?"HIDE":"WHY?"}</button></div>
-                    </div>
-                    {isExp&&rfp.score_breakdown&&(<div style={{background:T.bg,border:`2px solid ${T.black}`,padding:14,marginBottom:10}}><CardLabel>Score Breakdown</CardLabel><div style={{fontSize:12,color:T.darkGray,margin:"8px 0"}}>{rfp.score_breakdown.overall}</div></div>)}
-                    <p style={{margin:"0 0 10px",fontSize:13,color:T.darkGray,lineHeight:1.6}}>{rfp.description}</p>
-                    {rfp.services_needed?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>{rfp.services_needed.map((s,j)=><Badge key={j} label={s} color={T.orange} />)}</div>}
-                    <button onClick={()=>genProposal(rfp)} style={{width:"100%",padding:"10px 0",background:loading.proposal&&selected?.id===rfp.id?"#E5E0D8":T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>{loading.proposal&&selected?.id===rfp.id?"GENERATING…":"GENERATE PROPOSAL"}</button>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-          {proposal&&selected&&(
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><CardLabel>Branded Proposal</CardLabel><Pill label="← BACK" onClick={()=>{setProposal(null);setSelected(null);}} /></div>
-              <BrandedProposal proposal={{...proposal,full_proposal_text:editedProposalText}} rfp={selected} />
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>navigator.clipboard.writeText(editedProposalText)} style={{flex:1,padding:12,background:T.black,color:"#fff",border:`2px solid ${T.black}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>COPY</button>
-                <button onClick={()=>{saveToTracker(selected,editedProposalText);setView("tracker");setProposal(null);setSelected(null);}} style={{flex:1,padding:12,background:T.green,color:"#fff",border:`2px solid ${T.green}`,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>SAVE TO PIPELINE</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      {view==="tracker"&&(
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <Card style={{background:T.black,padding:20}}><CardLabel color={T.orange}>Win Rate</CardLabel><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:14}}>{[["Total",tracker.length,T.orange],["Won",won.length,T.green],["Lost",tracker.filter(t=>t.status==="lost").length,T.red],["Win Rate",`${winRate}%`,winRate>=50?T.green:T.red]].map(([l,v,c])=>(<div key={l} style={{textAlign:"center",background:"#ffffff0d",border:"1px solid #333",padding:"12px 6px"}}><div style={{fontSize:22,fontWeight:900,color:c,fontFamily:T.font}}>{v}</div><div style={{fontSize:9,color:"#999",fontWeight:700,marginTop:2,fontFamily:T.mono}}>{l.toUpperCase()}</div></div>))}</div></Card>
-          {tracker.length===0?<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No proposals saved yet</div></Card>:
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {tracker.map(t=>(<Card key={t.id} style={{padding:18}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{t.title}</div><div style={{fontSize:11,color:T.gray,marginTop:3}}>{t.organization}</div></div><Badge label={ss(t.status).label} color={ss(t.status).color} /></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{t.status==="draft"&&<button onClick={()=>updateStatus(t.id,"submitted")} style={{background:T.bg,color:T.yellow,border:`2px solid ${T.yellow}`,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>SUBMITTED</button>}{t.status==="submitted"&&<><button onClick={()=>updateStatus(t.id,"won")} style={{background:T.bg,color:T.green,border:`2px solid ${T.green}`,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>WON</button><button onClick={()=>updateStatus(t.id,"lost")} style={{background:T.bg,color:T.red,border:`2px solid ${T.red}`,padding:"6px 12px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>LOST</button></>}<button onClick={()=>del(t.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"6px 12px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}
-            </div>
-          }
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-
-
-// ─── COS TOOLS ────────────────────────────────────────────────────────────────
-function WeeklyReport() {
-  const [updates,setUpdates]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Generate weekly status report for Kristine Mirabueno (CoS/EA) at BuildWithLeverage. Updates: ${updates}. Return ONLY valid JSON: {"executive_summary":"TL;DR","wins":["w1"],"in_progress":[{"item":"...","status":"..."}],"blockers":["b1"],"next_week":["p1"],"david_needs_to_know":["item"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Your Updates This Week" value={updates} onChange={setUpdates} placeholder="Type your updates…" /><Btn onClick={gen} disabled={!updates.trim()} loading={loading} label="Generate Weekly Report" icon="📄" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:20}}><CardLabel color={T.orange}>TL;DR</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.executive_summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Wins" items={result.wins} color={T.green} /><Bullets label="Blockers" items={result.blockers} color={T.red} /></div><Bullets label="Next Week" items={result.next_week} color={T.purple} /></>}</div>);
-}
-function ExecComms() {
-  const [context,setContext]=useState("");const [tone,setTone]=useState("professional");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`CoS at BuildWithLeverage. Tone: ${tone}. Context: ${context}. Return ONLY valid JSON: {"subject":"subject","draft":"complete message","alt_version":"alternative","tips":["tip"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["professional","friendly","direct","urgent"].map(t=><Pill key={t} label={t.toUpperCase()} active={tone===t} onClick={()=>setTone(t)} />)}</div><Textarea label="Context" value={context} onChange={setContext} placeholder="What do you need to communicate?" /><Btn onClick={gen} disabled={!context.trim()} loading={loading} label="Draft Comms" icon="✏️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:15,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Draft</CardLabel><CopyBtn text={result.draft} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.draft}</div></div></>}</div>);
-}
-function DailyBriefing() {
-  const [input,setInput]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`AI Chief of Staff briefing for David Perlov, CEO. Input: ${input}. Return ONLY valid JSON: {"summary":"TL;DR","urgent_items":["item"],"fyi_items":["item"],"decisions_needed":["decision"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Updates / Reports / Slack" value={input} onChange={setInput} placeholder="Paste anything for today's briefing…" /><Btn onClick={gen} disabled={!input.trim()} loading={loading} label="Generate Daily Briefing" icon="☀️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>TL;DR</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:14,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Urgent" items={result.urgent_items} color={T.red} /><Bullets label="Decisions Needed" items={result.decisions_needed} color={T.purple} /></div><Bullets label="FYI" items={result.fyi_items} color={T.yellow} /></>}</div>);
-}
-function TeamPerformance() {
-  const [input,setInput]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Analyze team performance for BuildWithLeverage. Team: ${TEAM_OPS.join(", ")}. Input: ${input}. Return ONLY valid JSON: {"overall_health":"green|yellow|red","summary":"overview","top_performers":["name: reason"],"needs_attention":["name: reason"],"recommended_actions":["action"],"david_focus":"what David should focus on"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  const hColor=h=>({green:T.green,yellow:T.yellow,red:T.red}[h]||T.gray);
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Team Updates / Reports" value={input} onChange={setInput} placeholder="Paste any team updates…" /><Btn onClick={gen} disabled={!input.trim()} loading={loading} label="Analyze Team Performance" icon="📊" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><CardLabel color={T.orange}>Team Health</CardLabel>{result.overall_health&&<Badge label={result.overall_health.toUpperCase()} color={hColor(result.overall_health)} />}</div><p style={{margin:0,color:"#fff",fontSize:13,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Top Performers" items={result.top_performers} color={T.green} /><Bullets label="Needs Attention" items={result.needs_attention} color={T.red} /></div><Bullets label="Recommended Actions" items={result.recommended_actions} color={T.yellow} /></>}</div>);
-}
-function StrategicDecision() {
-  const [situation,setSituation]=useState("");const [options,setOptions]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Strategic advisor for David Perlov. Situation: ${situation}. Options: ${options||"not specified"}. Return ONLY valid JSON: {"recommendation":"recommended path","confidence":"high|medium|low","pros_cons":[{"option":"name","pros":["p1"],"cons":["c1"]}],"risks":"key risk","next_steps":["step"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  const confColor=c=>({high:T.green,medium:T.yellow,low:T.red}[c]||T.gray);
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Situation / Decision" value={situation} onChange={setSituation} placeholder="Describe the strategic decision…" /><Textarea label="Options (Optional)" value={options} onChange={setOptions} placeholder="List the options…" minHeight={80} /><Btn onClick={gen} disabled={!situation.trim()} loading={loading} label="Analyze Decision" icon="🧠" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}><CardLabel color={T.orange}>Recommendation</CardLabel>{result.confidence&&<Badge label={`${result.confidence} confidence`} color={confColor(result.confidence)} />}</div><p style={{margin:0,color:"#fff",fontSize:14,lineHeight:1.7}}>{result.recommendation}</p></Card>{result.pros_cons?.map((o,i)=>(<Card key={i} style={{padding:16}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>{o.option}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pros" items={o.pros} color={T.green} /><Bullets label="Cons" items={o.cons} color={T.red} /></div></Card>))}<Bullets label="Next Steps" items={result.next_steps} color={T.purple} /></>}</div>);
-}
-
-
-
-
-// ─── OUTBOUND ─────────────────────────────────────────────────────────────────
-function SequenceBuilder() {
-  const [icp,setIcp]=useState("");const [goal,setGoal]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Build 3-email cold sequence for BuildWithLeverage. ICP: ${icp}. Goal: ${goal}. Return ONLY valid JSON: {"sequence_name":"name","emails":[{"step":1,"subject":"s","body":"full email","send_day":"Day 1","goal":"g"},{"step":2,"subject":"s","body":"full email","send_day":"Day 3","goal":"g"},{"step":3,"subject":"s","body":"full email","send_day":"Day 7","goal":"g"}],"tips":["t"]}`;try{const r=await callClaude(prompt,3000);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Target Audience / ICP" value={icp} onChange={setIcp} placeholder="Who are you targeting?" minHeight={80} /><Textarea label="Campaign Goal" value={goal} onChange={setGoal} placeholder="e.g. Book discovery call…" minHeight={70} /><Btn onClick={gen} disabled={!icp.trim()||!goal.trim()} loading={loading} label="Build Email Sequence" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Sequence: {result.sequence_name}</CardLabel></Card>{result.emails?.map((e,i)=>(<Card key={i} style={{padding:18}}><div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}><Badge label={`EMAIL ${e.step}`} color={T.black} bg={T.black} /><span style={{fontSize:10,color:T.gray,fontFamily:T.mono}}>{e.send_day}</span></div><div style={{fontSize:12,fontWeight:600,marginBottom:8,color:T.darkGray}}>Subject: {e.subject}</div><div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",background:T.bg,border:`2px solid ${T.black}`,padding:14}}>{e.body}</div></Card>))}</>}</div>);
-}
-function LeadResearch() {
-  const [target,setTarget]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Lead research for BuildWithLeverage. Research: ${target}. Return ONLY valid JSON: {"company_summary":"2-3 sentences","pain_points":["p"],"why_bwl_fits":"reason","recommended_angle":"angle","talking_points":["t"],"estimated_fit_score":85}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Company / Lead to Research" value={target} onChange={setTarget} placeholder="Company name, website, or lead details…" minHeight={90} /><Btn onClick={gen} disabled={!target.trim()} loading={loading} label="Research Lead" icon="🔍" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><div style={{display:"flex",justifyContent:"space-between"}}><div style={{flex:1}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"10px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.company_summary}</p></div><div style={{textAlign:"center",marginLeft:20}}><div style={{fontSize:34,fontWeight:900,color:result.estimated_fit_score>=80?T.green:result.estimated_fit_score>=60?T.yellow:T.red,fontFamily:T.font,lineHeight:1}}>{result.estimated_fit_score}</div><div style={{fontSize:9,color:T.gray,fontWeight:700,fontFamily:T.mono}}>FIT SCORE</div></div></div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Pain Points" items={result.pain_points} color={T.red} /><Bullets label="Talking Points" items={result.talking_points} color={T.purple} /></div></>}</div>);
-}
-function ColdEmailWriter() {
-  const [lead,setLead]=useState("");const [offer,setOffer]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Top SDR at BuildWithLeverage. Write cold email. Lead: ${lead}. Offer: ${offer||"BWL growth services"}. Return ONLY valid JSON: {"subject_line":"s","email_body":"complete cold email under 150 words","alt_subject":"alt","follow_up":"day-3 follow-up","tips":["t"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead Info" value={lead} onChange={setLead} placeholder="Company, contact, role, pain points…" minHeight={90} /><Textarea label="Offer / Angle (Optional)" value={offer} onChange={setOffer} placeholder="What are you pitching?" minHeight={70} /><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="Write Cold Email" icon="✉️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject Lines</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:8}}>{result.subject_line}</div><div style={{fontSize:13,color:"#777",marginTop:6}}>Alt: {result.alt_subject}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Main Draft</CardLabel><CopyBtn text={result.email_body} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.email_body}</div></div></>}</div>);
-}
-function CallScript() {
-  const [lead,setLead]=useState("");const [goal]=useState("book a discovery call");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Build cold call script for BuildWithLeverage. Lead: ${lead}. Goal: ${goal}. Return ONLY valid JSON: {"opener":"opener","value_prop":"value prop","discovery_questions":["q1","q2"],"objection_handling":[{"objection":"o","response":"r"}],"cta":"CTA","full_script":"complete script"}`;try{const r=await callClaude(prompt,2500);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Lead / Company Info" value={lead} onChange={setLead} placeholder="Who are you calling?" minHeight={90} /><Btn onClick={gen} disabled={!lead.trim()} loading={loading} label="Generate Call Script" icon="📞" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Opener</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.opener}</p></Card><Bullets label="Discovery Questions" items={result.discovery_questions} color={T.purple} /><Card style={{padding:16}}><CardLabel color={T.yellow}>Objection Handling</CardLabel><div style={{marginTop:10}}>{result.objection_handling?.map((o,i)=><div key={i} style={{marginBottom:12}}><div style={{fontSize:12,fontWeight:700,color:T.red,marginBottom:4}}>"{o.objection}"</div><div style={{fontSize:12,lineHeight:1.5,color:T.darkGray}}>→ {o.response}</div></div>)}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Full Script</CardLabel><CopyBtn text={result.full_script} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.full_script}</div></div></>}</div>);
-}
-function AfterCallAutomation() {
-  const [callNotes,setCallNotes]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`SDR at BuildWithLeverage. After-call automation: ${callNotes}. Return ONLY valid JSON: {"call_summary":"summary","outcome":"connected|no_answer|left_voicemail|not_interested|interested|meeting_booked","crm_notes":"CRM note","follow_up_email":{"subject":"s","body":"email"},"next_action":"next action"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Call Notes" value={callNotes} onChange={setCallNotes} placeholder="What happened on the call?" /><Btn onClick={gen} disabled={!callNotes.trim()} loading={loading} label="Generate After-Call Pack" icon="🗒️" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Summary</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.call_summary}</p></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>CRM Notes</CardLabel><CopyBtn text={result.crm_notes} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.crm_notes}</div></div></>}</div>);
-}
-
-
-
-
-// ─── INFLUENCER ───────────────────────────────────────────────────────────────
-function InfluencerOutreach() {
-  const [influencer,setInfluencer]=useState("");const [campaign,setCampaign]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Influencer outreach for BuildWithLeverage. Influencer: ${influencer}. Campaign: ${campaign}. Return ONLY valid JSON: {"subject":"subject","outreach_message":"complete outreach","follow_up":"day-3 follow-up","tips":["t"]}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Influencer Info" value={influencer} onChange={setInfluencer} placeholder="Name, niche, platform, followers…" minHeight={80} /><Textarea label="Campaign / Brand" value={campaign} onChange={setCampaign} placeholder="What brand or campaign?" minHeight={80} /><Btn onClick={gen} disabled={!influencer.trim()||!campaign.trim()} loading={loading} label="Generate Outreach" icon="📲" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Subject</CardLabel><div style={{fontSize:14,fontWeight:700,color:"#fff",marginTop:6}}>{result.subject}</div></Card><div style={{background:T.bg,border:`2px solid ${T.black}`,padding:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><CardLabel>Outreach</CardLabel><CopyBtn text={result.outreach_message} /></div><div style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{result.outreach_message}</div></div><Bullets label="Tips" items={result.tips} color={T.orange} /></>}</div>);
-}
-function CampaignBrief() {
-  const [details,setDetails]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Campaign brief for BuildWithLeverage. Details: ${details}. Return ONLY valid JSON: {"campaign_name":"n","objective":"o","deliverables":["d"],"timeline":"t","kpis":["k"],"dos":["do"],"donts":["dont"],"full_brief":"complete brief"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Campaign Details" value={details} onChange={setDetails} placeholder="Brand, product, goal, audience, budget…" /><Btn onClick={gen} disabled={!details.trim()} loading={loading} label="Build Campaign Brief" icon="📋" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Campaign: {result.campaign_name}</CardLabel><div style={{fontSize:13,color:"#ccc",lineHeight:1.6,marginTop:8}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="KPIs" items={result.kpis} color={T.green} /><Bullets label="Do's" items={result.dos} color={T.green} /><Bullets label="Don'ts" items={result.donts} color={T.red} /></div></>}</div>);
-}
-function InfluencerTracker() {
-  const [influencers,setInfluencers]=useState([]);const [form,setForm]=useState({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:"",email:"",contact:""});const [showForm,setShowForm]=useState(false);const [filter,setFilter]=useState("all");
-  useEffect(()=>{storage.get("influencer-tracker").then(s=>{if(s) setInfluencers(JSON.parse(s.value));});},[]);
-  const save=async(list)=>{setInfluencers(list);await storage.set("influencer-tracker",JSON.stringify(list));};
-  const add=()=>{save([{...form,id:Date.now(),created_at:new Date().toISOString()},...influencers]);setForm({name:"",handle:"",platform:"Instagram",niche:"",followers:"",status:"under_nego",rate:"",notes:"",email:"",contact:""});setShowForm(false);};
-  const del=(id)=>save(influencers.filter(i=>i.id!==id));
-  const updateStatus=(id,status)=>save(influencers.map(i=>i.id===id?{...i,status}:i));
-  const statuses={active:{label:"ACTIVE",color:T.green},paid:{label:"PAID",color:T.purple},under_nego:{label:"NEGOTIATING",color:T.yellow},completed:{label:"COMPLETED",color:T.gray},declined:{label:"DECLINED",color:T.red}};
-  const filtered=filter==="all"?influencers:influencers.filter(i=>i.status===filter);
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {[["all","ALL"],...Object.entries(statuses).map(([k,v])=>[k,v.label])].map(([k,l])=>(<Pill key={k} label={`${l} (${k==="all"?influencers.length:influencers.filter(i=>i.status===k).length})`} active={filter===k} onClick={()=>setFilter(k)} />))}
-        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"5px 14px",fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono,letterSpacing:1}}>+ ADD</button>
-      </div>
-      {showForm&&(<Card><SectionHeader label="Add Influencer" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["name","NAME *"],["handle","HANDLE"],["niche","NICHE"],["followers","FOLLOWERS"],["rate","RATE"],["email","EMAIL"]].map(([k,l])=>(<div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>))}<div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(p=><option key={p}>{p}</option>)}</select></div><div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><Btn onClick={add} disabled={!form.name.trim()} label="ADD INFLUENCER" /></div></Card>)}
-      {filtered.length===0?<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No influencers yet</div></Card>:
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(inf=>(<Card key={inf.id} style={{padding:16}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div><div style={{fontWeight:700,fontSize:15}}>{inf.name}</div><div style={{fontSize:12,color:T.gray,marginTop:3}}>@{inf.handle} · {inf.platform}</div></div><Badge label={statuses[inf.status]?.label} color={statuses[inf.status]?.color} /></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==inf.status).map(([k,v])=>(<button key={k} onClick={()=>updateStatus(inf.id,k)} style={{background:T.bg,color:v.color,border:`2px solid ${v.color}`,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>→ {v.label}</button>))}<button onClick={()=>del(inf.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"4px 10px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}</div>
-      }
-    </div>
-  );
-}
-function ContentTracker() {
-  const [posts,setPosts]=useState([]);const [form,setForm]=useState({influencer:"",platform:"Instagram",content_type:"Post",caption:"",post_date:"",status:"planned",link:""});const [showForm,setShowForm]=useState(false);const [filter,setFilter]=useState("all");
-  useEffect(()=>{storage.get("content-tracker").then(s=>{if(s) setPosts(JSON.parse(s.value));});},[]);
-  const save=async(list)=>{setPosts(list);await storage.set("content-tracker",JSON.stringify(list));};
-  const add=()=>{save([{...form,id:Date.now(),created_at:new Date().toISOString()},...posts]);setForm({influencer:"",platform:"Instagram",content_type:"Post",caption:"",post_date:"",status:"planned",link:""});setShowForm(false);};
-  const del=(id)=>save(posts.filter(p=>p.id!==id));
-  const updateStatus=(id,status)=>save(posts.map(p=>p.id===id?{...p,status}:p));
-  const statuses={planned:{label:"PLANNED",color:T.purple},submitted:{label:"SUBMITTED",color:T.yellow},live:{label:"LIVE",color:T.green},revision:{label:"REVISION",color:T.orange},approved:{label:"APPROVED",color:T.green}};
-  const filtered=filter==="all"?posts:posts.filter(p=>p.status===filter);
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {[["all","ALL"],...Object.entries(statuses).map(([k,v])=>[k,v.label])].map(([k,l])=>(<Pill key={k} label={`${l} (${k==="all"?posts.length:posts.filter(p=>p.status===k).length})`} active={filter===k} onClick={()=>setFilter(k)} />))}
-        <button onClick={()=>setShowForm(!showForm)} style={{marginLeft:"auto",padding:"5px 14px",fontSize:10,fontWeight:700,background:T.orange,color:"#fff",border:`2px solid ${T.orange}`,cursor:"pointer",fontFamily:T.mono}}>+ ADD CONTENT</button>
-      </div>
-      {showForm&&(<Card><SectionHeader label="Add Content" /><div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["influencer","INFLUENCER *"],["link","POST LINK"]].map(([k,l])=>(<div key={k}><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>{l}</div><Input value={form[k]} onChange={v=>setForm(p=>({...p,[k]:v}))} /></div>))}<div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>PLATFORM</div><select value={form.platform} onChange={e=>setForm(p=>({...p,platform:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{["Instagram","TikTok","YouTube","Twitter/X","Facebook"].map(o=><option key={o}>{o}</option>)}</select></div><div><div style={{fontSize:10,color:T.gray,fontWeight:700,marginBottom:4,fontFamily:T.mono}}>STATUS</div><select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{width:"100%",background:T.bg,border:`2px solid ${T.black}`,color:T.black,fontSize:13,padding:"10px 14px",outline:"none"}}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div></div><div style={{padding:"0 16px 16px"}}><Btn onClick={add} disabled={!form.influencer.trim()} label="ADD CONTENT" /></div></Card>)}
-      {filtered.length===0?<Card style={{padding:40,textAlign:"center"}}><div style={{fontSize:14,fontWeight:600,color:T.gray}}>No content tracked yet</div></Card>:
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>{filtered.map(post=>(<Card key={post.id} style={{padding:16}} hover><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontWeight:700,fontSize:15}}>{post.influencer}</div><div style={{fontSize:12,color:T.gray,marginTop:3}}>{post.platform} · {post.content_type}</div></div><Badge label={statuses[post.status]?.label} color={statuses[post.status]?.color} /></div>{post.caption&&<div style={{fontSize:12,color:T.darkGray,background:T.bg,border:`2px solid ${T.black}`,padding:"8px 12px",marginBottom:10}}>{post.caption}</div>}<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(statuses).filter(([k])=>k!==post.status).map(([k,v])=>(<button key={k} onClick={()=>updateStatus(post.id,k)} style={{background:T.bg,color:v.color,border:`2px solid ${v.color}`,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:T.mono}}>→ {v.label}</button>))}<button onClick={()=>del(post.id)} style={{marginLeft:"auto",background:T.bg,color:T.gray,border:`2px solid ${T.black}`,padding:"4px 10px",fontSize:10,cursor:"pointer",fontFamily:T.mono}}>DELETE</button></div></Card>))}</div>
-      }
-    </div>
-  );
-}
-
-
-
-
-// ─── DESIGN ───────────────────────────────────────────────────────────────────
-function DesignBrief() {
-  const [request,setRequest]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Creative director at BuildWithLeverage. Build design brief: ${request}. Return ONLY valid JSON: {"project_title":"t","objective":"o","deliverables":["d"],"mood":["v"],"brand_guidelines":["g"],"full_brief":"complete brief"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Design Request" value={request} onChange={setRequest} placeholder="What needs to be designed?" /><Btn onClick={gen} disabled={!request.trim()} loading={loading} label="Generate Design Brief" icon="🎨" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:18}}><CardLabel color={T.orange}>Project: {result.project_title}</CardLabel><div style={{fontSize:13,color:"#ccc",lineHeight:1.6,marginTop:8}}>{result.objective}</div></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Deliverables" items={result.deliverables} color={T.purple} /><Bullets label="Mood / Vibe" items={result.mood} color="#a855f7" /></div><Bullets label="Brand Guidelines" items={result.brand_guidelines} color={T.orange} /></>}</div>);
-}
-function FeedbackSummary() {
-  const [feedback,setFeedback]=useState("");const [result,setResult]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState(null);
-  const gen=async()=>{setLoading(true);setResult(null);setError(null);const prompt=`Summarize design feedback for BuildWithLeverage. Feedback: ${feedback}. Return ONLY valid JSON: {"summary":"overview","required_changes":["c"],"nice_to_have":["n"],"keep_as_is":["k"],"designer_message":"message to designer"}`;try{const r=await callClaude(prompt);setResult(r);}catch(e){setError(e.message);}setLoading(false);};
-  return (<div style={{display:"flex",flexDirection:"column",gap:14}}><Textarea label="Paste Feedback" value={feedback} onChange={setFeedback} placeholder="Paste raw feedback…" /><Btn onClick={gen} disabled={!feedback.trim()} loading={loading} label="Summarize Feedback" icon="🖊" /><Err msg={error} />{result&&<><Card style={{background:T.black,padding:16}}><CardLabel color={T.orange}>Overview</CardLabel><p style={{margin:"8px 0 0",color:"#fff",fontSize:13,lineHeight:1.7}}>{result.summary}</p></Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><Bullets label="Required Changes" items={result.required_changes} color={T.red} /><Bullets label="Nice to Have" items={result.nice_to_have} color={T.yellow} /></div><Bullets label="Keep As Is" items={result.keep_as_is} color={T.green} /></>}</div>);
-}
 
 
 
@@ -4335,13 +3643,10 @@ function Settings({slackToken,setSlackToken,slackIds,setSlackIds,onChangePasswor
 const NAV=[
   {key:"dashboard",label:"Dashboard"},
   {key:"attendance",label:"Attendance"},
-  {key:"ops-pulse",label:"Ops Pulse"},
-  {key:"rfp",label:"RFP Engine"},
-  {key:"cos",label:"CoS Tools",children:[{key:"weekly-report",label:"Weekly Report"},{key:"exec-comms",label:"Exec Comms"},{key:"daily-briefing",label:"Daily Briefing"},{key:"team-performance",label:"Team Performance"},{key:"strategic-decision",label:"Strategic Decision"}]},
   {key:"culture",label:"Culture"},
   {key:"settings",label:"Settings"},
 ];
-const PAGE_ICONS={dashboard:"⚡",attendance:"🕐","ops-pulse":"📋",rfp:"📊","weekly-report":"📄","exec-comms":"✏️","daily-briefing":"☀️","team-performance":"👥","strategic-decision":"🧠","sequence-builder":"✉️","lead-research":"🔍","cold-email":"📧","call-script":"📞","after-call":"🗒️","influencer-outreach":"📲","campaign-brief":"📋","influencer-tracker":"👥","content-tracker":"📅","design-brief":"🎨","feedback-summary":"🖊",settings:"⚙️",culture:"🏛️"};
+const PAGE_ICONS={dashboard:"⚡",attendance:"🕐",settings:"⚙️",culture:"🏛️"};
 
 
 
@@ -4492,13 +3797,6 @@ export default function App() {
     switch(page){
       case "dashboard": return <Dashboard navigate={navigate} sendToSlack={sendToSlack} />;
       case "attendance": return <AttendanceTracker />;
-      case "ops-pulse": return <OpsPulse slackIds={slackIds} />;
-      case "rfp": return <RFPEngine />;
-      case "weekly-report": return <WeeklyReport />;
-      case "exec-comms": return <ExecComms />;
-      case "daily-briefing": return <DailyBriefing />;
-      case "team-performance": return <TeamPerformance />;
-      case "strategic-decision": return <StrategicDecision />;
       case "culture": return <CultureDashboard />;
       case "settings": return <Settings slackToken={slackToken} setSlackToken={setSlackToken} slackIds={slackIds} setSlackIds={setSlackIds} onChangePassword={setCurrentPassword} sendToSlack={sendToSlack} />;
       default: return <Dashboard navigate={navigate} />;
