@@ -699,7 +699,7 @@ function SODForm({member, onSubmit}) {
     setSubmitting(true);
     const sod={
       member,date:todayStr(),
-      submittedAt:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}),
+      submittedAt:getEDTTime(),
       tasks:tasks.filter(t=>t.task.trim()),
       metrics:metrics.trim(),
       blockers:blockers.trim(),
@@ -832,6 +832,8 @@ function SODForm({member, onSubmit}) {
 function EODForm({member, onSubmit}) {
   const [eodReport,setEodReport]=useState("");
   const [metrics,setMetrics]=useState([]);
+  const [managerNotes,setManagerNotes]=useState("");
+  const [blockers,setBlockers]=useState("");
   const [submitting,setSubmitting]=useState(false);
   
   const kpiData=KPI_DATA[member];
@@ -868,9 +870,11 @@ function EODForm({member, onSubmit}) {
     setSubmitting(true);
     const eod={
       member,date:todayStr(),
-      submittedAt:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}),
+      submittedAt:getEDTTime(),
       eodReport:eodReport.trim(),
       metrics:metrics.filter(m=>m.value.trim()),
+      managerNotes:managerNotes.trim(),
+      blockers:blockers.trim(),
     };
     setTimeout(()=>onSubmit(eod),800);
   };
@@ -958,8 +962,28 @@ function EODForm({member, onSubmit}) {
 
 
 
+      {/* Manager Notes */}
+      <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+        <div style={{background:T.black,padding:"10px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>MANAGER NOTES (OPTIONAL)</div>
+        </div>
+        <textarea value={managerNotes} onChange={e=>setManagerNotes(e.target.value)} 
+          placeholder="Any special notes, feedback, or context for your manager…"
+          style={{width:"100%",minHeight:70,background:"transparent",border:"none",padding:14,fontSize:13,outline:"none",fontFamily:T.body,lineHeight:1.7,resize:"vertical",color:T.black,display:"block"}} />
+      </div>
 
 
+
+
+      {/* Blockers */}
+      <div style={{background:T.surface,border:`2px solid ${T.black}`,overflow:"hidden"}}>
+        <div style={{background:T.black,padding:"10px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.orange,fontFamily:T.mono,letterSpacing:2}}>BLOCKERS (OPTIONAL)</div>
+        </div>
+        <textarea value={blockers} onChange={e=>setBlockers(e.target.value)} 
+          placeholder="What's blocking you or needs manager attention? (optional)"
+          style={{width:"100%",minHeight:70,background:"transparent",border:"none",padding:14,fontSize:13,outline:"none",fontFamily:T.body,lineHeight:1.7,resize:"vertical",color:T.black,display:"block"}} />
+      </div>
 
 
       {/* Submit */}
@@ -3022,14 +3046,23 @@ function AttendanceTracker() {
     const metricsText = eod.metrics.map(m => `• ${m.name}: ${m.value}`).join("\n");
     const userSlackId = DEFAULT_SLACK_IDS[eod.member];
     
+    // Build comprehensive EOD summary
+    let eodSummary = `📊 *EOD Report:*\n${eod.eodReport}\n\n*Today's Metrics:*\n${metricsText}`;
+    if (eod.managerNotes && eod.managerNotes.trim()) {
+      eodSummary += `\n\n*Manager Notes:*\n${eod.managerNotes}`;
+    }
+    if (eod.blockers && eod.blockers.trim()) {
+      eodSummary += `\n\n🚧 *Blockers:*\n${eod.blockers}`;
+    }
+    
     // Personal DM to user
     if (userSlackId) {
       sendToSlack(`🔴 *You logged out at ${time}*`, userSlackId);
-      sendToSlack(`📊 *Your EOD was submitted!*\n\n*Today's Metrics:*\n${metricsText}\n\nGreat work today! 🎉`, userSlackId);
+      sendToSlack(`✅ *Your EOD was submitted!*\n\n${eodSummary}\n\nGreat work today! 🎉`, userSlackId);
     }
     
     // Admin summary to channel
-    sendToSlack(`📊 *EOD Update:* ${eod.member} submitted EOD (${eodCount} today)\n\n*Today's Metrics:*\n${metricsText}`);
+    sendToSlack(`📊 *EOD Update:* ${eod.member} submitted EOD (${eodCount} today)\n\n${eodSummary}`);
     
     // AUTO-COMPLETE: Mark tasks done from EOD
     try {
