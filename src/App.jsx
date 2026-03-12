@@ -75,29 +75,9 @@ const storage = {
 
 
 
-// ─── EDT TIMEZONE HELPERS ─────────────────────────────────────────────────────
-// Force all timestamps to EDT (America/New_York) regardless of user location
-const getEDTDate = () => {
-  return new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-};
-
-const todayStr = () => {
-  const edt = getEDTDate();
-  return edt.toISOString().split("T")[0];
-};
-
-const getEDTTime = () => {
-  const edt = getEDTDate();
-  return edt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-};
-
-const getEDTTimestamp = () => {
-  const edt = getEDTDate();
-  return edt.toISOString();
-};
-
+const todayStr = () => new Date().toISOString().split("T")[0];
 const weekLabel = () => {
-  const now=getEDTDate(),day=now.getDay(),mon=new Date(now);
+  const now=new Date(),day=now.getDay(),mon=new Date(now);
   mon.setDate(now.getDate()-(day===0?6:day-1));
   return `Week of ${mon.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}`;
 };
@@ -699,7 +679,7 @@ function SODForm({member, onSubmit}) {
     setSubmitting(true);
     const sod={
       member,date:todayStr(),
-      submittedAt:getEDTTime(),
+      submittedAt:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}),
       tasks:tasks.filter(t=>t.task.trim()),
       metrics:metrics.trim(),
       blockers:blockers.trim(),
@@ -870,7 +850,7 @@ function EODForm({member, onSubmit}) {
     setSubmitting(true);
     const eod={
       member,date:todayStr(),
-      submittedAt:getEDTTime(),
+      submittedAt:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}),
       eodReport:eodReport.trim(),
       metrics:metrics.filter(m=>m.value.trim()),
       managerNotes:managerNotes.trim(),
@@ -2946,8 +2926,8 @@ function AttendanceTracker() {
     }
     
     setShowSodForm(false);
-    const ts=getEDTTimestamp();
-    const time=getEDTTime();
+    const ts=new Date().toISOString();
+    const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
     const nl=[...logs,{id:Date.now(),member:sod.member,type:"in",date:today,time,timestamp:ts}];
     saveLogs(nl);
     setConfirmed(true);
@@ -3034,8 +3014,8 @@ function AttendanceTracker() {
     }
     
     setShowEodForm(false);
-    const ts=getEDTTimestamp();
-    const time=getEDTTime();
+    const ts=new Date().toISOString();
+    const time=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
     const nl=[...logs,{id:Date.now(),member:eod.member,type:"out",date:today,time,timestamp:ts}];
     saveLogs(nl);
     setConfirmed(true);
@@ -3111,7 +3091,7 @@ function AttendanceTracker() {
                   taskId: task.id, 
                   updates: { 
                     status: "done",
-                    completedAt: getEDTTimestamp()
+                    completedAt: new Date().toISOString()
                   }
                 })
               });
@@ -4385,7 +4365,7 @@ function CreateTaskModal({ onClose, onCreate, allTasks }) {
 
 function TaskDetailModal({ task, onClose, onUpdate, onDelete, allTasks }) {
   const [comment, setComment] = useState("");const blockedByTask = task.blockedBy ? allTasks.find(t => t.id === task.blockedBy) : null;
-  const addComment = () => {if (!comment.trim()) return;const newComment = {author: "Admin",text: comment,timestamp: getEDTTimestamp()};onUpdate(task.id, {comments: [...(task.comments || []), newComment]});setComment("");};
+  const addComment = () => {if (!comment.trim()) return;const newComment = {author: "Admin",text: comment,timestamp: new Date().toISOString()};onUpdate(task.id, {comments: [...(task.comments || []), newComment]});setComment("");};
   const changeStatus = (newStatus) => {onUpdate(task.id, { status: newStatus });};
   return (<div style={{position: "fixed",top: 0,left: 0,right: 0,bottom: 0,background: "rgba(0,0,0,0.5)",display: "flex",alignItems: "center",justifyContent: "center",zIndex: 1000,padding: 24}}><div style={{background: T.surface,border: `2px solid ${T.black}`,maxWidth: 600,width: "100%",maxHeight: "90vh",overflowY: "auto"}}><div style={{padding: "16px 20px",borderBottom: `2px solid ${T.black}`,display: "flex",justifyContent: "space-between",alignItems: "center",background: T.black}}><div style={{fontSize: 14,fontWeight: 700,color: "#fff",fontFamily: T.mono,letterSpacing: 2}}>TASK DETAILS</div><button onClick={onClose} style={{background: "none",border: "none",color: "#fff",fontSize: 18,cursor: "pointer",padding: 4}}>✕</button></div><div style={{ padding: 24 }}><div style={{ marginBottom: 20 }}><div style={{display: "flex",gap: 8,alignItems: "center",marginBottom: 8}}><span style={{fontSize: 9,fontWeight: 700,padding: "3px 10px",background: priorityColor(task.priority) + "20",color: priorityColor(task.priority),border: `1px solid ${priorityColor(task.priority)}`,fontFamily: T.mono,letterSpacing: 1}}>{task.priority.toUpperCase()}</span>{task.dueDate && (<span style={{fontSize: 11,color: isOverdue(task.dueDate) ? T.red : T.gray,fontFamily: T.mono,fontWeight: isOverdue(task.dueDate) ? 700 : 400}}>{isOverdue(task.dueDate) ? "⚠️ OVERDUE: " : "📅 Due: "}{formatDate(task.dueDate)}</span>)}</div><div style={{fontSize: 18,fontWeight: 700,color: T.black,lineHeight: 1.3}}>{task.title}</div></div><div style={{background: T.bg,border: `1px solid ${T.border}`,padding: 12,marginBottom: 20,fontSize: 11,fontFamily: T.mono,color: T.gray}}><div>👤 Assigned to: <strong style={{ color: T.black }}>{task.assignee}</strong></div><div>🎯 Created by: {task.createdBy} on {formatDate(task.createdAt)}</div>{task.completedAt && (<div>✅ Completed: {formatDate(task.completedAt)}</div>)}{task.source !== "manual" && (<div>⚡ Source: Auto-imported from {task.source.toUpperCase()}</div>)}</div>{task.description && (<div style={{ marginBottom: 20 }}><div style={{fontSize: 11,fontWeight: 700,color: T.black,fontFamily: T.mono,marginBottom: 8,letterSpacing: 1}}>DESCRIPTION</div><div style={{fontSize: 13,color: T.darkGray,lineHeight: 1.6,background: T.bg,padding: 12,border: `1px solid ${T.border}`}}>{task.description}</div></div>)}{blockedByTask && (<div style={{marginBottom: 20,background: T.red + "10",border: `2px solid ${T.red}`,padding: 12}}><div style={{fontSize: 11,fontWeight: 700,color: T.red,fontFamily: T.mono,marginBottom: 4,letterSpacing: 1}}>🔒 BLOCKED BY</div><div style={{fontSize: 13,color: T.black,fontWeight: 600}}>{blockedByTask.title}</div><div style={{fontSize: 11,color: T.gray,fontFamily: T.mono,marginTop: 4}}>Status: {blockedByTask.status}</div></div>)}<div style={{ marginBottom: 24 }}><div style={{fontSize: 11,fontWeight: 700,color: T.black,fontFamily: T.mono,marginBottom: 8,letterSpacing: 1}}>CHANGE STATUS</div><div style={{ display: "flex", gap: 8 }}>{["pending", "in_progress", "done"].map(status => (<button key={status} onClick={() => changeStatus(status)} disabled={task.status === status} style={{flex: 1,padding: "8px",background: task.status === status ? T.black : T.surface,color: task.status === status ? "#fff" : T.black,border: `2px solid ${T.black}`,fontSize: 10,fontWeight: 700,cursor: task.status === status ? "default" : "pointer",letterSpacing: 1,fontFamily: T.mono,opacity: task.status === status ? 1 : 0.6}}>{status === "pending" && "PENDING"}{status === "in_progress" && "IN PROGRESS"}{status === "done" && "DONE"}</button>))}</div></div><div style={{ marginBottom: 20 }}><div style={{fontSize: 11,fontWeight: 700,color: T.black,fontFamily: T.mono,marginBottom: 8,letterSpacing: 1}}>💬 COMMENTS ({task.comments?.length || 0})</div>{task.comments && task.comments.length > 0 && (<div style={{maxHeight: 200,overflowY: "auto",marginBottom: 12,background: T.bg,border: `1px solid ${T.border}`,padding: 12}}>{task.comments.map((c, i) => (<div key={i} style={{marginBottom: i < task.comments.length - 1 ? 12 : 0,paddingBottom: i < task.comments.length - 1 ? 12 : 0,borderBottom: i < task.comments.length - 1 ? `1px solid ${T.border}` : "none"}}><div style={{fontSize: 10,color: T.gray,fontFamily: T.mono,marginBottom: 4}}><strong>{c.author}</strong> · {formatDate(c.timestamp)}</div><div style={{fontSize: 12,color: T.black,lineHeight: 1.5}}>{c.text}</div></div>))}</div>)}<div style={{ display: "flex", gap: 8 }}><input type="text" value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === "Enter" && comment.trim() && addComment()} placeholder="Add a comment..." style={{flex: 1,padding: "8px 12px",border: `2px solid ${T.black}`,fontSize: 12,outline: "none",fontFamily: T.body}}/><button onClick={addComment} disabled={!comment.trim()} style={{padding: "8px 16px",background: comment.trim() ? T.orange : T.border,color: comment.trim() ? "#fff" : T.gray,border: `2px solid ${T.black}`,fontSize: 10,fontWeight: 700,cursor: comment.trim() ? "pointer" : "not-allowed",letterSpacing: 1,fontFamily: T.mono}}>POST</button></div></div><button onClick={() => {if (confirm("Are you sure you want to delete this task?")) {onDelete(task.id);onClose();}}} style={{width: "100%",padding: "10px",background: T.surface,color: T.red,border: `2px solid ${T.red}`,fontSize: 10,fontWeight: 700,cursor: "pointer",letterSpacing: 2,fontFamily: T.mono}}>🗑️ DELETE TASK</button></div></div></div>);
 }
