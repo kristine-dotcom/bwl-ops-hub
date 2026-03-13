@@ -5238,6 +5238,139 @@ function PageWrapper({page,children}) {
 
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTO-RECONCILE ATTENDANCE LOGS
+// Runs on page load to fix attendance from SOD/EOD submissions
+// ═══════════════════════════════════════════════════════════════════════════
+const reconcileAttendance = async () => {
+  try {
+    console.log('🔄 Auto-reconciling attendance logs...');
+    
+    // Get all attendance logs from backend
+    const attendanceRes = await fetch('/api/attendance');
+    const attendanceData = await attendanceRes.json();
+    let logs = attendanceData.success ? attendanceData.logs : [];
+    
+    // Get recent dates to check (last 7 days)
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    let changesNeeded = false;
+    
+    // For each date, check SOD/EOD submissions and create missing logs
+    for (const date of dates) {
+      // Get SOD submissions for this date
+      const sodRes = await fetch(`/api/sod?date=${date}`);
+      const sodData = await sodRes.json();
+      const sodSubmissions = sodData.success ? sodData.data || {} : {};
+      
+      // Get EOD submissions for this date
+      const eodRes = await fetch(`/api/eod?date=${date}`);
+      const eodData = await eodRes.json();
+      const eodSubmissions = eodData.success ? eodData.data || {} : {};
+      
+      // Create IN logs for all SOD submissions
+      Object.keys(sodSubmissions).forEach(member => {
+        const existingIn = logs.find(l => 
+          l.member === member && l.date === date && l.type === 'in'
+        );
+        
+        if (!existingIn) {
+          // Create missing IN log
+          const sodTime = sodSubmissions[member].submittedAt || '09:00 AM';
+          const timestamp = new Date(`${date}T09:00:00`).toISOString();
+          
+          logs.push({
+            id: `auto-in-${date}-${member.replace(/\s/g, '-')}`,
+            member,
+            type: 'in',
+            date,
+            time: '09:00',
+            timestamp
+          });
+          
+          changesNeeded = true;
+          console.log(`  ✅ Created IN log for ${member} on ${date}`);
+        }
+      });
+      
+      // Create OUT logs for all EOD submissions
+      Object.keys(eodSubmissions).forEach(member => {
+        const existingOut = logs.find(l => 
+          l.member === member && l.date === date && l.type === 'out'
+        );
+        
+        if (!existingOut) {
+          // Create missing OUT log
+          const eodTime = eodSubmissions[member].submittedAt || '05:00 PM';
+          const timestamp = new Date(`${date}T17:00:00`).toISOString();
+          
+          logs.push({
+            id: `auto-out-${date}-${member.replace(/\s/g, '-')}`,
+            member,
+            type: 'out',
+            date,
+            time: '17:00',
+            timestamp
+          });
+          
+          changesNeeded = true;
+          console.log(`  ✅ Created OUT log for ${member} on ${date}`);
+        }
+      });
+    }
+    
+    // Deduplicate logs (keep only one IN and one OUT per member per date)
+    const deduped = {};
+    logs.forEach(log => {
+      const key = `${log.member}-${log.date}-${log.type}`;
+      if (!deduped[key] || new Date(log.timestamp) > new Date(deduped[key].timestamp)) {
+        deduped[key] = log;
+      }
+    });
+    
+    const finalLogs = Object.values(deduped);
+    
+    if (finalLogs.length !== logs.length) {
+      changesNeeded = true;
+      console.log(`  🧹 Removed ${logs.length - finalLogs.length} duplicate logs`);
+    }
+    
+    // Save if changes were made
+    if (changesNeeded) {
+      const saveRes = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logs: finalLogs })
+      });
+      
+      const saveData = await saveRes.json();
+      
+      if (saveData.success) {
+        console.log('✅ Attendance auto-reconciled successfully!');
+        return true;
+      } else {
+        console.error('❌ Failed to save reconciled logs:', saveData.error);
+        return false;
+      }
+    } else {
+      console.log('✅ Attendance logs already correct - no changes needed');
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('❌ Auto-reconcile failed:', error);
+    return false;
+  }
+};
+
+
+
+
 export default function App() {
   const [unlocked,setUnlocked]=useState(false);
   const [currentPassword,setCurrentPassword]=useState(CORRECT_PASSWORD);
@@ -5258,6 +5391,13 @@ export default function App() {
     storage.get("app-password").then(r=>{if(r?.value) setCurrentPassword(r.value);});
     Promise.all([storage.get("slack-token"),storage.get("slack-ids")]).then(([t,ids])=>{if(t) setSlackToken(t.value);if(ids) setSlackIds(JSON.parse(ids.value));});
   },[]);
+
+  // Auto-reconcile attendance logs when app unlocks
+  useEffect(()=>{
+    if(unlocked){
+      reconcileAttendance();
+    }
+  },[unlocked]);
 
 
 
