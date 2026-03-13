@@ -76,6 +76,7 @@ const storage = {
 
 
 const todayStr = () => new Date().toISOString().split("T")[0];
+
 const weekLabel = () => {
   const now=new Date(),day=now.getDay(),mon=new Date(now);
   mon.setDate(now.getDate()-(day===0?6:day-1));
