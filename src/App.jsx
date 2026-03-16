@@ -231,13 +231,34 @@ const api = {
     try {
       const response = await fetch(`/api/sod?date=${date}`);
       const data = await response.json();
-      if (data.success) return data.submissions || {};
-      console.error("API error:", data.error);
-      // Fallback to localStorage
+      
+      // If backend returns data, use it
+      if (data.success && data.submissions && Object.keys(data.submissions).length > 0) {
+        return data.submissions;
+      }
+      
+      // Backend empty or failed - check localStorage first
+      console.log('⚠️ Backend empty, checking localStorage...');
+      const main = localStorage.getItem(`sod-${date}`);
+      if (main) {
+        console.log('✅ Found SOD in localStorage!');
+        return JSON.parse(main);
+      }
+      
+      // Try backup key
       const backup = localStorage.getItem(`sod-${date}-backup`);
-      return backup ? JSON.parse(backup) : {};
+      if (backup) {
+        console.log('✅ Found SOD in backup!');
+        return JSON.parse(backup);
+      }
+      
+      console.log('❌ No SOD data found anywhere');
+      return {};
     } catch (error) {
       console.error("API fetch error:", error);
+      // Try both localStorage keys
+      const main = localStorage.getItem(`sod-${date}`);
+      if (main) return JSON.parse(main);
       const backup = localStorage.getItem(`sod-${date}-backup`);
       return backup ? JSON.parse(backup) : {};
     }
@@ -292,13 +313,34 @@ const api = {
     try {
       const response = await fetch(`/api/eod?date=${date}`);
       const data = await response.json();
-      if (data.success) return data.submissions || {};
-      console.error("API error:", data.error);
-      // Fallback to localStorage
+      
+      // If backend returns data, use it
+      if (data.success && data.submissions && Object.keys(data.submissions).length > 0) {
+        return data.submissions;
+      }
+      
+      // Backend empty or failed - check localStorage first
+      console.log('⚠️ Backend EOD empty, checking localStorage...');
+      const main = localStorage.getItem(`eod-${date}`);
+      if (main) {
+        console.log('✅ Found EOD in localStorage!');
+        return JSON.parse(main);
+      }
+      
+      // Try backup key
       const backup = localStorage.getItem(`eod-${date}-backup`);
-      return backup ? JSON.parse(backup) : {};
+      if (backup) {
+        console.log('✅ Found EOD in backup!');
+        return JSON.parse(backup);
+      }
+      
+      console.log('❌ No EOD data found anywhere');
+      return {};
     } catch (error) {
       console.error("API fetch error:", error);
+      // Try both localStorage keys
+      const main = localStorage.getItem(`eod-${date}`);
+      if (main) return JSON.parse(main);
       const backup = localStorage.getItem(`eod-${date}-backup`);
       return backup ? JSON.parse(backup) : {};
     }
