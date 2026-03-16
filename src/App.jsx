@@ -274,33 +274,25 @@ const api = {
       localStorage.setItem(`sod-${date}`, JSON.stringify(submissions));
       console.log('✅ Saved to localStorage first:', member);
       
-      // STEP 2: Try backend save (if fails, we still have localStorage)
-      const response = await fetch("/api/sod", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          date: date,
-          submissions: submissions 
-        })
-      });
-      
-      if (!response.ok) {
-        console.error(`❌ Backend save failed (${response.status}), but localStorage saved!`);
-        return submissions; // Return localStorage version
+      // STEP 2: Save to backend using window.storage (Vercel KV)
+      if (window.storage && window.storage.set) {
+        try {
+          await window.storage.set(`sod-${date}`, JSON.stringify(submissions));
+          console.log('✅ Backend save successful via window.storage!');
+          // Save backup
+          localStorage.setItem(`sod-${date}-backup`, JSON.stringify(submissions));
+          return submissions;
+        } catch (storageError) {
+          console.error('❌ window.storage save failed:', storageError);
+          console.log('⚠️ But localStorage has the data!');
+          return submissions;
+        }
+      } else {
+        console.warn('⚠️ window.storage not available, using localStorage only');
+        return submissions;
       }
-      
-      const data = await response.json();
-      if (data.success) {
-        // Save backup
-        localStorage.setItem(`sod-${date}-backup`, JSON.stringify(data.submissions));
-        console.log('✅ Backend save successful!');
-        return data.submissions;
-      }
-      
-      console.error("API save error:", data.error);
-      return submissions; // Return localStorage version
     } catch (error) {
-      console.error("API save error:", error);
+      console.error("Save error:", error);
       // Still return localStorage version
       const existing = localStorage.getItem(`sod-${date}`);
       return existing ? JSON.parse(existing) : { [member]: sodData };
@@ -356,33 +348,25 @@ const api = {
       localStorage.setItem(`eod-${date}`, JSON.stringify(submissions));
       console.log('✅ Saved EOD to localStorage first:', member);
       
-      // STEP 2: Try backend save (if fails, we still have localStorage)
-      const response = await fetch("/api/eod", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          date: date,
-          submissions: submissions 
-        })
-      });
-      
-      if (!response.ok) {
-        console.error(`❌ Backend EOD save failed (${response.status}), but localStorage saved!`);
-        return submissions; // Return localStorage version
+      // STEP 2: Save to backend using window.storage (Vercel KV)
+      if (window.storage && window.storage.set) {
+        try {
+          await window.storage.set(`eod-${date}`, JSON.stringify(submissions));
+          console.log('✅ Backend EOD save successful via window.storage!');
+          // Save backup
+          localStorage.setItem(`eod-${date}-backup`, JSON.stringify(submissions));
+          return submissions;
+        } catch (storageError) {
+          console.error('❌ window.storage EOD save failed:', storageError);
+          console.log('⚠️ But localStorage has the data!');
+          return submissions;
+        }
+      } else {
+        console.warn('⚠️ window.storage not available, using localStorage only');
+        return submissions;
       }
-      
-      const data = await response.json();
-      if (data.success) {
-        // Save backup
-        localStorage.setItem(`eod-${date}-backup`, JSON.stringify(data.submissions));
-        console.log('✅ Backend EOD save successful!');
-        return data.submissions;
-      }
-      
-      console.error("API save error:", data.error);
-      return submissions; // Return localStorage version
     } catch (error) {
-      console.error("API save error:", error);
+      console.error("EOD save error:", error);
       // Still return localStorage version
       const existing = localStorage.getItem(`eod-${date}`);
       return existing ? JSON.parse(existing) : { [member]: eodData };
