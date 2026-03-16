@@ -246,22 +246,43 @@ const api = {
 
   saveSOD: async (date, member, sodData) => {
     try {
+      // STEP 1: Save to localStorage FIRST (guaranteed save!)
+      const existing = localStorage.getItem(`sod-${date}`);
+      const submissions = existing ? JSON.parse(existing) : {};
+      submissions[member] = sodData;
+      localStorage.setItem(`sod-${date}`, JSON.stringify(submissions));
+      console.log('✅ Saved to localStorage first:', member);
+      
+      // STEP 2: Try backend save (if fails, we still have localStorage)
       const response = await fetch("/api/sod", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, member, sodData })
+        body: JSON.stringify({ 
+          date: date,
+          submissions: submissions 
+        })
       });
+      
+      if (!response.ok) {
+        console.error(`❌ Backend save failed (${response.status}), but localStorage saved!`);
+        return submissions; // Return localStorage version
+      }
+      
       const data = await response.json();
       if (data.success) {
-        // Save to localStorage backup
+        // Save backup
         localStorage.setItem(`sod-${date}-backup`, JSON.stringify(data.submissions));
+        console.log('✅ Backend save successful!');
         return data.submissions;
       }
+      
       console.error("API save error:", data.error);
-      return null;
+      return submissions; // Return localStorage version
     } catch (error) {
       console.error("API save error:", error);
-      return null;
+      // Still return localStorage version
+      const existing = localStorage.getItem(`sod-${date}`);
+      return existing ? JSON.parse(existing) : { [member]: sodData };
     }
   },
 
@@ -286,22 +307,43 @@ const api = {
 
   saveEOD: async (date, member, eodData) => {
     try {
+      // STEP 1: Save to localStorage FIRST (guaranteed save!)
+      const existing = localStorage.getItem(`eod-${date}`);
+      const submissions = existing ? JSON.parse(existing) : {};
+      submissions[member] = eodData;
+      localStorage.setItem(`eod-${date}`, JSON.stringify(submissions));
+      console.log('✅ Saved EOD to localStorage first:', member);
+      
+      // STEP 2: Try backend save (if fails, we still have localStorage)
       const response = await fetch("/api/eod", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, member, eodData })
+        body: JSON.stringify({ 
+          date: date,
+          submissions: submissions 
+        })
       });
+      
+      if (!response.ok) {
+        console.error(`❌ Backend EOD save failed (${response.status}), but localStorage saved!`);
+        return submissions; // Return localStorage version
+      }
+      
       const data = await response.json();
       if (data.success) {
-        // Save to localStorage backup
+        // Save backup
         localStorage.setItem(`eod-${date}-backup`, JSON.stringify(data.submissions));
+        console.log('✅ Backend EOD save successful!');
         return data.submissions;
       }
+      
       console.error("API save error:", data.error);
-      return null;
+      return submissions; // Return localStorage version
     } catch (error) {
       console.error("API save error:", error);
-      return null;
+      // Still return localStorage version
+      const existing = localStorage.getItem(`eod-${date}`);
+      return existing ? JSON.parse(existing) : { [member]: eodData };
     }
   },
 
