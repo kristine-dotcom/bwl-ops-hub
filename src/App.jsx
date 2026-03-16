@@ -75,11 +75,16 @@ const storage = {
 
 
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => new Date().toISOString().split("T")[0];
 const weekLabel = () => {
   const now=new Date(),day=now.getDay(),mon=new Date(now);
   mon.setDate(now.getDate()-(day===0?6:day-1));
   return `Week of ${mon.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}`;
+};
+const useIsMobile = () => {
+  const [m,setM]=useState(window.innerWidth<=768);
+  useEffect(()=>{ const h=()=>setM(window.innerWidth<=768); window.addEventListener("resize",h); return ()=>window.removeEventListener("resize",h); },[]);
+  return m;
 };
 
 
